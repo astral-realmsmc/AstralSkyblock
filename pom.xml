@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.astralrealms</groupId>
+    <artifactId>skyblock</artifactId>
+    <version>1.0-SNAPSHOT</version>
+    <packaging>jar</packaging>
+
+    <!-- properties -->
+    <properties>
+        <java.version>25</java.version>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <!-- dependencies -->
+        <lombok.version>1.18.42</lombok.version>
+        <caffeine.version>3.2.2</caffeine.version>
+    </properties>
+
+    <!-- deployment -->
+    <distributionManagement>
+        <!-- astralrealms/releases -->
+        <repository>
+            <id>astralrealms-releases</id>
+            <url>https://maven.astralrealms.fr/repository/maven-releases/</url>
+        </repository>
+        <!-- astralrealms/snapshots -->
+        <snapshotRepository>
+            <id>astralrealms-snapshots</id>
+            <url>https://maven.astralrealms.fr/repository/maven-snapshots/</url>
+        </snapshotRepository>
+    </distributionManagement>
+
+    <!-- repositories -->
+    <repositories>
+        <!-- astralrealms -->
+        <repository>
+            <id>astralrealms</id>
+            <url>https://maven.astralrealms.fr/repository/maven-public/</url>
+        </repository>
+        <!-- infernalsuite/releases -->
+        <repository>
+            <id>is-releases</id>
+            <url>https://repo.infernalsuite.com/repository/maven-releases/</url>
+        </repository>
+        <!-- infernalsuite/snapshots -->
+        <repository>
+            <id>is-snapshots</id>
+            <url>https://repo.infernalsuite.com/repository/maven-snapshots/</url>
+        </repository>
+        <!-- papermc -->
+        <repository>
+            <id>papermc-repo</id>
+            <url>https://repo.papermc.io/repository/maven-public/</url>
+        </repository>
+    </repositories>
+
+    <!-- dependencies -->
+    <dependencies>
+        <!-- lombok -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <version>${lombok.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <!-- jetbrains/annotations -->
+        <dependency>
+            <groupId>org.jetbrains</groupId>
+            <artifactId>annotations</artifactId>
+            <version>26.0.2-1</version>
+            <scope>provided</scope>
+        </dependency>
+        <!-- configurate-yaml -->
+        <dependency>
+            <groupId>org.spongepowered</groupId>
+            <artifactId>configurate-yaml</artifactId>
+            <version>4.2.0</version>
+            <scope>provided</scope>
+        </dependency>
+        <!-- caffeine -->
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+            <version>${caffeine.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <!-- astralrealms/polaris -->
+        <dependency>
+            <groupId>com.astralrealms.polaris</groupId>
+            <artifactId>polaris-api</artifactId>
+            <version>26.1.2</version>
+            <scope>provided</scope>
+        </dependency>
+        <!-- infernalsuite/asp -->
+        <dependency>
+            <groupId>com.infernalsuite.asp</groupId>
+            <artifactId>api</artifactId>
+            <version>4.0.0-SNAPSHOT</version>
+            <scope>provided</scope>
+        </dependency>
+        <!-- astral/core-paper -->
+        <dependency>
+            <groupId>com.astralrealms</groupId>
+            <artifactId>core-paper</artifactId>
+            <version>1.4.2-SNAPSHOT</version>
+            <scope>provided</scope>
+        </dependency>
+        <!-- acf -->
+        <dependency>
+            <groupId>co.aikar</groupId>
+            <artifactId>acf-paper</artifactId>
+            <version>0.5.2-SNAPSHOT</version>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+
+    <!-- build -->
+    <build>
+        <finalName>${project.name}-${project.version}</finalName>
+        <defaultGoal>clean package</defaultGoal>
+        <!-- plugins -->
+        <plugins>
+            <!-- compiler -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+                <configuration>
+                    <source>${java.version}</source>
+                    <target>${java.version}</target>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>${lombok.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+            <!-- shade -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.5.3</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <!-- surefire (run JUnit 5) -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.5.2</version>
+            </plugin>
+        </plugins>
+        <!-- resources -->
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>true</filtering>
+            </resource>
+        </resources>
+    </build>
+</project>

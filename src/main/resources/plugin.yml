@@ -1,0 +1,7 @@
+name: AstralSkyblock
+version: '${version}'
+main: com.astralrealms.skyblock.AstralSkyblock
+api-version: '26.2'
+load: STARTUP
+depend:
+  - AstralCore
