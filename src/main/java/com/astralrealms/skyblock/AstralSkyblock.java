@@ -8,6 +8,7 @@ import com.astralrealms.core.paper.plugin.AstralPaperPlugin;
 import com.astralrealms.core.storage.DatabaseService;
 import com.astralrealms.skyblock.configuration.ASMessages;
 import com.astralrealms.skyblock.messaging.ASPacketRegistry;
+import com.infernalsuite.asp.api.loaders.SlimeLoader;
 
 public final class AstralSkyblock extends AstralPaperPlugin {
 
