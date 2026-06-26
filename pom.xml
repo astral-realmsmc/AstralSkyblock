@@ -17,6 +17,7 @@
         <!-- dependencies -->
         <lombok.version>1.18.42</lombok.version>
         <caffeine.version>3.2.2</caffeine.version>
+        <asp.version>4.1.0-SNAPSHOT</asp.version>
     </properties>
 
     <!-- deployment -->
@@ -94,11 +95,25 @@
             <version>26.1.2</version>
             <scope>provided</scope>
         </dependency>
-        <!-- infernalsuite/asp -->
+        <!-- infernalsuite/asp-api -->
         <dependency>
             <groupId>com.infernalsuite.asp</groupId>
             <artifactId>api</artifactId>
-            <version>4.0.0-SNAPSHOT</version>
+            <version>${asp.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <!-- infernalsuite/asp-mariadb -->
+        <dependency>
+            <groupId>com.infernalsuite.asp</groupId>
+            <artifactId>mysql-loader</artifactId>
+            <version>${asp.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <!-- infernalsuite/asp-file -->
+        <dependency>
+            <groupId>com.infernalsuite.asp</groupId>
+            <artifactId>file-loader</artifactId>
+            <version>${asp.version}</version>
             <scope>provided</scope>
         </dependency>
         <!-- astral/core-paper -->

@@ -6,6 +6,7 @@ import com.astralrealms.core.messaging.MessagingService;
 import com.astralrealms.core.paper.AstralPaperAPI;
 import com.astralrealms.core.paper.plugin.AstralPaperPlugin;
 import com.astralrealms.core.storage.DatabaseService;
+import com.astralrealms.skyblock.configuration.ASMessages;
 import com.astralrealms.skyblock.messaging.ASPacketRegistry;
 
 public final class AstralSkyblock extends AstralPaperPlugin {
@@ -59,5 +60,8 @@ public final class AstralSkyblock extends AstralPaperPlugin {
     @Override
     public void loadConfiguration() {
         this.copyResource("database.properties");
+
+        // Messages
+        this.loadEnum("messages.yml", ASMessages.class);
     }
 }
