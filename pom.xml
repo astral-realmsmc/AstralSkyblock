@@ -19,7 +19,7 @@
         <!-- dependencies -->
         <lombok.version>1.18.42</lombok.version>
         <caffeine.version>3.2.2</caffeine.version>
-        <asp.version>4.1.0-SNAPSHOT</asp.version>
+        <asp.version>4.2.0-SNAPSHOT</asp.version>
     </properties>
 
     <!-- deployment -->
@@ -132,6 +132,11 @@
             <version>0.5.2-SNAPSHOT</version>
             <scope>provided</scope>
         </dependency>
+<!--        <dependency>-->
+<!--            <groupId>net.kyori</groupId>-->
+<!--            <artifactId>adventure-api</artifactId>-->
+<!--            <version>5.2.0</version>-->
+<!--        </dependency>-->
     </dependencies>
 
     <!-- build -->

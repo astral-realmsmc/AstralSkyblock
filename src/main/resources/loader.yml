@@ -1,0 +1,7 @@
+sql-url: jdbc:mysql://{host}:{port}/{database}?autoReconnect=true&allowMultiQueries=true&useSSL={usessl}
+host: 172.18.0.1
+port: 3306
+username: u1_4JB41B7rg8
+password: SUA7q9KV^EUmuhisT9^s3.Sf
+database: s1_slimeworlds
+useSsl: true

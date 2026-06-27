@@ -27,12 +27,12 @@ public class BlueprintService {
         this.plugin.getSLF4JLogger().info("Loading island blueprints...");
         this.blueprints.clear();
 
-        Path schematicFolders = this.plugin.getDataPath().resolve("schematics");
-        if (!Files.exists(schematicFolders)) {
+        Path sourceWorldsFolder = this.plugin.getDataPath().resolve("sourceWorlds");
+        if (!Files.exists(sourceWorldsFolder)) {
             try {
-                Files.createDirectories(schematicFolders);
+                Files.createDirectories(sourceWorldsFolder);
             } catch (Exception e) {
-                this.plugin.getSLF4JLogger().error("Failed to create schematics folder: {}", schematicFolders, e);
+                this.plugin.getSLF4JLogger().error("Failed to create sourceWorlds folder: {}", sourceWorldsFolder, e);
             }
         }
 
@@ -44,9 +44,9 @@ public class BlueprintService {
                 continue;
             }
 
-            Path schematicPath = schematicFolders.resolve(blueprint.schematic());
+            Path schematicPath = sourceWorldsFolder.resolve(blueprint.sourceWorld());
             if (!Files.exists(schematicPath)) {
-                this.plugin.getSLF4JLogger().warn("Schematic file not found for blueprint {}: {}. Skipping...", blueprint.id(), schematicPath);
+                this.plugin.getSLF4JLogger().warn("Source world file not found for blueprint {}: {}. Skipping...", blueprint.id(), schematicPath);
                 continue;
             }
 
@@ -64,12 +64,6 @@ public class BlueprintService {
 
     public Optional<IslandBlueprint> findById(String id) {
         return Optional.ofNullable(this.blueprints.get(id));
-    }
-
-    public Path schematicPath(IslandBlueprint blueprint) {
-        return this.plugin.getDataPath()
-                .resolve("schematics")
-                .resolve(blueprint.schematic());
     }
 
     @Unmodifiable
