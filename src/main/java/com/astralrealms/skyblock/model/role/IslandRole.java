@@ -1,4 +1,4 @@
-package com.astralrealms.skyblock.model;
+package com.astralrealms.skyblock.model.role;
 
 import java.util.UUID;
 
@@ -7,6 +7,7 @@ import com.astralrealms.core.placeholder.impl.system.ComplexPlaceholder;
 import com.astralrealms.core.storage.annotation.Column;
 import com.astralrealms.core.storage.annotation.CreatedAt;
 import com.astralrealms.core.storage.annotation.Entity;
+import com.astralrealms.core.storage.annotation.Id;
 import com.astralrealms.core.storage.model.SQLAccessor;
 
 import lombok.AllArgsConstructor;
@@ -14,19 +15,19 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 @Getter
-@Entity("island_warps")
+@Entity("island_roles")
 @NoArgsConstructor
 @AllArgsConstructor
-public class IslandWarp implements ComplexPlaceholder {
+public class IslandRole implements ComplexPlaceholder {
 
+    @Id
+    @Column("id")
+    private Long id;
     private UUID islandId;
+    private Type kind;
     private String name;
-    private double x;
-    private double y;
-    private double z;
-    private float yaw;
-    private float pitch;
-    private boolean isPrivate;
+    private int weight;
+    private boolean isDefault;
     @CreatedAt
     @Column(type = SQLAccessor.LONG_TIMESTAMP)
     private long createdAt;
@@ -37,14 +38,12 @@ public class IslandWarp implements ComplexPlaceholder {
             return this;
 
         return switch (context.next()) {
+            case "id" -> id;
             case "islandId" -> islandId;
+            case "kind" -> kind;
             case "name" -> name;
-            case "x" -> x;
-            case "y" -> y;
-            case "z" -> z;
-            case "yaw" -> yaw;
-            case "pitch" -> pitch;
-            case "isPrivate" -> isPrivate;
+            case "weight" -> weight;
+            case "default" -> isDefault;
             case "createdAt" -> createdAt;
             default -> null;
         };
@@ -52,6 +51,12 @@ public class IslandWarp implements ComplexPlaceholder {
 
     @Override
     public String namespace() {
-        return "warp";
+        return "role";
+    }
+
+    public enum Type {
+        MEMBER,
+        VISITOR,
+        COOP
     }
 }

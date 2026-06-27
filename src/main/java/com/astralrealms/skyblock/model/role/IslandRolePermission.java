@@ -1,6 +1,4 @@
-package com.astralrealms.skyblock.model;
-
-import java.util.UUID;
+package com.astralrealms.skyblock.model.role;
 
 import com.astralrealms.core.placeholder.PlaceholderContext;
 import com.astralrealms.core.placeholder.impl.system.ComplexPlaceholder;
@@ -11,14 +9,13 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 @Getter
-@Entity("island_flags")
+@Entity("island_role_permissions")
 @NoArgsConstructor
 @AllArgsConstructor
-public class IslandFlag implements ComplexPlaceholder {
+public class IslandRolePermission implements ComplexPlaceholder {
 
-    private UUID islandId;
-    private String flag;
-    private boolean allowed;
+    private Long roleId;
+    private String permission;
 
     @Override
     public Object get(PlaceholderContext context) {
@@ -26,15 +23,14 @@ public class IslandFlag implements ComplexPlaceholder {
             return this;
 
         return switch (context.next()) {
-            case "islandId" -> islandId;
-            case "flag" -> flag;
-            case "allowed" -> allowed;
+            case "roleId" -> roleId;
+            case "permission" -> permission;
             default -> null;
         };
     }
 
     @Override
     public String namespace() {
-        return "flag";
+        return "permission";
     }
 }

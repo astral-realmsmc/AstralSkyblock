@@ -2,13 +2,10 @@ package com.astralrealms.skyblock.repository;
 
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
-import org.bukkit.entity.Player;
-
 import com.astralrealms.skyblock.AstralSkyblock;
-import com.astralrealms.skyblock.model.Island;
+import com.astralrealms.skyblock.model.island.Island;
 import com.astralrealms.skyblock.utils.ASConstants;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.google.common.collect.HashMultimap;
@@ -33,10 +30,6 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
         );
         this.playerIslandMap = Multimaps.synchronizedMultimap(HashMultimap.create());
         this.worldIslandMap = new ConcurrentHashMap<>();
-    }
-
-    public CompletableFuture<Island> create(Player player) {
-        return CompletableFuture.completedFuture(null);
     }
 
 

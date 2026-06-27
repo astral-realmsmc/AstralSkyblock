@@ -1,4 +1,4 @@
-package com.astralrealms.skyblock.model;
+package com.astralrealms.skyblock.model.island;
 
 import java.util.UUID;
 

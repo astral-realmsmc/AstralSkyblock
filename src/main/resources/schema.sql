@@ -61,7 +61,7 @@
 --  (Having real referential integrity here prevents the "unrecognized uuid on load"
 --   class of bug. Upsert on first contact.)
 -- -------------------------------------------------------------------------------------
-CREATE TABLE players
+CREATE TABLE IF NOT EXISTS players
 (
     uuid       UUID         NOT NULL,
     name       VARCHAR(32)  NOT NULL, -- last-known name (32 covers Floodgate-prefixed Bedrock names)
@@ -78,11 +78,11 @@ CREATE TABLE players
 --  islands — core identity, placement and spawn. No money, no member-count/size columns
 --  (those are derived from island_upgrades + config and cached in the in-memory Island).
 -- -------------------------------------------------------------------------------------
-CREATE TABLE islands
+CREATE TABLE IF NOT EXISTS islands
 (
-    id          UUID         NOT NULL,                      -- app-supplied UUIDv7; also the economy bank-account id
-    name        VARCHAR(64)  NULL,                          -- unique when set (case-insensitive); NULL = unnamed
-    world       VARCHAR(48)  NOT NULL,                      -- overworld skyblock world; nether/end derive from the same cell
+    id          UUID         NOT NULL,               -- app-supplied UUIDv7; also the economy bank-account id
+    name        VARCHAR(64)  NULL,                   -- unique when set (case-insensitive); NULL = unnamed
+    world       VARCHAR(48)  NOT NULL,               -- overworld skyblock world; nether/end derive from the same cell
 
     spawn_x     DOUBLE       NOT NULL,
     spawn_y     DOUBLE       NOT NULL,
@@ -90,15 +90,15 @@ CREATE TABLE islands
     spawn_yaw   FLOAT        NOT NULL DEFAULT 0,
     spawn_pitch FLOAT        NOT NULL DEFAULT 0,
 
-    locked      BOOLEAN      NOT NULL DEFAULT FALSE,        -- locked = visitors cannot enter
-    level       BIGINT       NOT NULL DEFAULT 0,            -- cached rank metric (recalc job); /is top orders by this
+    locked      BOOLEAN      NOT NULL DEFAULT FALSE, -- locked = visitors cannot enter
+    level       BIGINT       NOT NULL DEFAULT 0,     -- cached rank metric (recalc job); /is top orders by this
 
     created_at  TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     updated_at  TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 
     PRIMARY KEY (id),
-    UNIQUE KEY uq_islands_name (name),                      -- named islands are unique (NULLs exempt)
-    KEY idx_islands_level (level)                           -- /is top leaderboard
+    UNIQUE KEY uq_islands_name (name),               -- named islands are unique (NULLs exempt)
+    KEY idx_islands_level (level)                    -- /is top leaderboard
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4
   COLLATE = utf8mb4_unicode_ci;
@@ -113,7 +113,7 @@ CREATE TABLE islands
 --    * one default member role per island         -> uq_role_default
 --  ("at least one of each" is an app invariant established at island creation.)
 -- -------------------------------------------------------------------------------------
-CREATE TABLE island_roles
+CREATE TABLE IF NOT EXISTS island_roles
 (
     id            BIGINT       NOT NULL AUTO_INCREMENT,
     island_id     UUID         NOT NULL,
@@ -124,19 +124,19 @@ CREATE TABLE island_roles
     created_at    TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
 
     -- one VISITOR + one COOP per island (member rows are NULL here, hence exempt):
-    sys_kind      TINYINT AS (CASE WHEN kind IN (1, 2) THEN kind END)   VIRTUAL,
+    sys_kind      TINYINT AS (CASE WHEN kind IN (1, 2) THEN kind END) VIRTUAL,
     -- one default member-role per island:
-    default_guard UUID    AS (CASE WHEN is_default THEN island_id END)  VIRTUAL,
+    default_guard UUID AS (CASE WHEN is_default THEN island_id END) VIRTUAL,
 
     PRIMARY KEY (id),
-    UNIQUE KEY uq_role_name    (island_id, name),     -- role names unique per island (case-insensitive)
-    UNIQUE KEY uq_role_system  (island_id, sys_kind), -- one visitor + one coop per island
-    UNIQUE KEY uq_role_default (default_guard),       -- one default member role per island
-    KEY idx_roles_island (island_id, weight),         -- list an island's roles by seniority
-    CONSTRAINT chk_role_kind    CHECK (kind BETWEEN 0 AND 2),
+    UNIQUE KEY uq_role_name (island_id, name),                          -- role names unique per island (case-insensitive)
+    UNIQUE KEY uq_role_system (island_id, sys_kind),                    -- one visitor + one coop per island
+    UNIQUE KEY uq_role_default (default_guard),                         -- one default member role per island
+    KEY idx_roles_island (island_id, weight),                           -- list an island's roles by seniority
+    CONSTRAINT chk_role_kind CHECK (kind BETWEEN 0 AND 2),
     CONSTRAINT chk_role_default CHECK (is_default = FALSE OR kind = 0), -- only member roles can be default
-    CONSTRAINT chk_role_weight  CHECK (weight >= 0),
-    CONSTRAINT fk_role_island   FOREIGN KEY (island_id) REFERENCES islands (id) ON DELETE CASCADE
+    CONSTRAINT chk_role_weight CHECK (weight >= 0),
+    CONSTRAINT fk_role_island FOREIGN KEY (island_id) REFERENCES islands (id) ON DELETE CASCADE
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4
   COLLATE = utf8mb4_unicode_ci;
@@ -148,7 +148,7 @@ CREATE TABLE island_roles
 --  INVITE, KICK, BAN, SET_ROLE, MANAGE_ROLES, MANAGE_MEMBERS, WITHDRAW, ...). A wildcard
 --  key (e.g. '*') can be treated as all-grant in the app if desired — no schema change.
 -- -------------------------------------------------------------------------------------
-CREATE TABLE island_role_permissions
+CREATE TABLE IF NOT EXISTS island_role_permissions
 (
     role_id    BIGINT      NOT NULL,
     permission VARCHAR(48) NOT NULL,
@@ -169,24 +169,24 @@ CREATE TABLE island_role_permissions
 --    (3) owner <=> no role            -> chk_member_owner_role
 --  PK (island_id, player_uuid) clusters an island's member set for single-scan loads.
 -- -------------------------------------------------------------------------------------
-CREATE TABLE island_members
+CREATE TABLE IF NOT EXISTS island_members
 (
     island_id   UUID         NOT NULL,
     player_uuid UUID         NOT NULL,
     is_owner    BOOLEAN      NOT NULL DEFAULT FALSE,
-    role_id     BIGINT       NULL,                 -- FK island_roles; NULL iff is_owner
+    role_id     BIGINT       NULL,             -- FK island_roles; NULL iff is_owner
     joined_at   TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
 
     owner_guard UUID AS (CASE WHEN is_owner THEN island_id END) VIRTUAL,
 
     PRIMARY KEY (island_id, player_uuid),
-    UNIQUE KEY uq_member_player (player_uuid),     -- a player belongs to at most one island
-    UNIQUE KEY uq_single_owner  (owner_guard),     -- at most one OWNER per island
-    KEY idx_members_role (role_id),                -- FK index + "reassign all holders of role X"
+    UNIQUE KEY uq_member_player (player_uuid), -- a player belongs to at most one island
+    UNIQUE KEY uq_single_owner (owner_guard),  -- at most one OWNER per island
+    KEY idx_members_role (role_id),            -- FK index + "reassign all holders of role X"
     CONSTRAINT chk_member_owner_role CHECK (is_owner = (role_id IS NULL)),
-    CONSTRAINT fk_member_island FOREIGN KEY (island_id)   REFERENCES islands (id)      ON DELETE CASCADE,
-    CONSTRAINT fk_member_player FOREIGN KEY (player_uuid) REFERENCES players (uuid)    ON DELETE RESTRICT,
-    CONSTRAINT fk_member_role   FOREIGN KEY (role_id)     REFERENCES island_roles (id) ON DELETE RESTRICT
+    CONSTRAINT fk_member_island FOREIGN KEY (island_id) REFERENCES islands (id) ON DELETE CASCADE,
+    CONSTRAINT fk_member_player FOREIGN KEY (player_uuid) REFERENCES players (uuid) ON DELETE RESTRICT,
+    CONSTRAINT fk_member_role FOREIGN KEY (role_id) REFERENCES island_roles (id) ON DELETE RESTRICT
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4
   COLLATE = utf8mb4_unicode_ci;
@@ -199,7 +199,7 @@ CREATE TABLE island_members
 -- -------------------------------------------------------------------------------------
 --  island_bans — "is player X banned from island Y" is a single PK lookup.
 -- -------------------------------------------------------------------------------------
-CREATE TABLE island_bans
+CREATE TABLE IF NOT EXISTS island_bans
 (
     island_id   UUID         NOT NULL,
     player_uuid UUID         NOT NULL,
@@ -220,7 +220,7 @@ CREATE TABLE island_bans
 --  to the island's COOP role for permissions. Make ephemeral (Redis) later if you prefer
 --  coop to clear on owner-offline / restart.
 -- -------------------------------------------------------------------------------------
-CREATE TABLE island_coops
+CREATE TABLE IF NOT EXISTS island_coops
 (
     island_id   UUID         NOT NULL,
     player_uuid UUID         NOT NULL,
@@ -239,7 +239,7 @@ CREATE TABLE island_coops
 --  island_warps — additional named warps. Per-island name uniqueness via the PK; the
 --  island's primary teleport point lives inline on `islands` (spawn_*).
 -- -------------------------------------------------------------------------------------
-CREATE TABLE island_warps
+CREATE TABLE IF NOT EXISTS island_warps
 (
     island_id  UUID         NOT NULL,
     name       VARCHAR(48)  NOT NULL, -- case-insensitive per island via collation
@@ -262,7 +262,7 @@ CREATE TABLE island_warps
 --  FIRE_SPREAD, ...). NOT role-based. Override-only: a row exists only where the island
 --  differs from the configured default. Valid flag keys are config-driven (not DB-enforced).
 -- -------------------------------------------------------------------------------------
-CREATE TABLE island_flags
+CREATE TABLE IF NOT EXISTS island_flags
 (
     island_id UUID        NOT NULL,
     flag      VARCHAR(48) NOT NULL,
@@ -280,7 +280,7 @@ CREATE TABLE island_flags
 --  multiplier) is resolved from config; nothing derived is stored. Override-only:
 --  absent upgrade = level 0.
 -- -------------------------------------------------------------------------------------
-CREATE TABLE island_upgrades
+CREATE TABLE IF NOT EXISTS island_upgrades
 (
     island_id UUID        NOT NULL,
     upgrade   VARCHAR(48) NOT NULL,

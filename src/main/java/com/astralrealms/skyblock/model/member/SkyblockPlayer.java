@@ -1,12 +1,13 @@
-package com.astralrealms.skyblock.model;
+package com.astralrealms.skyblock.model.member;
 
 import java.util.UUID;
 
+import com.astralrealms.core.model.Unique;
 import com.astralrealms.core.placeholder.PlaceholderContext;
 import com.astralrealms.core.placeholder.impl.system.ComplexPlaceholder;
 import com.astralrealms.core.storage.annotation.Column;
-import com.astralrealms.core.storage.annotation.CreatedAt;
 import com.astralrealms.core.storage.annotation.Entity;
+import com.astralrealms.core.storage.annotation.Id;
 import com.astralrealms.core.storage.model.SQLAccessor;
 
 import lombok.AllArgsConstructor;
@@ -14,18 +15,19 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 @Getter
-@Entity("island_members")
+@Entity("players")
 @NoArgsConstructor
 @AllArgsConstructor
-public class IslandMember implements ComplexPlaceholder {
+public class SkyblockPlayer implements Unique, ComplexPlaceholder {
 
-    private UUID islandId;
-    private UUID playerUuid;
-    private boolean isOwner;
-    private Long roleId;
-    @CreatedAt
+    @Id
+    @Column("uuid")
+    private UUID uniqueId;
+    private String name;
     @Column(type = SQLAccessor.LONG_TIMESTAMP)
-    private long joinedAt;
+    private long firstSeen;
+    @Column(type = SQLAccessor.LONG_TIMESTAMP)
+    private long lastSeen;
 
     @Override
     public Object get(PlaceholderContext context) {
@@ -33,17 +35,16 @@ public class IslandMember implements ComplexPlaceholder {
             return this;
 
         return switch (context.next()) {
-            case "islandId" -> islandId;
-            case "playerId" -> playerUuid;
-            case "owner" -> isOwner;
-            case "roleId" -> roleId;
-            case "joinedAt" -> joinedAt;
-            default -> null;
+            case "id" -> uniqueId;
+            case "name" -> name;
+            case "firstSeen" -> firstSeen;
+            case "lastSeen" -> lastSeen;
+            case null, default -> null;
         };
     }
 
     @Override
     public String namespace() {
-        return "member";
+        return "player";
     }
 }

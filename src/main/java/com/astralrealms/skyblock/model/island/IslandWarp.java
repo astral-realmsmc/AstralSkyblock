@@ -1,10 +1,7 @@
-package com.astralrealms.skyblock.model;
+package com.astralrealms.skyblock.model.island;
 
 import java.util.UUID;
 
-import org.jetbrains.annotations.Nullable;
-
-import com.astralrealms.core.paper.placeholder.MinecraftPlayerPlaceholder;
 import com.astralrealms.core.placeholder.PlaceholderContext;
 import com.astralrealms.core.placeholder.impl.system.ComplexPlaceholder;
 import com.astralrealms.core.storage.annotation.Column;
@@ -17,15 +14,19 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 @Getter
-@Entity("island_bans")
+@Entity("island_warps")
 @NoArgsConstructor
 @AllArgsConstructor
-public class IslandBan implements ComplexPlaceholder {
+public class IslandWarp implements ComplexPlaceholder {
 
     private UUID islandId;
-    private UUID playerUuid;
-    private UUID bannedBy;
-    private @Nullable String reason;
+    private String name;
+    private double x;
+    private double y;
+    private double z;
+    private float yaw;
+    private float pitch;
+    private boolean isPrivate;
     @CreatedAt
     @Column(type = SQLAccessor.LONG_TIMESTAMP)
     private long createdAt;
@@ -37,11 +38,13 @@ public class IslandBan implements ComplexPlaceholder {
 
         return switch (context.next()) {
             case "islandId" -> islandId;
-            case "playerId" -> playerUuid;
-            case "player" -> new MinecraftPlayerPlaceholder(playerUuid);
-            case "bannedBy" -> bannedBy;
-            case "executor" -> new MinecraftPlayerPlaceholder(bannedBy);
-            case "reason" -> reason;
+            case "name" -> name;
+            case "x" -> x;
+            case "y" -> y;
+            case "z" -> z;
+            case "yaw" -> yaw;
+            case "pitch" -> pitch;
+            case "isPrivate" -> isPrivate;
             case "createdAt" -> createdAt;
             default -> null;
         };
@@ -49,6 +52,6 @@ public class IslandBan implements ComplexPlaceholder {
 
     @Override
     public String namespace() {
-        return "ban";
+        return "warp";
     }
 }

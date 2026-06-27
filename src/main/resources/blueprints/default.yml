@@ -1,0 +1,9 @@
+id: "default"
+default: true
+schematic: "default.schem"
+icon:
+  material: stone
+  name: "Default Blueprint"
+  lore:
+    - "This is the default blueprint."
+    - "It is used when no other blueprint is specified."

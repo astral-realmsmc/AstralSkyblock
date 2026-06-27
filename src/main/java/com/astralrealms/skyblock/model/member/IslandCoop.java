@@ -1,4 +1,4 @@
-package com.astralrealms.skyblock.model;
+package com.astralrealms.skyblock.model.member;
 
 import java.util.UUID;
 

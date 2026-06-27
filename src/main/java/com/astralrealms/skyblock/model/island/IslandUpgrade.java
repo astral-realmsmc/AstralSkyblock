@@ -1,4 +1,6 @@
-package com.astralrealms.skyblock.model;
+package com.astralrealms.skyblock.model.island;
+
+import java.util.UUID;
 
 import com.astralrealms.core.placeholder.PlaceholderContext;
 import com.astralrealms.core.placeholder.impl.system.ComplexPlaceholder;
@@ -9,13 +11,14 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 @Getter
-@Entity("island_role_permissions")
+@Entity("island_upgrades")
 @NoArgsConstructor
 @AllArgsConstructor
-public class IslandRolePermission implements ComplexPlaceholder {
+public class IslandUpgrade implements ComplexPlaceholder {
 
-    private Long roleId;
-    private String permission;
+    private UUID islandId;
+    private String upgrade;
+    private int level;
 
     @Override
     public Object get(PlaceholderContext context) {
@@ -23,14 +26,15 @@ public class IslandRolePermission implements ComplexPlaceholder {
             return this;
 
         return switch (context.next()) {
-            case "roleId" -> roleId;
-            case "permission" -> permission;
+            case "islandId" -> islandId;
+            case "upgrade" -> upgrade;
+            case "level" -> level;
             default -> null;
         };
     }
 
     @Override
     public String namespace() {
-        return "permission";
+        return "upgrade";
     }
 }

@@ -1,4 +1,4 @@
-package com.astralrealms.skyblock.model;
+package com.astralrealms.skyblock.model.member;
 
 import java.util.UUID;
 
@@ -7,7 +7,6 @@ import com.astralrealms.core.placeholder.impl.system.ComplexPlaceholder;
 import com.astralrealms.core.storage.annotation.Column;
 import com.astralrealms.core.storage.annotation.CreatedAt;
 import com.astralrealms.core.storage.annotation.Entity;
-import com.astralrealms.core.storage.annotation.Id;
 import com.astralrealms.core.storage.model.SQLAccessor;
 
 import lombok.AllArgsConstructor;
@@ -15,22 +14,18 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 @Getter
-@Entity("island_roles")
+@Entity("island_members")
 @NoArgsConstructor
 @AllArgsConstructor
-public class IslandRole implements ComplexPlaceholder {
+public class IslandMember implements ComplexPlaceholder {
 
-    @Id
-    @Column("id")
-    private Long id;
     private UUID islandId;
-    private Type kind;
-    private String name;
-    private int weight;
-    private boolean isDefault;
+    private UUID playerUuid;
+    private boolean isOwner;
+    private Long roleId;
     @CreatedAt
     @Column(type = SQLAccessor.LONG_TIMESTAMP)
-    private long createdAt;
+    private long joinedAt;
 
     @Override
     public Object get(PlaceholderContext context) {
@@ -38,25 +33,17 @@ public class IslandRole implements ComplexPlaceholder {
             return this;
 
         return switch (context.next()) {
-            case "id" -> id;
             case "islandId" -> islandId;
-            case "kind" -> kind;
-            case "name" -> name;
-            case "weight" -> weight;
-            case "default" -> isDefault;
-            case "createdAt" -> createdAt;
+            case "playerId" -> playerUuid;
+            case "owner" -> isOwner;
+            case "roleId" -> roleId;
+            case "joinedAt" -> joinedAt;
             default -> null;
         };
     }
 
     @Override
     public String namespace() {
-        return "role";
-    }
-
-    public enum Type {
-        MEMBER,
-        VISITOR,
-        COOP
+        return "member";
     }
 }

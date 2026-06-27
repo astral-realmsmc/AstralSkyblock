@@ -6,13 +6,22 @@ import com.astralrealms.core.messaging.MessagingService;
 import com.astralrealms.core.paper.AstralPaperAPI;
 import com.astralrealms.core.paper.plugin.AstralPaperPlugin;
 import com.astralrealms.core.storage.DatabaseService;
+import com.astralrealms.skyblock.command.SkyblockCommand;
+import com.astralrealms.skyblock.command.completion.IslandBlueprintCompletionHandler;
+import com.astralrealms.skyblock.command.context.IslandBlueprintContextResolver;
 import com.astralrealms.skyblock.configuration.ASMessages;
 import com.astralrealms.skyblock.messaging.ASPacketRegistry;
+import com.astralrealms.skyblock.model.IslandBlueprint;
+import com.astralrealms.skyblock.service.BlueprintService;
+import com.astralrealms.skyblock.service.IslandService;
 
 import lombok.Getter;
 
 @Getter
 public final class AstralSkyblock extends AstralPaperPlugin {
+
+    // Instance
+    private static AstralSkyblock instance;
 
     // Configuration
 
@@ -20,10 +29,15 @@ public final class AstralSkyblock extends AstralPaperPlugin {
     private DatabaseService database;
     private CacheService cache;
     private MessagingService messaging;
+    private BlueprintService blueprints;
+    private IslandService islands;
 
     @Override
     public void onEnable() {
         super.onEnable();
+
+        // Services
+        this.blueprints = new BlueprintService(this);
 
         // Configuration
         this.loadConfiguration();
@@ -41,6 +55,20 @@ public final class AstralSkyblock extends AstralPaperPlugin {
         this.messaging.connect();
 
         // Services
+        this.islands = new IslandService(this);
+
+        // Commands
+        // -- Completion
+        this.registerCompletion("islandBlueprints", new IslandBlueprintCompletionHandler(this));
+        // -- Context
+        this.registerContext(IslandBlueprint.class, new IslandBlueprintContextResolver(this));
+        // -- Commands
+        this.registerCommand(new SkyblockCommand());
+
+        // Listeners
+
+        // Instance
+        instance = this;
     }
 
     @Override
@@ -66,5 +94,12 @@ public final class AstralSkyblock extends AstralPaperPlugin {
 
         // Messages
         this.loadEnum("messages.yml", ASMessages.class);
+
+        // Services
+        this.blueprints.load();
+    }
+
+    public static AstralSkyblock get() {
+        return instance;
     }
 }
