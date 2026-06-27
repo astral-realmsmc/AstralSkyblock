@@ -2,6 +2,9 @@ package com.astralrealms.skyblock.model;
 
 import java.util.UUID;
 
+import org.jetbrains.annotations.Nullable;
+
+import com.astralrealms.core.paper.placeholder.MinecraftPlayerPlaceholder;
 import com.astralrealms.core.placeholder.PlaceholderContext;
 import com.astralrealms.core.placeholder.impl.system.ComplexPlaceholder;
 import com.astralrealms.core.storage.annotation.Column;
@@ -14,18 +17,17 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 @Getter
-@Entity("island_members")
+@Entity("island_coops")
 @NoArgsConstructor
 @AllArgsConstructor
-public class IslandMember implements ComplexPlaceholder {
+public class IslandCoop implements ComplexPlaceholder {
 
     private UUID islandId;
     private UUID playerUuid;
-    private boolean isOwner;
-    private Long roleId;
+    private @Nullable UUID addedBy;
     @CreatedAt
     @Column(type = SQLAccessor.LONG_TIMESTAMP)
-    private long joinedAt;
+    private long createdAt;
 
     @Override
     public Object get(PlaceholderContext context) {
@@ -35,15 +37,16 @@ public class IslandMember implements ComplexPlaceholder {
         return switch (context.next()) {
             case "islandId" -> islandId;
             case "playerId" -> playerUuid;
-            case "owner" -> isOwner;
-            case "roleId" -> roleId;
-            case "joinedAt" -> joinedAt;
+            case "player" -> new MinecraftPlayerPlaceholder(playerUuid);
+            case "addedBy" -> addedBy;
+            case "executor" -> new MinecraftPlayerPlaceholder(addedBy);
+            case "createdAt" -> createdAt;
             default -> null;
         };
     }
 
     @Override
     public String namespace() {
-        return "member";
+        return "coop";
     }
 }

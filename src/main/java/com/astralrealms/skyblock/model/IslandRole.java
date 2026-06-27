@@ -2,7 +2,6 @@ package com.astralrealms.skyblock.model;
 
 import java.util.UUID;
 
-import com.astralrealms.core.model.Unique;
 import com.astralrealms.core.placeholder.PlaceholderContext;
 import com.astralrealms.core.placeholder.impl.system.ComplexPlaceholder;
 import com.astralrealms.core.storage.annotation.Column;
@@ -19,11 +18,11 @@ import lombok.NoArgsConstructor;
 @Entity("island_roles")
 @NoArgsConstructor
 @AllArgsConstructor
-public class IslandRole implements Unique, ComplexPlaceholder {
+public class IslandRole implements ComplexPlaceholder {
 
     @Id
     @Column("id")
-    private UUID uniqueId;
+    private Long id;
     private UUID islandId;
     private Type kind;
     private String name;
@@ -39,7 +38,7 @@ public class IslandRole implements Unique, ComplexPlaceholder {
             return this;
 
         return switch (context.next()) {
-            case "id" -> uniqueId;
+            case "id" -> id;
             case "islandId" -> islandId;
             case "kind" -> kind;
             case "name" -> name;
