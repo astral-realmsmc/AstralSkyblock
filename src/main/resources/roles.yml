@@ -1,0 +1,33 @@
+roles:
+  visitor:
+    type: VISITOR
+    weight: 0
+    default: false
+    name: "Visitor"
+    icon:
+      material: "stone"
+      name: "Visitor"
+  co-op:
+    type: COOP
+    weight: 1
+    default: false
+    name: "Co-Op"
+    icon:
+      material: "gold_ingot"
+      name: "Co-Op"
+  member:
+    type: MEMBER
+    weight: 2
+    default: true
+    name: "Member"
+    icon:
+      material: "iron_ingot"
+      name: "Member"
+  admin:
+    type: MEMBER
+    weight: 3
+    default: false
+    name: "Admin"
+    icon:
+      material: "diamond"
+      name: "Admin"

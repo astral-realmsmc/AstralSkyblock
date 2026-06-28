@@ -12,6 +12,8 @@ import com.github.benmanes.caffeine.cache.AsyncCacheLoader;
 import com.github.benmanes.caffeine.cache.AsyncLoadingCache;
 import com.google.gson.Gson;
 
+import lombok.Getter;
+
 /**
  * A three-tier, cross-server cache backing a repository.
  *
@@ -32,6 +34,7 @@ public abstract class SyncedRepository<K, V> {
     protected final AstralSkyblock plugin;
     protected final String cacheKey;
     protected final String exchangeChannel;
+    @Getter
     protected final AsyncLoadingCache<K, V> cache;
     protected final Class<V> valueClass;
 
@@ -116,9 +119,17 @@ public abstract class SyncedRepository<K, V> {
      * completes once the L2 write settles — successfully, or after a failure has been logged.
      */
     protected CompletableFuture<Void> cache(V value) {
-        K key = keyFromValue(value);
-        this.cache.synchronous().put(key, value);
-        return writeToL2(key, value);
+        cacheLocally(value);
+        return writeToL2(keyFromValue(value), value);
+    }
+
+    /**
+     * Populates this server's local L1 cache only, without touching L2. Used by the write-through
+     * {@link #cache(Object)} and by startup warmups, which read straight from the source of truth and
+     * have no reason to re-publish every entry into the shared Redis cache.
+     */
+    protected void cacheLocally(V value) {
+        this.cache.synchronous().put(keyFromValue(value), value);
     }
 
     private CompletableFuture<Void> writeToL2(K key, V value) {

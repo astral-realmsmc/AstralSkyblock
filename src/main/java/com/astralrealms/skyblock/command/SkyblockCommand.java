@@ -6,6 +6,7 @@ import org.jetbrains.annotations.Nullable;
 
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.model.IslandBlueprint;
+import com.astralrealms.skyblock.model.island.Island;
 
 import co.aikar.commands.BaseCommand;
 import co.aikar.commands.annotation.*;
@@ -25,6 +26,14 @@ public class SkyblockCommand extends BaseCommand {
     public void onCreate(Player player, @Nullable @Optional IslandBlueprint blueprint) {
         IslandBlueprint finalBlueprint = blueprint == null ? this.plugin.blueprints().defaultBlueprint() : blueprint;
         this.plugin.islands().create(player, finalBlueprint);
+    }
+
+    @Subcommand("delete")
+    @Description("Deletes your island")
+    @Syntax("<island>")
+    @CommandCompletion("@islands")
+    public void onDelete(Player player, Island island) {
+        this.plugin.islands().delete(player, island);
     }
 
     @Subcommand("reload")

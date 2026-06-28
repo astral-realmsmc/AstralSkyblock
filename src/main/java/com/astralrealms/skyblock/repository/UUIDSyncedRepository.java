@@ -14,7 +14,7 @@ import com.github.benmanes.caffeine.cache.AsyncLoadingCache;
 
 public abstract class UUIDSyncedRepository<V extends Unique> extends SyncedRepository<UUID, V> {
 
-    private final CrudRepository<V> repository;
+    protected final CrudRepository<V> repository;
 
     public UUIDSyncedRepository(AstralSkyblock plugin, String cacheKey, String exchangeChannel, Function<AsyncCacheLoader<UUID, V>, AsyncLoadingCache<UUID, V>> cacheBuilder, Class<V> valueClass) {
         super(plugin, cacheKey, exchangeChannel, cacheBuilder, valueClass);

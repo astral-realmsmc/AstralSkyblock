@@ -82,7 +82,6 @@ CREATE TABLE IF NOT EXISTS islands
 (
     id          UUID         NOT NULL,               -- app-supplied UUIDv7; also the economy bank-account id
     name        VARCHAR(64)  NULL,                   -- unique when set (case-insensitive); NULL = unnamed
-    world       VARCHAR(48)  NOT NULL,               -- overworld skyblock world; nether/end derive from the same cell
 
     spawn_x     DOUBLE       NOT NULL,
     spawn_y     DOUBLE       NOT NULL,
@@ -277,7 +276,6 @@ CREATE TABLE IF NOT EXISTS island_flags
 -- -------------------------------------------------------------------------------------
 --  island_upgrades — rankup source of truth (size, member_limit, coop_limit, generator,
 --  spawner_rate, ...). The *effect* of a level (actual border radius, member cap,
---  multiplier) is resolved from config; nothing derived is stored. Override-only:
 --  absent upgrade = level 0.
 -- -------------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS island_upgrades

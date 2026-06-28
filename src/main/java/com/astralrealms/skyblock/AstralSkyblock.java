@@ -8,14 +8,17 @@ import com.astralrealms.core.paper.plugin.AstralPaperPlugin;
 import com.astralrealms.core.storage.DatabaseService;
 import com.astralrealms.skyblock.command.SkyblockCommand;
 import com.astralrealms.skyblock.command.completion.IslandBlueprintCompletionHandler;
+import com.astralrealms.skyblock.command.completion.IslandCompletionHandler;
 import com.astralrealms.skyblock.command.context.IslandBlueprintContextResolver;
+import com.astralrealms.skyblock.command.context.IslandContextResolver;
 import com.astralrealms.skyblock.configuration.ASMessages;
 import com.astralrealms.skyblock.configuration.ASPLoaderConfiguration;
+import com.astralrealms.skyblock.configuration.RolesConfiguration;
+import com.astralrealms.skyblock.listener.PlayerConnectionListener;
 import com.astralrealms.skyblock.messaging.ASPacketRegistry;
 import com.astralrealms.skyblock.model.IslandBlueprint;
-import com.astralrealms.skyblock.service.BlueprintService;
-import com.astralrealms.skyblock.service.IslandService;
-import com.astralrealms.skyblock.service.WorldService;
+import com.astralrealms.skyblock.model.island.Island;
+import com.astralrealms.skyblock.service.*;
 
 import lombok.Getter;
 
@@ -27,6 +30,7 @@ public final class AstralSkyblock extends AstralPaperPlugin {
 
     // Configuration
     private ASPLoaderConfiguration aspLoaderConfiguration;
+    private RolesConfiguration rolesConfiguration;
 
     // Services
     private DatabaseService database;
@@ -35,6 +39,9 @@ public final class AstralSkyblock extends AstralPaperPlugin {
     private BlueprintService blueprints;
     private WorldService worlds;
     private IslandService islands;
+    private PlayerService players;
+    private RoleService roles;
+    private MemberService members;
 
     @Override
     public void onEnable() {
@@ -61,16 +68,27 @@ public final class AstralSkyblock extends AstralPaperPlugin {
 
         // Services
         this.islands = new IslandService(this);
+        this.players = new PlayerService(this);
+        this.roles = new RoleService(this);
+        this.members = new MemberService(this);
+
+        // Warm the island cache so lookups don't pay a cold database hit
+        this.islands.warmup();
 
         // Commands
         // -- Completion
         this.registerCompletion("islandBlueprints", new IslandBlueprintCompletionHandler(this));
+        this.registerCompletion("islands", new IslandCompletionHandler(this));
         // -- Context
         this.registerContext(IslandBlueprint.class, new IslandBlueprintContextResolver(this));
+        this.registerContext(Island.class, new IslandContextResolver(this));
         // -- Commands
         this.registerCommand(new SkyblockCommand());
 
         // Listeners
+        this.registerListeners(
+                new PlayerConnectionListener(this)
+        );
 
         // Instance
         instance = this;
@@ -102,6 +120,7 @@ public final class AstralSkyblock extends AstralPaperPlugin {
 
         // Configurations
         this.aspLoaderConfiguration = this.loadConfiguration("loader.yml", ASPLoaderConfiguration.class);
+        this.rolesConfiguration = this.loadConfiguration("roles.yml", RolesConfiguration.class);
 
         // Messages
         this.loadEnum("messages.yml", ASMessages.class);

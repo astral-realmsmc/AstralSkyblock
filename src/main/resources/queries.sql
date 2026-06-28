@@ -80,11 +80,9 @@ VALUES (?, ?, TRUE, NULL);
 -- Full island row by id.  [id]
 SELECT id,
        name,
-       world,
        center_x,
        center_z,
        biome,
-       spawn_world,
        spawn_x,
        spawn_y,
        spawn_z,
@@ -100,11 +98,9 @@ WHERE id = ?;
 -- The island a player belongs to (single row; uses uq_member_player). One round trip.  [player_uuid]
 SELECT i.id,
        i.name,
-       i.world,
        i.center_x,
        i.center_z,
        i.biome,
-       i.spawn_world,
        i.spawn_x,
        i.spawn_y,
        i.spawn_z,

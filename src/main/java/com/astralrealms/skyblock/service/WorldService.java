@@ -2,15 +2,19 @@ package com.astralrealms.skyblock.service;
 
 import java.io.IOException;
 import java.sql.SQLException;
+import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.bukkit.Bukkit;
+import org.jetbrains.annotations.Unmodifiable;
 
-import com.astralrealms.core.model.location.MinecraftLocation;
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.configuration.ASPLoaderConfiguration;
 import com.astralrealms.skyblock.model.IslandBlueprint;
+import com.astralrealms.skyblock.model.island.Island;
 import com.infernalsuite.asp.api.AdvancedSlimePaperAPI;
 import com.infernalsuite.asp.api.exceptions.CorruptedWorldException;
 import com.infernalsuite.asp.api.exceptions.NewerFormatException;
@@ -26,6 +30,7 @@ public class WorldService {
 
     private final AstralSkyblock plugin;
     private final AdvancedSlimePaperAPI asp = AdvancedSlimePaperAPI.instance();
+    private final Map<UUID, SlimeWorldInstance> loadedWorlds = new ConcurrentHashMap<>();
 
     private final FileLoader sourceLoader;
     private MysqlLoader worldLoader;
@@ -61,13 +66,53 @@ public class WorldService {
     }
 
     public void unload() {
+        // Save all worlds sync
+        for (SlimeWorldInstance instance : loadedWorlds.values()) {
+            try {
+                asp.saveWorld(instance);
+            } catch (IOException e) {
+                this.plugin.getSLF4JLogger().error("Failed to save world: {}", instance.getName(), e);
+            }
+        }
+
+        // Close loader
         if (this.worldLoader != null)
             this.worldLoader.close();
     }
 
+    public CompletableFuture<SlimeWorldInstance> load(Island island) {
+        CompletableFuture<SlimeWorldInstance> future = new CompletableFuture<>();
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            try {
+                SlimePropertyMap propertyMap = buildPropertyMap(
+                        (int) island.spawnX(),
+                        (int) island.spawnY(),
+                        (int) island.spawnZ(),
+                        island.spawnYaw()
+                );
+                SlimeWorld world = asp.readWorld(this.worldLoader, island.uniqueId().toString(), true, propertyMap);
+
+                this.loadWorld(island.uniqueId(), world)
+                        .whenComplete((instance, throwable) -> {
+                            if (throwable != null) {
+                                future.completeExceptionally(throwable);
+                            } else {
+                                future.complete(instance);
+                            }
+                        });
+            } catch (UnknownWorldException | IOException | CorruptedWorldException | NewerFormatException e) {
+                future.completeExceptionally(e);
+            }
+        });
+        return future.exceptionally(throwable -> {
+            plugin.getSLF4JLogger().error("Failed to load world for island with UUID: {}", island.uniqueId(), throwable);
+            return null;
+        });
+    }
+
     public CompletableFuture<SlimeWorldInstance> create(UUID uniqueId, IslandBlueprint blueprint) {
         return this.createNewWorld(uniqueId, blueprint)
-                .thenCompose(this::loadWorld)
+                .thenCompose(clonedWorld -> this.loadWorld(uniqueId, clonedWorld))
                 .thenCompose(slimeWorldInstance -> {
                     try {
                         asp.saveWorld(slimeWorldInstance);
@@ -78,11 +123,12 @@ public class WorldService {
                 });
     }
 
-    private CompletableFuture<SlimeWorldInstance> loadWorld(SlimeWorld world) {
+    private CompletableFuture<SlimeWorldInstance> loadWorld(UUID id, SlimeWorld world) {
         CompletableFuture<SlimeWorldInstance> future = new CompletableFuture<>();
         Bukkit.getScheduler().runTask(plugin, () -> {
             try {
                 SlimeWorldInstance instance = asp.loadWorld(world, true);
+                this.loadedWorlds.put(id, instance);
                 future.complete(instance);
             } catch (IllegalArgumentException ex) {
                 future.completeExceptionally(ex);
@@ -98,26 +144,12 @@ public class WorldService {
         CompletableFuture<SlimeWorld> future = new CompletableFuture<>();
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             // Setup property map
-            SlimePropertyMap propertyMap = new SlimePropertyMap();
-
-            MinecraftLocation spawnLocation = blueprint.spawnLocation();
-            propertyMap.setValue(SlimeProperties.SPAWN_X, (int) spawnLocation.x());
-            propertyMap.setValue(SlimeProperties.SPAWN_Y, (int) spawnLocation.y());
-            propertyMap.setValue(SlimeProperties.SPAWN_Z, (int) spawnLocation.z());
-            propertyMap.setValue(SlimeProperties.SPAWN_YAW, spawnLocation.yaw());
-
-            propertyMap.setValue(SlimeProperties.DIFFICULTY, "normal");
-            propertyMap.setValue(SlimeProperties.ALLOW_MONSTERS, true);
-            propertyMap.setValue(SlimeProperties.ALLOW_ANIMALS, true);
-            propertyMap.setValue(SlimeProperties.DRAGON_BATTLE, false);
-            propertyMap.setValue(SlimeProperties.PVP, false);
-            propertyMap.setValue(SlimeProperties.ENVIRONMENT, "NORMAL");
-            propertyMap.setValue(SlimeProperties.WORLD_TYPE, "DEFAULT");
-            propertyMap.setValue(SlimeProperties.DEFAULT_BIOME, "minecraft:plains");
-            propertyMap.setValue(SlimeProperties.SAVE_BLOCK_TICKS, false);
-            propertyMap.setValue(SlimeProperties.SAVE_FLUID_TICKS, false);
-            propertyMap.setValue(SlimeProperties.SAVE_POI, false);
-            propertyMap.setValue(SlimeProperties.SEA_LEVEL, SlimeProperties.SEA_LEVEL.getDefaultValue());
+            SlimePropertyMap propertyMap = buildPropertyMap(
+                    (int) blueprint.spawnLocation().x(),
+                    (int) blueprint.spawnLocation().y(),
+                    (int) blueprint.spawnLocation().z(),
+                    blueprint.spawnLocation().yaw()
+            );
 
             // Load source world
             SlimeWorld sourceWorld;
@@ -142,4 +174,51 @@ public class WorldService {
         });
     }
 
+    private SlimePropertyMap buildPropertyMap(int x, int y, int z, float yaw) {
+        SlimePropertyMap propertyMap = new SlimePropertyMap();
+        propertyMap.setValue(SlimeProperties.SPAWN_X, x);
+        propertyMap.setValue(SlimeProperties.SPAWN_Y, y);
+        propertyMap.setValue(SlimeProperties.SPAWN_Z, z);
+        propertyMap.setValue(SlimeProperties.SPAWN_YAW, yaw);
+
+        propertyMap.setValue(SlimeProperties.DIFFICULTY, "normal");
+        propertyMap.setValue(SlimeProperties.ALLOW_MONSTERS, true);
+        propertyMap.setValue(SlimeProperties.ALLOW_ANIMALS, true);
+        propertyMap.setValue(SlimeProperties.DRAGON_BATTLE, false);
+        propertyMap.setValue(SlimeProperties.PVP, false);
+        propertyMap.setValue(SlimeProperties.ENVIRONMENT, "NORMAL");
+        propertyMap.setValue(SlimeProperties.WORLD_TYPE, "DEFAULT");
+        propertyMap.setValue(SlimeProperties.DEFAULT_BIOME, "minecraft:plains");
+        propertyMap.setValue(SlimeProperties.SAVE_BLOCK_TICKS, false);
+        propertyMap.setValue(SlimeProperties.SAVE_FLUID_TICKS, false);
+        propertyMap.setValue(SlimeProperties.SAVE_POI, false);
+        propertyMap.setValue(SlimeProperties.SEA_LEVEL, SlimeProperties.SEA_LEVEL.getDefaultValue());
+
+        return propertyMap;
+    }
+
+    public CompletableFuture<Void> unload(UUID uniqueId) {
+        return CompletableFuture.completedFuture(null);
+    }
+
+    public CompletableFuture<Void> delete(UUID uniqueId) {
+        return this.unload(uniqueId)
+                .thenRunAsync(() -> {
+                    try {
+                        this.worldLoader.deleteWorld(uniqueId.toString());
+                    } catch (Exception e) {
+                        throw new RuntimeException("Failed to delete world for island with UUID: " + uniqueId, e);
+                    }
+                });
+
+    }
+
+    public Optional<SlimeWorldInstance> findByIslandId(UUID uniqueId) {
+        return Optional.ofNullable(loadedWorlds.get(uniqueId));
+    }
+
+    @Unmodifiable
+    public Map<UUID, SlimeWorldInstance> getLoadedWorlds() {
+        return Map.copyOf(loadedWorlds);
+    }
 }
