@@ -4,6 +4,8 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.Nullable;
 
+import com.astralrealms.core.paper.AstralPaperAPI;
+import com.astralrealms.core.service.impl.TeleportationService;
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.model.IslandBlueprint;
 import com.astralrealms.skyblock.model.island.Island;
@@ -28,12 +30,39 @@ public class SkyblockCommand extends BaseCommand {
         this.plugin.islands().create(player, finalBlueprint);
     }
 
+    @Subcommand("save")
+    @Syntax("<island>")
+    @Description("Saves your island")
+    @CommandCompletion("@islands")
+    public void onSave(Player player, Island island) {
+        this.plugin.worlds().save(island.uniqueId());
+    }
+
     @Subcommand("delete")
     @Description("Deletes your island")
     @Syntax("<island>")
     @CommandCompletion("@islands")
     public void onDelete(Player player, Island island) {
         this.plugin.islands().delete(player, island);
+    }
+
+    @Subcommand("go")
+    @Description("Teleports you to your island")
+    @CommandCompletion("@islands")
+    @Syntax("<island>")
+    public void onGo(Player player, Island island) {
+        this.plugin.islands()
+                .spawnIsland(island)
+                .whenComplete((result, throwable) -> {
+                    if (throwable != null) {
+                        this.plugin.getSLF4JLogger().error("Error while spawning island: {}", island.uniqueId(), throwable);
+                        return;
+                    }
+
+                    TeleportationService teleportationService = AstralPaperAPI.getService(TeleportationService.class)
+                            .orElseThrow(() -> new IllegalStateException("TeleportationService not found"));
+                    teleportationService.teleport(player.getUniqueId(), result);
+                });
     }
 
     @Subcommand("reload")

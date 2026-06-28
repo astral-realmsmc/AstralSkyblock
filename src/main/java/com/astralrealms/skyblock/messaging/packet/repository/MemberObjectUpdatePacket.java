@@ -1,4 +1,4 @@
-package com.astralrealms.skyblock.messaging.packet;
+package com.astralrealms.skyblock.messaging.packet.repository;
 
 import java.util.UUID;
 

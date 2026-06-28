@@ -7,8 +7,8 @@ import java.util.function.Function;
 import com.astralrealms.core.model.Unique;
 import com.astralrealms.core.storage.repository.CrudRepository;
 import com.astralrealms.skyblock.AstralSkyblock;
-import com.astralrealms.skyblock.messaging.packet.UniqueObjectDeletePacket;
-import com.astralrealms.skyblock.messaging.packet.UniqueObjectUpdatePacket;
+import com.astralrealms.skyblock.messaging.packet.repository.UniqueObjectDeletePacket;
+import com.astralrealms.skyblock.messaging.packet.repository.UniqueObjectUpdatePacket;
 import com.github.benmanes.caffeine.cache.AsyncCacheLoader;
 import com.github.benmanes.caffeine.cache.AsyncLoadingCache;
 

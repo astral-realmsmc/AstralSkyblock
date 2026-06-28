@@ -11,8 +11,8 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 import com.astralrealms.skyblock.AstralSkyblock;
-import com.astralrealms.skyblock.messaging.packet.MemberObjectDeletePacket;
-import com.astralrealms.skyblock.messaging.packet.MemberObjectUpdatePacket;
+import com.astralrealms.skyblock.messaging.packet.repository.MemberObjectDeletePacket;
+import com.astralrealms.skyblock.messaging.packet.repository.MemberObjectUpdatePacket;
 import com.astralrealms.skyblock.model.member.IslandMember;
 import com.astralrealms.skyblock.model.member.MemberKey;
 import com.astralrealms.skyblock.utils.ASConstants;

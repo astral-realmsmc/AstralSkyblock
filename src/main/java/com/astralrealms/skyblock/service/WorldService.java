@@ -9,8 +9,10 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.bukkit.Bukkit;
+import org.bukkit.World;
 import org.jetbrains.annotations.Unmodifiable;
 
+import com.astralrealms.core.paper.AstralPaperAPI;
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.configuration.ASPLoaderConfiguration;
 import com.astralrealms.skyblock.model.IslandBlueprint;
@@ -68,16 +70,41 @@ public class WorldService {
     public void unload() {
         // Save all worlds sync
         for (SlimeWorldInstance instance : loadedWorlds.values()) {
+            // Save world
             try {
                 asp.saveWorld(instance);
             } catch (IOException e) {
                 this.plugin.getSLF4JLogger().error("Failed to save world: {}", instance.getName(), e);
             }
+
+            // Delete host server
+            UUID uniqueId = UUID.fromString(instance.getName());
+            this.plugin.servers()
+                    .deleteHostServer(uniqueId)
+                    .exceptionally(throwable -> {
+                        plugin.getSLF4JLogger().error("Failed to delete host server for island with UUID: {}", uniqueId, throwable);
+                        return null;
+                    });
+
+            this.plugin.getSLF4JLogger().info("World {} saved and unloaded successfully.", instance.getName());
         }
 
         // Close loader
         if (this.worldLoader != null)
             this.worldLoader.close();
+    }
+
+    public CompletableFuture<SlimeWorldInstance> create(UUID uniqueId, IslandBlueprint blueprint) {
+        return this.createNewWorld(uniqueId, blueprint)
+                .thenCompose(clonedWorld -> this.loadWorld(uniqueId, clonedWorld))
+                .thenCompose(slimeWorldInstance -> {
+                    try {
+                        asp.saveWorld(slimeWorldInstance);
+                    } catch (IOException e) {
+                        throw new RuntimeException("Failed to save world after copying schematic", e);
+                    }
+                    return CompletableFuture.completedFuture(slimeWorldInstance);
+                });
     }
 
     public CompletableFuture<SlimeWorldInstance> load(Island island) {
@@ -110,25 +137,18 @@ public class WorldService {
         });
     }
 
-    public CompletableFuture<SlimeWorldInstance> create(UUID uniqueId, IslandBlueprint blueprint) {
-        return this.createNewWorld(uniqueId, blueprint)
-                .thenCompose(clonedWorld -> this.loadWorld(uniqueId, clonedWorld))
-                .thenCompose(slimeWorldInstance -> {
-                    try {
-                        asp.saveWorld(slimeWorldInstance);
-                    } catch (IOException e) {
-                        throw new RuntimeException("Failed to save world after copying schematic", e);
-                    }
-                    return CompletableFuture.completedFuture(slimeWorldInstance);
-                });
-    }
-
     private CompletableFuture<SlimeWorldInstance> loadWorld(UUID id, SlimeWorld world) {
         CompletableFuture<SlimeWorldInstance> future = new CompletableFuture<>();
         Bukkit.getScheduler().runTask(plugin, () -> {
             try {
                 SlimeWorldInstance instance = asp.loadWorld(world, true);
                 this.loadedWorlds.put(id, instance);
+                this.plugin.servers()
+                        .setHostServer(id, AstralPaperAPI.serverInformation().uniqueId())
+                        .exceptionally(throwable -> {
+                            plugin.getSLF4JLogger().error("Failed to set host server for island with UUID: {}", id, throwable);
+                            return null;
+                        });
                 future.complete(instance);
             } catch (IllegalArgumentException ex) {
                 future.completeExceptionally(ex);
@@ -197,8 +217,55 @@ public class WorldService {
         return propertyMap;
     }
 
+    public CompletableFuture<Void> save(UUID uniqueId) {
+        CompletableFuture<Void> future = new CompletableFuture<>();
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            SlimeWorldInstance instance = this.loadedWorlds.get(uniqueId);
+            if (instance == null) {
+                future.completeExceptionally(new RuntimeException("World instance not found for island with UUID: " + uniqueId));
+                return;
+            }
+
+            try {
+                asp.saveWorld(instance);
+                future.complete(null);
+            } catch (IOException e) {
+                future.completeExceptionally(new RuntimeException("Failed to save world for island with UUID: " + uniqueId, e));
+            }
+        });
+        return future.exceptionally(throwable -> {
+            plugin.getSLF4JLogger().error("Failed to save world for island with UUID: {}", uniqueId, throwable);
+            return null;
+        });
+    }
+
     public CompletableFuture<Void> unload(UUID uniqueId) {
-        return CompletableFuture.completedFuture(null);
+        CompletableFuture<Void> future = new CompletableFuture<>();
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            World bukkitWorld = Bukkit.getWorld(uniqueId.toString());
+            if (bukkitWorld == null) {
+                future.complete(null);
+                return;
+            }
+
+            boolean success = Bukkit.unloadWorld(bukkitWorld, true);
+            if (!success) {
+                future.completeExceptionally(new RuntimeException("Failed to unload world for island with UUID: " + uniqueId));
+                return;
+            }
+
+            this.loadedWorlds.remove(uniqueId);
+            this.plugin.servers()
+                    .deleteHostServer(uniqueId)
+                    .exceptionally(throwable -> {
+                        plugin.getSLF4JLogger().error("Failed to delete host server for island with UUID: {}", uniqueId, throwable);
+                        return null;
+                    });
+        });
+        return future.exceptionally(throwable -> {
+            plugin.getSLF4JLogger().error("Failed to unload world for island with UUID: {}", uniqueId, throwable);
+            return null;
+        });
     }
 
     public CompletableFuture<Void> delete(UUID uniqueId) {

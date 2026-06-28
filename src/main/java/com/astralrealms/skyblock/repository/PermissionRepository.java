@@ -10,8 +10,8 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 import com.astralrealms.skyblock.AstralSkyblock;
-import com.astralrealms.skyblock.messaging.packet.LongObjectDeletePacket;
-import com.astralrealms.skyblock.messaging.packet.LongObjectUpdatePacket;
+import com.astralrealms.skyblock.messaging.packet.repository.LongObjectDeletePacket;
+import com.astralrealms.skyblock.messaging.packet.repository.LongObjectUpdatePacket;
 import com.astralrealms.skyblock.model.role.RolePermissions;
 import com.astralrealms.skyblock.utils.ASConstants;
 import com.github.benmanes.caffeine.cache.Caffeine;

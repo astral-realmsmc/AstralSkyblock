@@ -14,6 +14,8 @@ import com.astralrealms.skyblock.command.context.IslandContextResolver;
 import com.astralrealms.skyblock.configuration.ASMessages;
 import com.astralrealms.skyblock.configuration.ASPLoaderConfiguration;
 import com.astralrealms.skyblock.configuration.RolesConfiguration;
+import com.astralrealms.skyblock.configuration.SkyblockConfiguration;
+import com.astralrealms.skyblock.listener.IslandListener;
 import com.astralrealms.skyblock.listener.PlayerConnectionListener;
 import com.astralrealms.skyblock.messaging.ASPacketRegistry;
 import com.astralrealms.skyblock.model.IslandBlueprint;
@@ -29,6 +31,7 @@ public final class AstralSkyblock extends AstralPaperPlugin {
     private static AstralSkyblock instance;
 
     // Configuration
+    private SkyblockConfiguration configuration;
     private ASPLoaderConfiguration aspLoaderConfiguration;
     private RolesConfiguration rolesConfiguration;
 
@@ -42,6 +45,7 @@ public final class AstralSkyblock extends AstralPaperPlugin {
     private PlayerService players;
     private RoleService roles;
     private MemberService members;
+    private ServerService servers;
 
     @Override
     public void onEnable() {
@@ -71,9 +75,7 @@ public final class AstralSkyblock extends AstralPaperPlugin {
         this.players = new PlayerService(this);
         this.roles = new RoleService(this);
         this.members = new MemberService(this);
-
-        // Warm the island cache so lookups don't pay a cold database hit
-        this.islands.warmup();
+        this.servers = new ServerService(this);
 
         // Commands
         // -- Completion
@@ -87,7 +89,8 @@ public final class AstralSkyblock extends AstralPaperPlugin {
 
         // Listeners
         this.registerListeners(
-                new PlayerConnectionListener(this)
+                new PlayerConnectionListener(this),
+                new IslandListener(this)
         );
 
         // Instance
@@ -97,6 +100,9 @@ public final class AstralSkyblock extends AstralPaperPlugin {
     @Override
     public void onDisable() {
         super.onDisable();
+
+        // Worlds
+        this.worlds.unload();
 
         // Messaging
         if (this.messaging != null)
@@ -109,9 +115,6 @@ public final class AstralSkyblock extends AstralPaperPlugin {
         // Database
         if (this.database != null)
             this.database.disconnect();
-
-        // Worlds
-        this.worlds.unload();
     }
 
     @Override
@@ -119,6 +122,7 @@ public final class AstralSkyblock extends AstralPaperPlugin {
         this.copyResource("database.properties");
 
         // Configurations
+        this.configuration = this.loadConfiguration("config.yml", SkyblockConfiguration.class);
         this.aspLoaderConfiguration = this.loadConfiguration("loader.yml", ASPLoaderConfiguration.class);
         this.rolesConfiguration = this.loadConfiguration("roles.yml", RolesConfiguration.class);
 

@@ -1,4 +1,4 @@
-package com.astralrealms.skyblock.messaging.packet;
+package com.astralrealms.skyblock.messaging.packet.island;
 
 import com.astralrealms.core.packet.Packet;
 import com.astralrealms.core.packet.binary.BinaryMessage;
@@ -10,17 +10,17 @@ import lombok.NoArgsConstructor;
 @Getter
 @NoArgsConstructor
 @AllArgsConstructor
-public class LongObjectDeletePacket implements Packet {
+public class IslandLoadResponsePacket implements Packet {
 
-    private long id;
+    private boolean success;
 
     @Override
     public void write(BinaryMessage binaryMessage) {
-        binaryMessage.writeLong(id);
+        binaryMessage.writeBoolean(success);
     }
 
     @Override
     public void read(BinaryMessage binaryMessage) {
-        this.id = binaryMessage.readLong();
+        this.success = binaryMessage.readBoolean();
     }
 }

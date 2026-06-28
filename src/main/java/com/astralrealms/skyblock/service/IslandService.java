@@ -7,10 +7,15 @@ import java.util.concurrent.CompletableFuture;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.Unmodifiable;
 
+import com.astralrealms.core.model.location.NetworkLocation;
+import com.astralrealms.core.paper.AstralPaperAPI;
 import com.astralrealms.skyblock.AstralSkyblock;
+import com.astralrealms.skyblock.messaging.packet.island.IslandLoadRequestPacket;
+import com.astralrealms.skyblock.messaging.packet.island.IslandLoadResponsePacket;
 import com.astralrealms.skyblock.model.IslandBlueprint;
 import com.astralrealms.skyblock.model.island.Island;
 import com.astralrealms.skyblock.repository.IslandRepository;
+import com.astralrealms.skyblock.utils.ASConstants;
 
 import lombok.Getter;
 
@@ -23,6 +28,118 @@ public class IslandService {
     public IslandService(AstralSkyblock plugin) {
         this.plugin = plugin;
         this.repository = new IslandRepository(plugin);
+
+        // Warmup cache
+        try {
+            this.warmup().join();
+        } catch (Exception e) {
+            this.plugin.getSLF4JLogger().error("Failed to warm up island cache on startup", e);
+        }
+
+        // Messaging listener
+        this.plugin.messaging().registerExchange(ASConstants.ISLAND_MANAGEMENT_CHANNEL, (packet, envelope) -> {
+            if (packet instanceof IslandLoadRequestPacket request) {
+                repository.findById(request.islandId())
+                        .thenAccept(island -> {
+                            if (island == null) {
+                                plugin.getSLF4JLogger().error("Failed to find island {} for load request: result is null", request.islandId());
+                                plugin.messaging().replyTo(new IslandLoadResponsePacket(false), envelope);
+                                return;
+                            } else if (plugin.worlds().getLoadedWorlds().containsKey(island.uniqueId())) {
+                                plugin.messaging().replyTo(new IslandLoadResponsePacket(true), envelope);
+                                return;
+                            }
+
+                            plugin.worlds()
+                                    .load(island)
+                                    .whenComplete((worldInstance, throwable) -> {
+                                        if (throwable != null) {
+                                            plugin.getSLF4JLogger().error("Failed to load island {} for load request", request.islandId(), throwable);
+                                            plugin.messaging().replyTo(new IslandLoadResponsePacket(false), envelope);
+                                            return;
+                                        } else if (worldInstance == null) {
+                                            plugin.getSLF4JLogger().error("Failed to load island {} for load request: result is null", request.islandId());
+                                            plugin.messaging().replyTo(new IslandLoadResponsePacket(false), envelope);
+                                            return;
+                                        }
+
+                                        plugin.getSLF4JLogger().info("Island {} loaded for load request", request.islandId());
+                                        plugin.messaging().replyTo(new IslandLoadResponsePacket(true), envelope);
+                                    });
+                        }).exceptionally(throwable -> {
+                            plugin.getSLF4JLogger().error("Failed to find island {} for load request", request.islandId(), throwable);
+                            plugin.messaging().replyTo(new IslandLoadResponsePacket(false), envelope);
+                            return null;
+                        });
+            }
+            return null;
+        });
+    }
+
+    public CompletableFuture<NetworkLocation> spawnIsland(Island island) {
+        return this.plugin.servers()
+                .findHostServer(island.uniqueId())
+                .thenCompose((hostServer) -> {
+                    if (hostServer == null) {
+                        return this.plugin.servers()
+                                .findEmptiestServer()
+                                .thenCompose((islandServer) -> {
+                                    if (islandServer == null) {
+                                        this.plugin.getSLF4JLogger().error("Failed to find emptiest server for island {}: result is null", island.uniqueId());
+                                        return CompletableFuture.completedFuture(null);
+                                    } else if (islandServer.uniqueId().equals(AstralPaperAPI.serverInformation().uniqueId())) {
+                                        this.plugin.getSLF4JLogger().info("Found emptiest server {} for island {}: it's the current server, loading locally", islandServer.uniqueId(), island.uniqueId());
+                                        return this.plugin.worlds()
+                                                .load(island)
+                                                .thenApply(worldInstance -> {
+                                                    if (worldInstance == null) {
+                                                        this.plugin.getSLF4JLogger().error("Failed to load island {} on current server: result is null", island.uniqueId());
+                                                        return null;
+                                                    }
+
+                                                    return new NetworkLocation(
+                                                            island.spawnX(),
+                                                            island.spawnY(),
+                                                            island.spawnZ(),
+                                                            island.spawnYaw(),
+                                                            island.spawnPitch(),
+                                                            island.uniqueId().toString(),
+                                                            AstralPaperAPI.serverInformation().uniqueId()
+                                                    );
+                                                });
+                                    }
+
+                                    this.plugin.getSLF4JLogger().info("Found emptiest server {} for island {}", islandServer.uniqueId(), island.uniqueId());
+                                    return this.plugin.messaging()
+                                            .sendWithReply(ASConstants.ISLAND_MANAGEMENT_CHANNEL, new IslandLoadRequestPacket(island.uniqueId(), islandServer.uniqueId()))
+                                            .thenCompose(reply -> {
+                                                if (!(reply instanceof IslandLoadResponsePacket responsePacket)
+                                                    || !responsePacket.success())
+                                                    return CompletableFuture.completedFuture(null);
+
+                                                return CompletableFuture.completedFuture(new NetworkLocation(
+                                                        island.spawnX(),
+                                                        island.spawnY(),
+                                                        island.spawnZ(),
+                                                        island.spawnYaw(),
+                                                        island.spawnPitch(),
+                                                        island.uniqueId().toString(),
+                                                        islandServer.uniqueId()
+                                                ));
+                                            });
+                                });
+                    }
+
+                    return CompletableFuture.completedFuture(new NetworkLocation(
+                            island.spawnX(),
+                            island.spawnY(),
+                            island.spawnZ(),
+                            island.spawnYaw(),
+                            island.spawnPitch(),
+                            island.uniqueId().toString(),
+                            hostServer
+                    ));
+                });
     }
 
     public void create(Player player, IslandBlueprint blueprint) {

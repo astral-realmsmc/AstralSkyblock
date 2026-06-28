@@ -1,4 +1,4 @@
-package com.astralrealms.skyblock.messaging.packet;
+package com.astralrealms.skyblock.messaging.packet.repository;
 
 import java.util.UUID;
 
@@ -12,20 +12,17 @@ import lombok.NoArgsConstructor;
 @Getter
 @NoArgsConstructor
 @AllArgsConstructor
-public class MemberObjectDeletePacket implements Packet {
+public class UniqueObjectUpdatePacket implements Packet {
 
-    private UUID islandId;
-    private UUID playerUuid;
+    private UUID uniqueId;
 
     @Override
     public void write(BinaryMessage binaryMessage) {
-        binaryMessage.writeUUID(islandId);
-        binaryMessage.writeUUID(playerUuid);
+        binaryMessage.writeUUID(uniqueId);
     }
 
     @Override
     public void read(BinaryMessage binaryMessage) {
-        this.islandId = binaryMessage.readUUID();
-        this.playerUuid = binaryMessage.readUUID();
+        this.uniqueId = binaryMessage.readUUID();
     }
 }

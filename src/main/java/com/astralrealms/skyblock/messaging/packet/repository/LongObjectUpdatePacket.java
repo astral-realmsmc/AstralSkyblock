@@ -1,6 +1,4 @@
-package com.astralrealms.skyblock.messaging.packet;
-
-import java.util.UUID;
+package com.astralrealms.skyblock.messaging.packet.repository;
 
 import com.astralrealms.core.packet.Packet;
 import com.astralrealms.core.packet.binary.BinaryMessage;
@@ -12,17 +10,17 @@ import lombok.NoArgsConstructor;
 @Getter
 @NoArgsConstructor
 @AllArgsConstructor
-public class UniqueObjectUpdatePacket implements Packet {
+public class LongObjectUpdatePacket implements Packet {
 
-    private UUID uniqueId;
+    private long id;
 
     @Override
     public void write(BinaryMessage binaryMessage) {
-        binaryMessage.writeUUID(uniqueId);
+        binaryMessage.writeLong(id);
     }
 
     @Override
     public void read(BinaryMessage binaryMessage) {
-        this.uniqueId = binaryMessage.readUUID();
+        this.id = binaryMessage.readLong();
     }
 }
