@@ -51,6 +51,9 @@ public final class AstralSkyblock extends AstralPaperPlugin {
     public void onEnable() {
         super.onEnable();
 
+        // Instance
+        instance = this;
+
         // Services
         this.blueprints = new BlueprintService(this);
         this.worlds = new WorldService(this);
@@ -92,9 +95,6 @@ public final class AstralSkyblock extends AstralPaperPlugin {
                 new PlayerConnectionListener(this),
                 new IslandListener(this)
         );
-
-        // Instance
-        instance = this;
     }
 
     @Override

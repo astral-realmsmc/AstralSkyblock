@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.bukkit.Bukkit;
@@ -97,18 +98,18 @@ public class WorldService {
     public CompletableFuture<SlimeWorldInstance> create(UUID uniqueId, IslandBlueprint blueprint) {
         return this.createNewWorld(uniqueId, blueprint)
                 .thenCompose(clonedWorld -> this.loadWorld(uniqueId, clonedWorld))
-                .thenCompose(slimeWorldInstance -> {
+                .thenApply(instance -> {
                     try {
-                        asp.saveWorld(slimeWorldInstance);
+                        asp.saveWorld(instance);
                     } catch (IOException e) {
-                        throw new RuntimeException("Failed to save world after copying schematic", e);
+                        throw new CompletionException("Failed to save world after creation for island with UUID: " + uniqueId, e);
                     }
-                    return CompletableFuture.completedFuture(slimeWorldInstance);
+                    return instance;
                 });
     }
 
     public CompletableFuture<SlimeWorldInstance> load(Island island) {
-        CompletableFuture<SlimeWorldInstance> future = new CompletableFuture<>();
+        CompletableFuture<SlimeWorld> read = new CompletableFuture<>();
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
                 SlimePropertyMap propertyMap = buildPropertyMap(
@@ -117,24 +118,12 @@ public class WorldService {
                         (int) island.spawnZ(),
                         island.spawnYaw()
                 );
-                SlimeWorld world = asp.readWorld(this.worldLoader, island.uniqueId().toString(), true, propertyMap);
-
-                this.loadWorld(island.uniqueId(), world)
-                        .whenComplete((instance, throwable) -> {
-                            if (throwable != null) {
-                                future.completeExceptionally(throwable);
-                            } else {
-                                future.complete(instance);
-                            }
-                        });
+                read.complete(asp.readWorld(this.worldLoader, island.uniqueId().toString(), false, propertyMap));
             } catch (UnknownWorldException | IOException | CorruptedWorldException | NewerFormatException e) {
-                future.completeExceptionally(e);
+                read.completeExceptionally(e);
             }
         });
-        return future.exceptionally(throwable -> {
-            plugin.getSLF4JLogger().error("Failed to load world for island with UUID: {}", island.uniqueId(), throwable);
-            return null;
-        });
+        return read.thenCompose(world -> this.loadWorld(island.uniqueId(), world));
     }
 
     private CompletableFuture<SlimeWorldInstance> loadWorld(UUID id, SlimeWorld world) {
@@ -150,48 +139,31 @@ public class WorldService {
                             return null;
                         });
                 future.complete(instance);
-            } catch (IllegalArgumentException ex) {
+            } catch (Exception ex) {
                 future.completeExceptionally(ex);
             }
         });
-        return future.exceptionally(throwable -> {
-            plugin.getSLF4JLogger().error("Failed to load world: {}", world.getName(), throwable);
-            return null;
-        });
+        return future;
     }
 
     private CompletableFuture<SlimeWorld> createNewWorld(UUID uniqueId, IslandBlueprint blueprint) {
         CompletableFuture<SlimeWorld> future = new CompletableFuture<>();
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-            // Setup property map
-            SlimePropertyMap propertyMap = buildPropertyMap(
-                    (int) blueprint.spawnLocation().x(),
-                    (int) blueprint.spawnLocation().y(),
-                    (int) blueprint.spawnLocation().z(),
-                    blueprint.spawnLocation().yaw()
-            );
-
-            // Load source world
-            SlimeWorld sourceWorld;
             try {
-                sourceWorld = this.asp.readWorld(this.sourceLoader, blueprint.sourceWorld().replace(".slime", ""), false, propertyMap);
-            } catch (UnknownWorldException | IOException | CorruptedWorldException | NewerFormatException e) {
-                future.completeExceptionally(e);
-                return;
-            }
+                SlimePropertyMap propertyMap = buildPropertyMap(
+                        (int) blueprint.spawnLocation().x(),
+                        (int) blueprint.spawnLocation().y(),
+                        (int) blueprint.spawnLocation().z(),
+                        blueprint.spawnLocation().yaw()
+                );
 
-            // Clone source world
-            try {
-                SlimeWorld clonedWorld = sourceWorld.clone(uniqueId.toString(), this.worldLoader);
-                future.complete(clonedWorld);
+                SlimeWorld sourceWorld = this.asp.readWorld(this.sourceLoader, blueprint.sourceWorld().replace(".slime", ""), false, propertyMap);
+                future.complete(sourceWorld.clone(uniqueId.toString(), this.worldLoader));
             } catch (Exception e) {
                 future.completeExceptionally(e);
             }
         });
-        return future.exceptionally(throwable -> {
-            plugin.getSLF4JLogger().error("Failed to create world for island with UUID: {}", uniqueId, throwable);
-            return null;
-        });
+        return future;
     }
 
     private SlimePropertyMap buildPropertyMap(int x, int y, int z, float yaw) {
@@ -222,7 +194,7 @@ public class WorldService {
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             SlimeWorldInstance instance = this.loadedWorlds.get(uniqueId);
             if (instance == null) {
-                future.completeExceptionally(new RuntimeException("World instance not found for island with UUID: " + uniqueId));
+                future.completeExceptionally(new IllegalStateException("World instance not loaded for island with UUID: " + uniqueId));
                 return;
             }
 
@@ -230,13 +202,10 @@ public class WorldService {
                 asp.saveWorld(instance);
                 future.complete(null);
             } catch (IOException e) {
-                future.completeExceptionally(new RuntimeException("Failed to save world for island with UUID: " + uniqueId, e));
+                future.completeExceptionally(new CompletionException("Failed to save world for island with UUID: " + uniqueId, e));
             }
         });
-        return future.exceptionally(throwable -> {
-            plugin.getSLF4JLogger().error("Failed to save world for island with UUID: {}", uniqueId, throwable);
-            return null;
-        });
+        return future;
     }
 
     public CompletableFuture<Void> unload(UUID uniqueId) {
@@ -250,7 +219,7 @@ public class WorldService {
 
             boolean success = Bukkit.unloadWorld(bukkitWorld, true);
             if (!success) {
-                future.completeExceptionally(new RuntimeException("Failed to unload world for island with UUID: " + uniqueId));
+                future.completeExceptionally(new IllegalStateException("Bukkit refused to unload world for island with UUID: " + uniqueId));
                 return;
             }
 
@@ -261,11 +230,9 @@ public class WorldService {
                         plugin.getSLF4JLogger().error("Failed to delete host server for island with UUID: {}", uniqueId, throwable);
                         return null;
                     });
+            future.complete(null);
         });
-        return future.exceptionally(throwable -> {
-            plugin.getSLF4JLogger().error("Failed to unload world for island with UUID: {}", uniqueId, throwable);
-            return null;
-        });
+        return future;
     }
 
     public CompletableFuture<Void> delete(UUID uniqueId) {
@@ -274,10 +241,9 @@ public class WorldService {
                     try {
                         this.worldLoader.deleteWorld(uniqueId.toString());
                     } catch (Exception e) {
-                        throw new RuntimeException("Failed to delete world for island with UUID: " + uniqueId, e);
+                        throw new CompletionException("Failed to delete world for island with UUID: " + uniqueId, e);
                     }
                 });
-
     }
 
     public Optional<SlimeWorldInstance> findByIslandId(UUID uniqueId) {

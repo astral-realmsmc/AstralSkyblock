@@ -7,6 +7,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
 import com.astralrealms.skyblock.AstralSkyblock;
@@ -14,15 +15,10 @@ import com.astralrealms.skyblock.model.island.Island;
 import com.astralrealms.core.storage.pagination.Pageable;
 import com.astralrealms.skyblock.utils.ASConstants;
 import com.github.benmanes.caffeine.cache.Caffeine;
-import com.google.common.collect.HashMultimap;
-import com.google.common.collect.Multimap;
-import com.google.common.collect.Multimaps;
 
 public class IslandRepository extends UUIDSyncedRepository<Island> {
 
-    private final Map<String, UUID> nameIslandMap;
-    private final Multimap<UUID, UUID> playerIslandMap;
-    private final Map<UUID, UUID> worldIslandMap;
+    private final Map<String, UUID> nameIslandMap = new ConcurrentHashMap<>();
 
     public IslandRepository(AstralSkyblock plugin) {
         super(
@@ -34,9 +30,6 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
                         .buildAsync(cacheLoader),
                 Island.class
         );
-        this.playerIslandMap = Multimaps.synchronizedMultimap(HashMultimap.create());
-        this.worldIslandMap = new ConcurrentHashMap<>();
-        this.nameIslandMap = new ConcurrentHashMap<>();
     }
 
 
@@ -45,6 +38,21 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
         super.cacheLocally(value);
         if (value.name() != null)
             this.nameIslandMap.put(value.name(), value.uniqueId());
+    }
+
+    /**
+     * Keeps the name index in step with L1 evictions: when an island is dropped from the local cache
+     * (delete, or a remote invalidation), its name entry is removed too. A rename leaves the previous
+     * name pointing here until the next invalidation, so it is matched and cleared by value as a fallback.
+     */
+    @Override
+    public @Nullable Island invalidateLocally(UUID key) {
+        Island value = super.invalidateLocally(key);
+        if (value != null && value.name() != null)
+            this.nameIslandMap.remove(value.name(), key);
+        else
+            this.nameIslandMap.values().remove(key);
+        return value;
     }
 
     /**
