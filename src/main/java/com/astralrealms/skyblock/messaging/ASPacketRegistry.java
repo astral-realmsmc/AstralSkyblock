@@ -22,7 +22,7 @@ public class ASPacketRegistry extends PacketRegistry {
         this.registerPacket(0x05, MemberObjectDeletePacket::new);
 
         // Islands (0x100 - 0x1FF)
-        this.registerPacket(0x10, IslandLoadRequestPacket::new);
-        this.registerPacket(0x11, IslandLoadResponsePacket::new);
+        this.registerPacket(0x100, IslandLoadRequestPacket::new);
+        this.registerPacket(0x101, IslandLoadResponsePacket::new);
     }
 }

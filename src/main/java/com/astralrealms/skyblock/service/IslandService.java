@@ -246,7 +246,12 @@ public class IslandService {
                     }
 
                     // Delete world
-                    this.plugin.worlds().delete(island.uniqueId());
+                    this.plugin.worlds()
+                            .delete(island.uniqueId())
+                            .exceptionally(throwable1 -> {
+                                this.plugin.getSLF4JLogger().error("Failed to delete world for island {} (orphaned slime world)", island.uniqueId(), throwable1);
+                                return null;
+                            });
 
                     this.plugin.getSLF4JLogger().info("Island {} deleted for player {}", island.uniqueId(), player.getName());
                 });

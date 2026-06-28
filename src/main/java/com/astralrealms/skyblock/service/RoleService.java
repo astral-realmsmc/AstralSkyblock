@@ -34,7 +34,7 @@ public class RoleService {
 
     private CompletableFuture<IslandRole> save(UUID islandId, RolesConfiguration.Entry entry) {
         IslandRole role = new IslandRole(
-                0L,
+                null,
                 islandId,
                 entry.type(),
                 entry.name(),

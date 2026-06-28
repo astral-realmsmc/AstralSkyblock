@@ -35,7 +35,12 @@ public class SkyblockCommand extends BaseCommand {
     @Description("Saves your island")
     @CommandCompletion("@islands")
     public void onSave(Player player, Island island) {
-        this.plugin.worlds().save(island.uniqueId());
+        this.plugin.worlds()
+                .save(island.uniqueId())
+                .exceptionally(throwable -> {
+                    this.plugin.getSLF4JLogger().error("Failed to save island {} requested by {}", island.uniqueId(), player.getName(), throwable);
+                    return null;
+                });
     }
 
     @Subcommand("delete")
