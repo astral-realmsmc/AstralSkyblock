@@ -1,3 +1,8 @@
+all:
+  material: NETHER_STAR
+  name: "<green>All Permissions"
+  lore:
+    - "<gray>Grants all permissions."
 animal-breed:
   material: BONE
   name: "<green>Animal Breed"

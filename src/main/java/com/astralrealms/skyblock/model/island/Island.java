@@ -1,11 +1,9 @@
 package com.astralrealms.skyblock.model.island;
 
-import java.util.Collection;
-import java.util.EnumSet;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 
 import org.bukkit.Location;
+import org.bukkit.entity.Player;
 
 import com.astralrealms.core.model.Unique;
 import com.astralrealms.core.placeholder.PlaceholderContext;
@@ -13,6 +11,7 @@ import com.astralrealms.core.placeholder.impl.system.ComplexPlaceholder;
 import com.astralrealms.core.provider.ItemProvider;
 import com.astralrealms.core.storage.annotation.*;
 import com.astralrealms.core.storage.model.SQLAccessor;
+import com.astralrealms.skyblock.model.IslandPermission;
 import com.astralrealms.skyblock.model.IslandSettings;
 import com.astralrealms.skyblock.model.member.IslandMember;
 import com.astralrealms.skyblock.model.role.IslandRole;
@@ -73,8 +72,22 @@ public class Island implements Unique, ComplexPlaceholder {
         this.createdAt = createdAt;
     }
 
-    // Relationship accessors coalesce null to empty so reads are safe before hydration (or on an
-    // island restored from L2, where transient fields are absent).
+    public boolean hasPermission(UUID id, IslandPermission permission) {
+        if (this.owner != null && this.owner.playerUuid().equals(id))
+            return true;
+        return this.findMember(id)
+                .map(member -> member.role() != null && member.role().permissions().contains(permission))
+                .orElse(false);
+    }
+
+    public Optional<IslandMember> findMember(UUID uniqueId) {
+        if (this.members == null)
+            return Optional.empty();
+        return this.members.stream()
+                .filter(member -> member.playerUuid().equals(uniqueId))
+                .findFirst();
+    }
+
     public Collection<IslandMember> members() {
         return this.members == null ? List.of() : this.members;
     }
@@ -106,6 +119,11 @@ public class Island implements Unique, ComplexPlaceholder {
             case "members" -> ItemProvider.of(members());
             case "owner" -> this.owner;
             case "roles" -> ItemProvider.of(roles());
+            case "hasPermission" -> {
+                if (!context.hasNext() || !(context.context() instanceof Player player))
+                    yield null;
+                yield this.hasPermission(player.getUniqueId(), IslandPermission.valueOf(context.collapseRemaining()));
+            }
             case "settings" -> this.settings;
             case "updatedAt" -> updatedAt;
             case "createdAt" -> createdAt;

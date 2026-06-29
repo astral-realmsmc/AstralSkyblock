@@ -1,11 +1,9 @@
 package com.astralrealms.skyblock.repository;
 
 import java.sql.*;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.jetbrains.annotations.Unmodifiable;
 
@@ -15,9 +13,6 @@ import com.astralrealms.skyblock.messaging.packet.repository.MemberObjectUpdateP
 import com.astralrealms.skyblock.model.member.IslandMember;
 import com.astralrealms.skyblock.model.member.MemberKey;
 import com.astralrealms.skyblock.utils.ASConstants;
-import com.google.common.collect.HashMultimap;
-import com.google.common.collect.Multimap;
-import com.google.common.collect.Multimaps;
 
 /**
  * Island membership, keyed by the composite {@link MemberKey} (island + player) that mirrors the
@@ -30,7 +25,7 @@ import com.google.common.collect.Multimaps;
 public class MemberRepository extends IndexedSyncedRepository<MemberKey, IslandMember, UUID> {
 
     private static final String COLUMNS = "island_id, player_uuid, is_owner, role_id, joined_at";
-    private final Multimap<UUID, UUID> playerIslandsMap = Multimaps.synchronizedMultimap(HashMultimap.create());
+    private final Map<UUID, UUID> playerIslandsMap = new ConcurrentHashMap<>();
 
     public MemberRepository(AstralSkyblock plugin) {
         super(
@@ -60,15 +55,17 @@ public class MemberRepository extends IndexedSyncedRepository<MemberKey, IslandM
     }
 
     @Unmodifiable
-    public Collection<UUID> findPlayerIslands(UUID playerUuid) {
-        return List.copyOf(playerIslandsMap.get(playerUuid));
+    public Optional<UUID> findPlayerIsland(UUID playerUuid) {
+        return Optional.ofNullable(this.playerIslandsMap.get(playerUuid));
     }
 
     // =====================================================================================
     //  Domain queries
     // =====================================================================================
 
-    /** Every member of an island. Primes the per-member cache and indexes. */
+    /**
+     * Every member of an island. Primes the per-member cache and indexes.
+     */
     public CompletableFuture<List<IslandMember>> findByIsland(UUID islandId) {
         return prime(islandId);
     }
@@ -123,21 +120,6 @@ public class MemberRepository extends IndexedSyncedRepository<MemberKey, IslandM
                     }
                 })
                 .thenCompose(ignored -> reload(islandId, playerUuid));
-    }
-
-    /**
-     * Adds the structural owner (no role). Used during island creation.
-     */
-    public CompletableFuture<IslandMember> addOwner(UUID islandId, UUID ownerUuid) {
-        return this.plugin.database()
-                .run(connection -> {
-                    try (PreparedStatement statement = connection.prepareStatement("INSERT INTO island_members (island_id, player_uuid, is_owner, role_id) VALUES (?, ?, TRUE, NULL)")) {
-                        statement.setObject(1, islandId);
-                        statement.setObject(2, ownerUuid);
-                        statement.executeUpdate();
-                    }
-                })
-                .thenCompose(ignored -> reload(islandId, ownerUuid));
     }
 
     /**

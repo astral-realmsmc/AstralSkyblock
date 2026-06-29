@@ -1,9 +1,6 @@
 package com.astralrealms.skyblock.service;
 
-import java.util.Collection;
-import java.util.List;
-import java.util.Objects;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
 import org.jetbrains.annotations.Unmodifiable;
@@ -24,22 +21,21 @@ public class MemberService {
         this.repository = new MemberRepository(plugin);
     }
 
-    public CompletableFuture<IslandMember> addOwner(UUID islandId, UUID ownerId) {
-        return this.repository.addOwner(islandId, ownerId);
-    }
-
-    /** Every member of an island. Primes (and refreshes) the per-island member slice. */
+    /**
+     * Every member of an island. Primes (and refreshes) the per-island member slice.
+     */
     public CompletableFuture<List<IslandMember>> findByIsland(UUID islandId) {
         return this.repository.findByIsland(islandId);
     }
 
-    @Unmodifiable
-    public Collection<Island> findPlayerIslands(UUID playerUuid) {
-        return this.repository.findPlayerIslands(playerUuid)
-                .stream()
-                .map(islandId -> plugin.islands().repository().findCachedById(islandId).orElse(null))
-                .filter(Objects::nonNull)
-                .toList();
+    public Optional<Island> findPlayerIsland(UUID playerId) {
+        UUID uniqueId = this.repository.findPlayerIsland(playerId)
+                .orElse(null);
+        if (uniqueId == null)
+            return Optional.empty();
+        return this.plugin.islands()
+                .repository()
+                .findCachedById(uniqueId);
     }
 
     @Unmodifiable

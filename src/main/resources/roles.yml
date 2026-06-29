@@ -7,6 +7,9 @@ roles:
     icon:
       material: "stone"
       name: "Visitor"
+    # Visitors can only look around and rate the island.
+    permissions:
+      - RATINGS_SHOW
   co-op:
     type: COOP
     weight: 1
@@ -15,6 +18,34 @@ roles:
     icon:
       material: "gold_ingot"
       name: "Co-Op"
+    # Trusted helpers: build, break and interact with the world,
+    # but no island management, economy or warps.
+    permissions:
+      - RATINGS_SHOW
+      - BUILD
+      - BREAK
+      - BRUSH
+      - DROP_ITEMS
+      - PICKUP_DROPS
+      - ISLAND_CHEST
+      - FLY
+      - ANIMAL_BREED
+      - ANIMAL_SHEAR
+      - DYE_SHEEP
+      - FERTILIZE
+      - FISH
+      - LEASH
+      - NAME_ENTITY
+      - SADDLE_ENTITY
+      - ENTITY_RIDE
+      - VILLAGER_TRADING
+      - MINECART_ENTER
+      - MINECART_OPEN
+      - ENDER_PEARL
+      - CHORUS_FRUIT
+      - WIND_CHARGE
+      - IGNITE_CREEPER
+      - SCULK_SENSOR
   member:
     type: MEMBER
     weight: 2
@@ -23,6 +54,46 @@ roles:
     icon:
       material: "iron_ingot"
       name: "Member"
+    # Full islanders: everything a co-op can do, plus economy,
+    # warps, homes, invites and valuable/spawner harvesting.
+    permissions:
+      - RATINGS_SHOW
+      - BUILD
+      - BREAK
+      - BRUSH
+      - DROP_ITEMS
+      - PICKUP_DROPS
+      - ISLAND_CHEST
+      - FLY
+      - ANIMAL_BREED
+      - ANIMAL_SHEAR
+      - DYE_SHEEP
+      - FERTILIZE
+      - FISH
+      - LEASH
+      - NAME_ENTITY
+      - SADDLE_ENTITY
+      - ENTITY_RIDE
+      - VILLAGER_TRADING
+      - MINECART_ENTER
+      - MINECART_OPEN
+      - ENDER_PEARL
+      - CHORUS_FRUIT
+      - WIND_CHARGE
+      - IGNITE_CREEPER
+      - SCULK_SENSOR
+      - SPAWNER_BREAK
+      - VALUABLE_BREAK
+      - SET_HOME
+      - SET_WARP
+      - DELETE_WARP
+      - DEPOSIT_MONEY
+      - WITHDRAW_MONEY
+      - RANKUP
+      - INVITE_MEMBER
+      - COOP_MEMBER
+      - UNCOOP_MEMBER
+      - EXPEL_PLAYERS
   admin:
     type: MEMBER
     weight: 3
@@ -31,3 +102,8 @@ roles:
     icon:
       material: "diamond"
       name: "Admin"
+    # Island administrators: everything a member can do, plus member,
+    # role, permission and settings management. Only DISBAND_ISLAND
+    # stays reserved for the island owner.
+    permissions:
+      - ALL

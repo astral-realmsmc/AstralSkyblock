@@ -2,6 +2,7 @@ package com.astralrealms.skyblock.model.member;
 
 import java.util.UUID;
 
+import com.astralrealms.core.paper.placeholder.MinecraftPlayerPlaceholder;
 import com.astralrealms.core.placeholder.PlaceholderContext;
 import com.astralrealms.core.placeholder.impl.system.ComplexPlaceholder;
 import com.astralrealms.core.storage.annotation.Column;
@@ -47,6 +48,7 @@ public class IslandMember implements ComplexPlaceholder {
         return switch (context.next()) {
             case "islandId" -> islandId;
             case "playerId" -> playerUuid;
+            case "player" -> new MinecraftPlayerPlaceholder(playerUuid);
             case "owner" -> isOwner;
             case "role" -> role;
             case "roleId" -> roleId;

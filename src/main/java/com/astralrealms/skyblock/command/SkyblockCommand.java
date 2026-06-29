@@ -1,5 +1,7 @@
 package com.astralrealms.skyblock.command;
 
+import java.util.Map;
+
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.Nullable;
@@ -22,6 +24,25 @@ public class SkyblockCommand extends BaseCommand {
     @Dependency
     private AstralSkyblock plugin;
 
+    @Default
+    public void onDefault(Player player) {
+        Island island = this.plugin.members()
+                .findPlayerIsland(player.getUniqueId())
+                .orElse(null);
+        if (island == null) {
+            // TODO: Open creation menu
+            return;
+        }
+
+        this.plugin.menus()
+                .computeAndOpen(player, "island-main", Map.of("island", island))
+                .exceptionally(throwable -> {
+                    this.plugin.getSLF4JLogger().error("Failed to open island main menu for {}", player.getName(), throwable);
+                    ASMessages.UNEXPECTED_ERROR.message(player);
+                    return null;
+                });
+    }
+
     @Subcommand("create")
     @Description("Creates a new island")
     @Syntax("<name> <blueprint>")
@@ -41,6 +62,16 @@ public class SkyblockCommand extends BaseCommand {
         player.sendMessage("Members:");
         island.members().forEach(member -> {
             player.sendMessage("- " + member.playerUuid() + " (Role: " + member.roleId() + ")");
+            island.roles()
+                    .stream()
+                    .filter(role -> role.id().equals(member.roleId()))
+                    .findFirst()
+                    .ifPresent(role -> player.sendMessage("  Role Name: " + role.name() + " with " + role.permissions().size() + " permissions"));
+        });
+        player.sendMessage("Roles:");
+        island.roles().forEach(role -> {
+            player.sendMessage("- " + role.name() + " (Weight: " + role.weight() + ", Default: " + role.isDefault() + ")");
+            player.sendMessage("  Permissions: " + role.permissions());
         });
     }
 

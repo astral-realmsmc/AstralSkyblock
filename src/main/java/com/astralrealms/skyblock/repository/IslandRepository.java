@@ -1,11 +1,15 @@
 package com.astralrealms.skyblock.repository;
 
+import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -17,9 +21,11 @@ import org.jetbrains.annotations.Unmodifiable;
 
 import com.astralrealms.core.storage.pagination.Pageable;
 import com.astralrealms.skyblock.AstralSkyblock;
+import com.astralrealms.skyblock.model.IslandPermission;
 import com.astralrealms.skyblock.model.island.Island;
 import com.astralrealms.skyblock.model.member.IslandMember;
 import com.astralrealms.skyblock.model.role.IslandRole;
+import com.astralrealms.skyblock.model.role.RoleSeed;
 import com.astralrealms.skyblock.utils.ASConstants;
 import com.github.benmanes.caffeine.cache.*;
 
@@ -91,6 +97,105 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
     @Override
     protected CompletableFuture<Island> postLoad(Island island) {
         return cascade(island);
+    }
+
+    /**
+     * Creates an island and its entire initial aggregate — the island row, its configured roles each
+     * with their seeded permission grants, and the structural owner member — in a single transaction.
+     * Either everything commits or nothing does. On success the island is cascaded (priming the role
+     * and member slices from the just-committed rows), written through to L1/L2, and published so other
+     * servers pick it up.
+     */
+    public CompletableFuture<Island> create(Island island, List<RoleSeed> roleSeeds, UUID ownerUuid) {
+        return this.plugin.database()
+                .transactionSupply(connection -> {
+                    insertIsland(connection, island);
+                    for (RoleSeed seed : roleSeeds) {
+                        long roleId = insertRole(connection, seed.role());
+                        insertPermissions(connection, roleId, seed.permissions());
+                    }
+                    insertOwner(connection, island.uniqueId(), ownerUuid);
+                    return island;
+                })
+                // Write the bare island through to L1/L2 first (matching the load path, where L2 holds
+                // no transient relationships), then cascade to populate the L1 object and prime the role
+                // and member slices, and finally announce it to other servers.
+                .thenCompose(saved -> cache(saved).thenApply(ignored -> saved))
+                .thenCompose(this::cascade)
+                .thenApply(saved -> {
+                    publishUpdate(saved.uniqueId(), saved);
+                    return saved;
+                });
+    }
+
+    private static void insertIsland(Connection connection, Island island) throws SQLException {
+        @Language("SQL") String INSERT_ISLAND = """
+                INSERT INTO islands (id, name, locked, level, spawn_x, spawn_y, spawn_z, spawn_yaw, spawn_pitch)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """;
+        try (PreparedStatement statement = connection.prepareStatement(INSERT_ISLAND)) {
+            statement.setObject(1, island.uniqueId());
+            statement.setString(2, island.name());
+            statement.setBoolean(3, island.locked());
+            statement.setInt(4, island.level());
+            statement.setDouble(5, island.spawnX());
+            statement.setDouble(6, island.spawnY());
+            statement.setDouble(7, island.spawnZ());
+            statement.setFloat(8, island.spawnYaw());
+            statement.setFloat(9, island.spawnPitch());
+            statement.executeUpdate();
+        }
+    }
+
+    private static long insertRole(Connection connection, IslandRole role) throws SQLException {
+        @Language("SQL") String INSERT_ROLE = """
+                INSERT INTO island_roles (island_id, kind, name, weight, is_default)
+                VALUES (?, ?, ?, ?, ?)
+                """;
+        try (PreparedStatement statement = connection.prepareStatement(INSERT_ROLE, Statement.RETURN_GENERATED_KEYS)) {
+            statement.setObject(1, role.islandId());
+            statement.setInt(2, role.kind().ordinal());
+            statement.setString(3, role.name());
+            statement.setInt(4, role.weight());
+            statement.setBoolean(5, role.isDefault());
+            statement.executeUpdate();
+            try (ResultSet keys = statement.getGeneratedKeys()) {
+                if (!keys.next())
+                    throw new SQLException("No generated key returned for island_roles insert");
+                return keys.getLong(1);
+            }
+        }
+    }
+
+    private static void insertPermissions(Connection connection, long roleId, Set<IslandPermission> permissions) throws SQLException {
+        if (permissions.isEmpty())
+            return;
+
+        @Language("SQL") String INSERT_PERMISSION = """
+                INSERT INTO island_role_permissions (role_id, permission)
+                VALUES (?, ?)
+                """;
+
+        try (PreparedStatement statement = connection.prepareStatement(INSERT_PERMISSION)) {
+            for (IslandPermission permission : permissions) {
+                statement.setLong(1, roleId);
+                statement.setString(2, permission.name());
+                statement.addBatch();
+            }
+            statement.executeBatch();
+        }
+    }
+
+    private static void insertOwner(Connection connection, UUID islandId, UUID ownerUuid) throws SQLException {
+        @Language("SQL") String INSERT_OWNER = """
+                INSERT INTO island_members (island_id, player_uuid, is_owner, role_id)
+                VALUES (?, ?, TRUE, NULL)
+                """;
+        try (PreparedStatement statement = connection.prepareStatement(INSERT_OWNER)) {
+            statement.setObject(1, islandId);
+            statement.setObject(2, ownerUuid);
+            statement.executeUpdate();
+        }
     }
 
     /**

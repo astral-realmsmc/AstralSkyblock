@@ -1,12 +1,18 @@
 package com.astralrealms.skyblock.repository;
 
+import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
@@ -17,6 +23,7 @@ import com.astralrealms.core.storage.model.RowMapper;
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.messaging.packet.repository.LongObjectDeletePacket;
 import com.astralrealms.skyblock.messaging.packet.repository.LongObjectUpdatePacket;
+import com.astralrealms.skyblock.model.IslandPermission;
 import com.astralrealms.skyblock.model.role.IslandRole;
 import com.astralrealms.skyblock.utils.ASConstants;
 
@@ -31,6 +38,11 @@ import com.astralrealms.skyblock.utils.ASConstants;
 public class RoleRepository extends IndexedSyncedRepository<Long, IslandRole, UUID> {
 
     private static final String COLUMNS = "id, island_id, kind, name, weight, is_default, created_at";
+
+    private static final String INSERT_ROLE = """
+            INSERT INTO island_roles (island_id, kind, name, weight, is_default)
+            VALUES (?, ?, ?, ?, ?)
+            """;
 
     private final RowMapper<IslandRole> mapper = new RowMapper<>(EntityMetadata.of(IslandRole.class));
 
@@ -221,12 +233,16 @@ public class RoleRepository extends IndexedSyncedRepository<Long, IslandRole, UU
         String query = "SELECT " + COLUMNS + " FROM island_roles WHERE id = ?";
         return this.plugin.database()
                 .supply(connection -> {
+                    IslandRole role;
                     try (PreparedStatement statement = connection.prepareStatement(query)) {
                         statement.setLong(1, key);
                         try (ResultSet resultSet = statement.executeQuery()) {
-                            return resultSet.next() ? mapper.map(resultSet) : null;
+                            role = resultSet.next() ? mapper.map(resultSet) : null;
                         }
                     }
+                    if (role != null)
+                        role.permissions(loadPermissions(connection, key));
+                    return role;
                 });
     }
 
@@ -263,15 +279,37 @@ public class RoleRepository extends IndexedSyncedRepository<Long, IslandRole, UU
 
     @Override
     protected CompletableFuture<List<IslandRole>> loadByIndex(UUID islandId) {
-        String query = "SELECT %s FROM island_roles WHERE island_id = ? ORDER BY weight DESC, id".formatted(COLUMNS);
+        String rolesQuery = "SELECT %s FROM island_roles WHERE island_id = ? ORDER BY weight DESC, id".formatted(COLUMNS);
+        String permissionsQuery = """
+                SELECT rp.role_id, rp.permission
+                FROM island_role_permissions rp
+                         JOIN island_roles r ON r.id = rp.role_id
+                WHERE r.island_id = ?
+                """;
         return this.plugin.database()
                 .supply(connection -> {
                     List<IslandRole> roles = new ArrayList<>();
-                    try (PreparedStatement statement = connection.prepareStatement(query)) {
+                    Map<Long, IslandRole> byId = new HashMap<>();
+                    try (PreparedStatement statement = connection.prepareStatement(rolesQuery)) {
                         statement.setObject(1, islandId);
                         try (ResultSet resultSet = statement.executeQuery()) {
-                            while (resultSet.next())
-                                roles.add(mapper.map(resultSet));
+                            while (resultSet.next()) {
+                                IslandRole role = mapper.map(resultSet);
+                                role.permissions(EnumSet.noneOf(IslandPermission.class));
+                                roles.add(role);
+                                byId.put(role.id(), role);
+                            }
+                        }
+                    }
+                    // One range scan for the whole island; fan the rows back out onto their roles.
+                    try (PreparedStatement statement = connection.prepareStatement(permissionsQuery)) {
+                        statement.setObject(1, islandId);
+                        try (ResultSet resultSet = statement.executeQuery()) {
+                            while (resultSet.next()) {
+                                IslandRole role = byId.get(resultSet.getLong(1));
+                                if (role != null)
+                                    parsePermission(resultSet.getString(2)).ifPresent(role.permissions()::add);
+                            }
                         }
                     }
                     return roles;
@@ -283,32 +321,14 @@ public class RoleRepository extends IndexedSyncedRepository<Long, IslandRole, UU
     // =====================================================================================
 
     private CompletableFuture<IslandRole> insert(IslandRole role) {
-        String query = """
-                INSERT INTO island_roles (island_id, kind, name, weight, is_default)
-                VALUES (?, ?, ?, ?, ?)
-                """;
         return this.plugin.database()
                 .supply(connection -> {
-                    try (PreparedStatement statement = connection.prepareStatement(query, Statement.RETURN_GENERATED_KEYS)) {
-                        statement.setObject(1, role.islandId());
-                        statement.setInt(2, role.kind().ordinal());
-                        statement.setString(3, role.name());
-                        statement.setInt(4, role.weight());
-                        statement.setBoolean(5, role.isDefault());
+                    try (PreparedStatement statement = connection.prepareStatement(INSERT_ROLE, Statement.RETURN_GENERATED_KEYS)) {
+                        bindRoleInsert(statement, role);
                         statement.executeUpdate();
-                        try (ResultSet keys = statement.getGeneratedKeys()) {
-                            if (!keys.next())
-                                throw new SQLException("No generated key returned for island_roles insert");
-                            return new IslandRole(
-                                    keys.getLong(1),
-                                    role.islandId(),
-                                    role.kind(),
-                                    role.name(),
-                                    role.weight(),
-                                    role.isDefault(),
-                                    role.createdAt()
-                            );
-                        }
+                        IslandRole saved = withGeneratedId(statement, role);
+                        saved.permissions(EnumSet.noneOf(IslandPermission.class));
+                        return saved;
                     }
                 })
                 .thenCompose(saved -> {
@@ -316,6 +336,55 @@ public class RoleRepository extends IndexedSyncedRepository<Long, IslandRole, UU
                     return this.plugin.islands().refreshRelationships(saved.islandId())
                             .thenApply(ignored -> saved);
                 });
+    }
+
+    private static void bindRoleInsert(PreparedStatement statement, IslandRole role) throws SQLException {
+        statement.setObject(1, role.islandId());
+        statement.setInt(2, role.kind().ordinal());
+        statement.setString(3, role.name());
+        statement.setInt(4, role.weight());
+        statement.setBoolean(5, role.isDefault());
+    }
+
+    private static IslandRole withGeneratedId(Statement statement, IslandRole role) throws SQLException {
+        try (ResultSet keys = statement.getGeneratedKeys()) {
+            if (!keys.next())
+                throw new SQLException("No generated key returned for island_roles insert");
+            return new IslandRole(
+                    keys.getLong(1),
+                    role.islandId(),
+                    role.kind(),
+                    role.name(),
+                    role.weight(),
+                    role.isDefault(),
+                    role.createdAt()
+            );
+        }
+    }
+
+    /** Loads a single role's granted permissions, skipping any keys no longer backed by the enum. */
+    private EnumSet<IslandPermission> loadPermissions(Connection connection, long roleId) throws SQLException {
+        EnumSet<IslandPermission> permissions = EnumSet.noneOf(IslandPermission.class);
+        try (PreparedStatement statement = connection.prepareStatement("SELECT permission FROM island_role_permissions WHERE role_id = ?")) {
+            statement.setLong(1, roleId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                while (resultSet.next())
+                    parsePermission(resultSet.getString(1)).ifPresent(permissions::add);
+            }
+        }
+        return permissions;
+    }
+
+    /** Maps a stored permission key back to its enum, dropping (with a warning) any stale key. */
+    private Optional<IslandPermission> parsePermission(String key) {
+        if (key == null || key.isBlank())
+            return Optional.empty();
+        try {
+            return Optional.of(IslandPermission.valueOf(key.trim().toUpperCase(Locale.ROOT)));
+        } catch (IllegalArgumentException exception) {
+            this.plugin.getSLF4JLogger().warn("Unknown island permission '{}' stored in island_role_permissions; ignoring.", key);
+            return Optional.empty();
+        }
     }
 
     private CompletableFuture<IslandRole> update(IslandRole role) {

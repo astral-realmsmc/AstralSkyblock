@@ -8,6 +8,7 @@ import com.astralrealms.core.paper.AstralPaperAPI;
 import com.astralrealms.core.paper.dialog.container.DialogContainer;
 import com.astralrealms.core.paper.menu.container.MenuContainer;
 import com.astralrealms.core.paper.plugin.AstralPaperPlugin;
+import com.astralrealms.core.placeholder.container.RootPlaceholderContainer;
 import com.astralrealms.core.storage.DatabaseService;
 import com.astralrealms.skyblock.command.SkyblockCommand;
 import com.astralrealms.skyblock.command.completion.IslandBlueprintCompletionHandler;
@@ -25,6 +26,7 @@ import com.astralrealms.skyblock.model.IslandBlueprint;
 import com.astralrealms.skyblock.model.IslandPermission;
 import com.astralrealms.skyblock.model.IslandSettings;
 import com.astralrealms.skyblock.model.island.Island;
+import com.astralrealms.skyblock.placeholder.SkyblockPlaceholders;
 import com.astralrealms.skyblock.service.*;
 
 import lombok.Getter;
@@ -95,7 +97,7 @@ public final class AstralSkyblock extends AstralPaperPlugin {
         this.registerCompletion("islands", new IslandCompletionHandler(this));
         // -- Context
         this.registerContext(IslandBlueprint.class, new IslandBlueprintContextResolver(this));
-        this.registerContext(Island.class, new IslandContextResolver(this));
+        this.commands().getCommandContexts().registerIssuerAwareContext(Island.class, new IslandContextResolver(this));
         // -- Commands
         this.registerCommand(new SkyblockCommand());
 
@@ -104,6 +106,9 @@ public final class AstralSkyblock extends AstralPaperPlugin {
                 new PlayerConnectionListener(this),
                 new IslandListener(this)
         );
+
+        // Placeholders
+        RootPlaceholderContainer.get().registerPlaceholder(new SkyblockPlaceholders(this));
     }
 
     @Override

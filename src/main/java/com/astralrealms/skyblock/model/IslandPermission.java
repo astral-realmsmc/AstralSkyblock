@@ -7,6 +7,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 public enum IslandPermission implements ConfigurationEnum<ItemStackWrapper> {
+    ALL,
     ANIMAL_BREED,
     ANIMAL_SHEAR,
     BAN_MEMBER,

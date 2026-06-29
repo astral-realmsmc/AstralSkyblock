@@ -168,68 +168,29 @@ public class IslandService {
                             System.currentTimeMillis()
                     );
 
-                    this.repository.save(island)
-                            .whenComplete((result, throwable) -> {
+                    // The island, its default roles + seeded permissions, and the owner member are all
+                    // persisted in one transaction; only the world (filesystem, not the DB) is created after.
+                    this.repository.create(island, this.plugin.roles().defaultRoleSeeds(island.uniqueId()), player.getUniqueId())
+                            .thenCompose(saved -> this.plugin.worlds().create(saved.uniqueId(), blueprint))
+                            .whenComplete((worldInstance, throwable) -> {
                                 if (throwable != null) {
-                                    this.plugin.getSLF4JLogger().error("Failed to save island for player {}", player.getName(), throwable);
+                                    this.plugin.getSLF4JLogger().error("Failed to create island for player {}", player.getName(), throwable);
                                     ASMessages.UNEXPECTED_ERROR.message(player);
                                     return;
-                                } else if (result == null) {
-                                    this.plugin.getSLF4JLogger().error("Failed to save island for player {}: result is null", player.getName());
+                                } else if (worldInstance == null) {
+                                    this.plugin.getSLF4JLogger().error("Failed to create island for player {}: world is null", player.getName());
                                     ASMessages.UNEXPECTED_ERROR.message(player);
                                     return;
                                 }
+                                player.teleportAsync(worldInstance.getBukkitWorld().getSpawnLocation());
 
+                                this.plugin.getSLF4JLogger().info("Island created for player {} in {} ms", island.uniqueId(), System.currentTimeMillis() - startTime);
 
-                                // Create default role
-                                this.plugin.roles()
-                                        .saveDefaults(island.uniqueId())
-                                        .exceptionally(throwable1 -> {
-                                            this.plugin.getSLF4JLogger().error("Failed to save default roles for island {}", island.uniqueId(), throwable1);
-                                            ASMessages.UNEXPECTED_ERROR.message(player);
-                                            return null;
-                                        })
-                                        .thenAccept(roles -> {
-                                            // Add owner
-                                            this.plugin.members()
-                                                    .addOwner(island.uniqueId(), player.getUniqueId())
-                                                    .exceptionally(throwable1 -> {
-                                                        this.plugin.getSLF4JLogger().error("Failed to add owner for island {}", island.uniqueId(), throwable1);
-                                                        ASMessages.UNEXPECTED_ERROR.message(player);
-                                                        return null;
-                                                    })
-                                                    .thenAccept(member -> {
-                                                        if (member == null) {
-                                                            this.plugin.getSLF4JLogger().error("Failed to add owner for island {}: result is null", island.uniqueId());
-                                                            ASMessages.UNEXPECTED_ERROR.message(player);
-                                                            return;
-                                                        }
-
-                                                        // Create world
-                                                        this.plugin.worlds()
-                                                                .create(island.uniqueId(), blueprint)
-                                                                .whenComplete((worldInstance, throwable1) -> {
-                                                                    if (throwable1 != null) {
-                                                                        this.plugin.getSLF4JLogger().error("Failed to create island for player {}", player.getName(), throwable1);
-                                                                        ASMessages.UNEXPECTED_ERROR.message(player);
-                                                                        return;
-                                                                    } else if (worldInstance == null) {
-                                                                        this.plugin.getSLF4JLogger().error("Failed to create island for player {}: result is null", player.getName());
-                                                                        ASMessages.UNEXPECTED_ERROR.message(player);
-                                                                        return;
-                                                                    }
-                                                                    player.teleportAsync(worldInstance.getBukkitWorld().getSpawnLocation());
-
-                                                                    this.plugin.getSLF4JLogger().info("Island created for player {} in {} ms", island.uniqueId(), System.currentTimeMillis() - startTime);
-
-                                                                    ASMessages.ISLAND_CREATED.message(
-                                                                            player,
-                                                                            AstralPaperAPI.createPlaceholderContainer(player)
-                                                                                    .registerPlaceholder(island)
-                                                                    );
-                                                                });
-                                                    });
-                                        });
+                                ASMessages.ISLAND_CREATED.message(
+                                        player,
+                                        AstralPaperAPI.createPlaceholderContainer(player)
+                                                .registerPlaceholder(island)
+                                );
                             });
                 })
                 .exceptionally(throwable -> {
