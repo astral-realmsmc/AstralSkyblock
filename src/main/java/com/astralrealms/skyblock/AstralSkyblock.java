@@ -19,6 +19,8 @@ import com.astralrealms.skyblock.listener.IslandListener;
 import com.astralrealms.skyblock.listener.PlayerConnectionListener;
 import com.astralrealms.skyblock.messaging.ASPacketRegistry;
 import com.astralrealms.skyblock.model.IslandBlueprint;
+import com.astralrealms.skyblock.model.IslandPermission;
+import com.astralrealms.skyblock.model.IslandSettings;
 import com.astralrealms.skyblock.model.island.Island;
 import com.astralrealms.skyblock.service.*;
 
@@ -128,6 +130,10 @@ public final class AstralSkyblock extends AstralPaperPlugin {
 
         // Messages
         this.loadEnum("messages.yml", ASMessages.class);
+
+        // Permissions & Settings
+        this.loadEnum("settings.yml", IslandSettings.class);
+        this.loadEnum("permissions.yml", IslandPermission.class);
 
         // Services
         this.blueprints.load();

@@ -1,6 +1,12 @@
 package com.astralrealms.skyblock.model;
 
-public enum IslandPermission {
+import com.astralrealms.core.configuration.ConfigurationEnum;
+import com.astralrealms.core.paper.model.itemstack.ItemStackWrapper;
+
+import lombok.Getter;
+import lombok.Setter;
+
+public enum IslandPermission implements ConfigurationEnum<ItemStackWrapper> {
     ANIMAL_BREED,
     ANIMAL_SHEAR,
     BAN_MEMBER,
@@ -51,5 +57,14 @@ public enum IslandPermission {
     VALUABLE_BREAK,
     VILLAGER_TRADING,
     WIND_CHARGE,
-    WITHDRAW_MONEY
+    WITHDRAW_MONEY;
+
+    @Setter
+    @Getter
+    private ItemStackWrapper value;
+
+    @Override
+    public Class<ItemStackWrapper> type() {
+        return ItemStackWrapper.class;
+    }
 }
