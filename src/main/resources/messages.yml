@@ -1,0 +1,9 @@
+# Creation
+name-already-taken: "%name% is already taken. Please choose a different name."
+island-created: "%island_name% has been successfully created!"
+
+# Deletion
+island-deleted: "%island_name% has been successfully deleted."
+
+# Misc
+unexpected-error: "An unexpected error occurred. Please try again later."

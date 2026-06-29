@@ -1,5 +1,7 @@
 package com.astralrealms.skyblock.repository;
 
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.util.Collection;
 import java.util.Map;
 import java.util.Optional;
@@ -7,6 +9,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.intellij.lang.annotations.Language;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
@@ -89,6 +92,27 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
         if (islandId == null)
             return Optional.empty();
         return findCachedById(islandId);
+    }
+
+    public CompletableFuture<Boolean> existsByName(String name) {
+        UUID islandId = this.nameIslandMap.get(name);
+        if (islandId != null)
+            return CompletableFuture.completedFuture(true);
+        @Language("SQL") String query = """
+                SELECT 1 FROM islands
+                WHERE name = ?
+                LIMIT 1
+                """;
+
+        return this.plugin.database()
+                .supply(connection -> {
+                    try (PreparedStatement stmt = connection.prepareStatement(query)) {
+                        stmt.setString(1, name);
+                        try (ResultSet rs = stmt.executeQuery()) {
+                            return rs.next();
+                        }
+                    }
+                });
     }
 
     @Unmodifiable

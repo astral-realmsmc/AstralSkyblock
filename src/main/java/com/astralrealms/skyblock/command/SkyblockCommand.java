@@ -23,11 +23,11 @@ public class SkyblockCommand extends BaseCommand {
 
     @Subcommand("create")
     @Description("Creates a new island")
-    @Syntax("<blueprint>")
-    @CommandCompletion("@islandBlueprints")
-    public void onCreate(Player player, @Nullable @Optional IslandBlueprint blueprint) {
+    @Syntax("<name> <blueprint>")
+    @CommandCompletion("@nothing @islandBlueprints")
+    public void onCreate(Player player, @Nullable @Optional String name, @Nullable @Optional IslandBlueprint blueprint) {
         IslandBlueprint finalBlueprint = blueprint == null ? this.plugin.blueprints().defaultBlueprint() : blueprint;
-        this.plugin.islands().create(player, finalBlueprint);
+        this.plugin.islands().create(player, name, finalBlueprint);
     }
 
     @Subcommand("save")

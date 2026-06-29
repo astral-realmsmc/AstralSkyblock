@@ -7,6 +7,13 @@ import lombok.Getter;
 import lombok.Setter;
 
 public enum ASMessages implements MessageEnum {
+    // Creation
+    NAME_ALREADY_TAKEN,
+    ISLAND_CREATED,
+    // Deletion
+    ISLAND_DELETED,
+    // Misc
+    UNEXPECTED_ERROR
     ;
 
     @Getter
