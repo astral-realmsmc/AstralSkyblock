@@ -1,10 +1,11 @@
 package com.astralrealms.skyblock.model.island;
 
 import java.util.Collection;
+import java.util.EnumSet;
+import java.util.List;
 import java.util.UUID;
 
 import org.bukkit.Location;
-import org.jetbrains.annotations.Unmodifiable;
 
 import com.astralrealms.core.model.Unique;
 import com.astralrealms.core.placeholder.PlaceholderContext;
@@ -12,17 +13,17 @@ import com.astralrealms.core.placeholder.impl.system.ComplexPlaceholder;
 import com.astralrealms.core.provider.ItemProvider;
 import com.astralrealms.core.storage.annotation.*;
 import com.astralrealms.core.storage.model.SQLAccessor;
-import com.astralrealms.skyblock.AstralSkyblock;
+import com.astralrealms.skyblock.model.IslandSettings;
 import com.astralrealms.skyblock.model.member.IslandMember;
+import com.astralrealms.skyblock.model.role.IslandRole;
 
-import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 @Getter
 @Entity("islands")
 @NoArgsConstructor
-@AllArgsConstructor
 public class Island implements Unique, ComplexPlaceholder {
 
     @Id
@@ -45,19 +46,41 @@ public class Island implements Unique, ComplexPlaceholder {
     @Column(type = SQLAccessor.LONG_TIMESTAMP)
     private long createdAt;
 
-    public IslandMember owner() {
-        return this.members()
-                .stream()
-                .filter(IslandMember::isOwner)
-                .findFirst()
-                .orElse(null);
+    // Relationships — populated for active islands by IslandService#hydrate, cleared on deactivation.
+    // Excluded from persistence (transient) and from L2/Gson serialization, so they are per-server state.
+    @Setter
+    private transient IslandMember owner;
+    @Setter
+    private transient Collection<IslandMember> members;
+    @Setter
+    private transient Collection<IslandRole> roles;
+    @Setter
+    private transient EnumSet<IslandSettings> settings;
+
+    public Island(UUID uniqueId, String name, boolean locked, int level,
+                  double spawnX, double spawnY, double spawnZ, float spawnYaw, float spawnPitch,
+                  long updatedAt, long createdAt) {
+        this.uniqueId = uniqueId;
+        this.name = name;
+        this.locked = locked;
+        this.level = level;
+        this.spawnX = spawnX;
+        this.spawnY = spawnY;
+        this.spawnZ = spawnZ;
+        this.spawnYaw = spawnYaw;
+        this.spawnPitch = spawnPitch;
+        this.updatedAt = updatedAt;
+        this.createdAt = createdAt;
     }
 
-    @Unmodifiable
+    // Relationship accessors coalesce null to empty so reads are safe before hydration (or on an
+    // island restored from L2, where transient fields are absent).
     public Collection<IslandMember> members() {
-        return AstralSkyblock.get()
-                .members()
-                .findIslandMembers(this.uniqueId);
+        return this.members == null ? List.of() : this.members;
+    }
+
+    public Collection<IslandRole> roles() {
+        return this.roles == null ? List.of() : this.roles;
     }
 
     // Spawn
@@ -81,7 +104,9 @@ public class Island implements Unique, ComplexPlaceholder {
             case "locked" -> locked;
             case "level" -> level;
             case "members" -> ItemProvider.of(members());
-            case "owner" -> this.owner();
+            case "owner" -> this.owner;
+            case "roles" -> ItemProvider.of(roles());
+            case "settings" -> this.settings;
             case "updatedAt" -> updatedAt;
             case "createdAt" -> createdAt;
             case null, default -> null;

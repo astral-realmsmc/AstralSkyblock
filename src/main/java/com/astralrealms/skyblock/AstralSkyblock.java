@@ -1,9 +1,12 @@
 package com.astralrealms.skyblock;
 
 
+
 import com.astralrealms.core.cache.CacheService;
 import com.astralrealms.core.messaging.MessagingService;
 import com.astralrealms.core.paper.AstralPaperAPI;
+import com.astralrealms.core.paper.dialog.container.DialogContainer;
+import com.astralrealms.core.paper.menu.container.MenuContainer;
 import com.astralrealms.core.paper.plugin.AstralPaperPlugin;
 import com.astralrealms.core.storage.DatabaseService;
 import com.astralrealms.skyblock.command.SkyblockCommand;
@@ -48,6 +51,8 @@ public final class AstralSkyblock extends AstralPaperPlugin {
     private RoleService roles;
     private MemberService members;
     private ServerService servers;
+    private MenuContainer menus;
+    private DialogContainer dialogs;
 
     @Override
     public void onEnable() {
@@ -59,6 +64,8 @@ public final class AstralSkyblock extends AstralPaperPlugin {
         // Services
         this.blueprints = new BlueprintService(this);
         this.worlds = new WorldService(this);
+        this.menus = new MenuContainer(this);
+        this.dialogs = new DialogContainer(this);
 
         // Configuration
         this.loadConfiguration();
@@ -76,10 +83,10 @@ public final class AstralSkyblock extends AstralPaperPlugin {
         this.messaging.connect();
 
         // Services
-        this.islands = new IslandService(this);
-        this.players = new PlayerService(this);
         this.roles = new RoleService(this);
         this.members = new MemberService(this);
+        this.islands = new IslandService(this);
+        this.players = new PlayerService(this);
         this.servers = new ServerService(this);
 
         // Commands
@@ -138,6 +145,8 @@ public final class AstralSkyblock extends AstralPaperPlugin {
         // Services
         this.blueprints.load();
         this.worlds.load();
+        this.menus.load();
+        this.dialogs.load();
     }
 
     public static AstralSkyblock get() {

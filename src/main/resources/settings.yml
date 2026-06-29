@@ -1,125 +1,107 @@
 always-day:
-  icon:
-    material: SUNFLOWER
-    name: "<green>Always Day"
-    lore:
-      - "<gray>Keeps the island time at day."
+  material: SUNFLOWER
+  name: "<green>Always Day"
+  lore:
+    - "<gray>Keeps the island time at day."
 
 always-middle-day:
-  icon:
-    material: DAYLIGHT_DETECTOR
-    name: "<green>Always Midday"
-    lore:
-      - "<gray>Keeps the island time at midday."
+  material: DAYLIGHT_DETECTOR
+  name: "<green>Always Midday"
+  lore:
+    - "<gray>Keeps the island time at midday."
 
 always-night:
-  icon:
-    material: CLOCK
-    name: "<green>Always Night"
-    lore:
-      - "<gray>Keeps the island time at night."
+  material: CLOCK
+  name: "<green>Always Night"
+  lore:
+    - "<gray>Keeps the island time at night."
 
 always-middle-night:
-  icon:
-    material: BLACK_BED
-    name: "<green>Always Midnight"
-    lore:
-      - "<gray>Keeps the island time at midnight."
+  material: BLACK_BED
+  name: "<green>Always Midnight"
+  lore:
+    - "<gray>Keeps the island time at midnight."
 
 always-rain:
-  icon:
-    material: WATER_BUCKET
-    name: "<green>Always Rain"
-    lore:
-      - "<gray>Keeps the island weather rainy."
+  material: WATER_BUCKET
+  name: "<green>Always Rain"
+  lore:
+    - "<gray>Keeps the island weather rainy."
 
 always-shiny:
-  icon:
-    material: GLOWSTONE
-    name: "<green>Always Shiny"
-    lore:
-      - "<gray>Keeps the island weather clear."
+  material: GLOWSTONE
+  name: "<green>Always Shiny"
+  lore:
+    - "<gray>Keeps the island weather clear."
 
 creeper-explosion:
-  icon:
-    material: CREEPER_HEAD
-    name: "<green>Creeper Explosion"
-    lore:
-      - "<gray>Allows creepers to damage the island."
+  material: CREEPER_HEAD
+  name: "<green>Creeper Explosion"
+  lore:
+    - "<gray>Allows creepers to damage the island."
 
 crops-growth:
-  icon:
-    material: WHEAT
-    name: "<green>Crops Growth"
-    lore:
-      - "<gray>Allows crops to grow on the island."
+  material: WHEAT
+  name: "<green>Crops Growth"
+  lore:
+    - "<gray>Allows crops to grow on the island."
 
 egg-lay:
-  icon:
-    material: EGG
-    name: "<green>Egg Lay"
-    lore:
-      - "<gray>Allows chickens to lay eggs."
+  material: EGG
+  name: "<green>Egg Lay"
+  lore:
+    - "<gray>Allows chickens to lay eggs."
 
 enderman-grief:
-  icon:
-    material: ENDER_PEARL
-    name: "<green>Enderman Grief"
-    lore:
-      - "<gray>Allows endermen to pick up and move blocks."
+  material: ENDER_PEARL
+  name: "<green>Enderman Grief"
+  lore:
+    - "<gray>Allows endermen to pick up and move blocks."
 
 fire-spread:
-  icon:
-    material: FIRE_CHARGE
-    name: "<green>Fire Spread"
-    lore:
-      - "<gray>Allows fire to spread on the island."
+  material: FIRE_CHARGE
+  name: "<green>Fire Spread"
+  lore:
+    - "<gray>Allows fire to spread on the island."
 
 ghast-fireball:
-  icon:
-    material: FIRE_CHARGE
-    name: "<green>Ghast Fireball"
-    lore:
-      - "<gray>Allows ghast fireballs to damage the island."
+  material: FIRE_CHARGE
+  name: "<green>Ghast Fireball"
+  lore:
+    - "<gray>Allows ghast fireballs to damage the island."
 
 lava-flow:
-  icon:
-    material: LAVA_BUCKET
-    name: "<green>Lava Flow"
-    lore:
-      - "<gray>Allows lava to flow on the island."
+  material: LAVA_BUCKET
+  name: "<green>Lava Flow"
+  lore:
+    - "<gray>Allows lava to flow on the island."
 
 pvp:
-  icon:
-    material: DIAMOND_SWORD
-    name: "<green>PvP"
-    lore:
-      - "<gray>Allows players to fight on the island."
+  material: DIAMOND_SWORD
+  name: "<green>PvP"
+  lore:
+    - "<gray>Allows players to fight on the island."
 
 tnt-explosion:
-  icon:
-    material: TNT
-    name: "<green>TNT Explosion"
-    lore:
-      - "<gray>Allows TNT to damage the island."
+  material: TNT
+  name: "<green>TNT Explosion"
+  lore:
+    - "<gray>Allows TNT to damage the island."
 
 tree-growth:
-  icon:
-    material: OAK_SAPLING
-    name: "<green>Tree Growth"
-    lore:
-      - "<gray>Allows saplings to grow into trees."
+  material: OAK_SAPLING
+  name: "<green>Tree Growth"
+  lore:
+    - "<gray>Allows saplings to grow into trees."
 
 water-flow:
-  icon:
-    material: WATER_BUCKET
-    name: "<green>Water Flow"
-    lore:
-      - "<gray>Allows water to flow on the island."
+  material: WATER_BUCKET
+  name: "<green>Water Flow"
+  lore:
+    - "<gray>Allows water to flow on the island."
 
 wither-explosion:
-  icon:
-    material: WITHER_SKELETON_SKULL
-    name: "<green>Wither Explosion"
-    lore:
-      - "<gray>Allows the wither to damage the island."
+  material: WITHER_SKELETON_SKULL
+  name: "<green>Wither Explosion"
+  lore:
+    - "<gray>Allows the wither to damage the island."

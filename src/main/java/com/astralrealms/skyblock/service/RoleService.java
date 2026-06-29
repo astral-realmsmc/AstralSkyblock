@@ -21,6 +21,11 @@ public class RoleService {
         this.repository = new RoleRepository(plugin);
     }
 
+    /** Every role of an island, senior first. Primes (and refreshes) the per-island role slice. */
+    public CompletableFuture<List<IslandRole>> findByIsland(UUID islandId) {
+        return this.repository.findByIsland(islandId);
+    }
+
     public CompletableFuture<Collection<IslandRole>> saveDefaults(UUID islandId) {
         List<CompletableFuture<IslandRole>> roles = this.plugin.rolesConfiguration()
                 .roles()

@@ -42,10 +42,21 @@ public class RoleRepository extends IndexedSyncedRepository<Long, IslandRole, UU
                 IslandRole.class
         );
         this.plugin.messaging().registerExchange(exchangeChannel, packet -> {
-            if (packet instanceof LongObjectUpdatePacket updatePacket)
-                cache.synchronous().refresh(updatePacket.id());
-            else if (packet instanceof LongObjectDeletePacket deletePacket)
+            if (packet instanceof LongObjectUpdatePacket updatePacket) {
+                // The packet carries only the role id, so reload the role (it may be brand new here)
+                // and take its owning island from the reloaded value, then rebuild that island's snapshot.
+                cache.synchronous().refresh(updatePacket.id())
+                        .thenAccept(role -> {
+                            if (role != null)
+                                this.plugin.islands().refreshRelationships(role.islandId());
+                        });
+            } else if (packet instanceof LongObjectDeletePacket deletePacket) {
+                // Capture the owning island before evicting the role, then rebuild that island's snapshot.
+                UUID islandId = findCachedById(deletePacket.id()).map(IslandRole::islandId).orElse(null);
                 invalidateLocally(deletePacket.id());
+                if (islandId != null)
+                    this.plugin.islands().refreshRelationships(islandId);
+            }
         });
     }
 
@@ -135,11 +146,12 @@ public class RoleRepository extends IndexedSyncedRepository<Long, IslandRole, UU
                         set.executeUpdate();
                     }
                 })
-                .thenApply(success -> {
+                .thenCompose(success -> {
                     // The previously-default role also changed; invalidate every cached role of the island.
                     List.copyOf(keysIn(islandId)).forEach(this::invalidateGlobally);
                     invalidateGlobally(newRoleId);
-                    return success;
+                    return this.plugin.islands().refreshRelationships(islandId)
+                            .thenApply(ignored -> success);
                 });
     }
 
@@ -162,10 +174,10 @@ public class RoleRepository extends IndexedSyncedRepository<Long, IslandRole, UU
                         delete.executeUpdate();
                     }
                 })
-                .thenApply(success -> {
-                    invalidateLocally(doomedRoleId);
+                .thenCompose(success -> {
                     invalidateGlobally(doomedRoleId);
-                    return success;
+                    return this.plugin.islands().refreshRelationships(islandId)
+                            .thenApply(ignored -> success);
                 });
     }
 
@@ -188,6 +200,11 @@ public class RoleRepository extends IndexedSyncedRepository<Long, IslandRole, UU
     // =====================================================================================
     //  SyncedRepository contract
     // =====================================================================================
+
+    @Override
+    protected boolean sharedCacheEnabled() {
+        return false; // roles are local-cache + database only
+    }
 
     @Override
     protected Long keyFromValue(IslandRole value) {
@@ -294,9 +311,10 @@ public class RoleRepository extends IndexedSyncedRepository<Long, IslandRole, UU
                         }
                     }
                 })
-                .thenApply(saved -> {
+                .thenCompose(saved -> {
                     index(saved);
-                    return saved;
+                    return this.plugin.islands().refreshRelationships(saved.islandId())
+                            .thenApply(ignored -> saved);
                 });
     }
 
@@ -312,7 +330,9 @@ public class RoleRepository extends IndexedSyncedRepository<Long, IslandRole, UU
                         statement.executeUpdate();
                     }
                 })
-                .thenApply(ignored -> role);
+                .thenCompose(ignored -> this.plugin.islands()
+                        .refreshRelationships(role.islandId())
+                        .thenApply(unused -> role));
     }
 
     private CompletableFuture<Void> update(String query, String value, long roleId) {

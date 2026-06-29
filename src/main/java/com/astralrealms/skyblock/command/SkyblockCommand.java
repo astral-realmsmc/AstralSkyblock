@@ -7,6 +7,7 @@ import org.jetbrains.annotations.Nullable;
 import com.astralrealms.core.paper.AstralPaperAPI;
 import com.astralrealms.core.service.impl.TeleportationService;
 import com.astralrealms.skyblock.AstralSkyblock;
+import com.astralrealms.skyblock.configuration.ASMessages;
 import com.astralrealms.skyblock.model.IslandBlueprint;
 import com.astralrealms.skyblock.model.island.Island;
 
@@ -74,6 +75,7 @@ public class SkyblockCommand extends BaseCommand {
                 .whenComplete((result, throwable) -> {
                     if (throwable != null) {
                         this.plugin.getSLF4JLogger().error("Error while spawning island: {}", island.uniqueId(), throwable);
+                        ASMessages.UNEXPECTED_ERROR.message(player);
                         return;
                     }
 

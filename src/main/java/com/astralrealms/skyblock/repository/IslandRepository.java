@@ -3,11 +3,13 @@ package com.astralrealms.skyblock.repository;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 import org.intellij.lang.annotations.Language;
 import org.jetbrains.annotations.Nullable;
@@ -16,6 +18,8 @@ import org.jetbrains.annotations.Unmodifiable;
 import com.astralrealms.core.storage.pagination.Pageable;
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.model.island.Island;
+import com.astralrealms.skyblock.model.member.IslandMember;
+import com.astralrealms.skyblock.model.role.IslandRole;
 import com.astralrealms.skyblock.utils.ASConstants;
 import com.github.benmanes.caffeine.cache.*;
 
@@ -68,9 +72,60 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
     }
 
     /**
-     * Loads every island into the local L1 cache (and name index) in pages of
-     * {@link ASConstants#ISLAND_WARMUP_PAGE_SIZE}, one page at a time, so a large island table never
-     * has to be held in a single result set. Intended to be called once on startup.
+     * Cascade-loads an island's relationships onto it: its roles, its members (each resolved to the
+     * role it holds), and its owner. Settings and per-role permissions are deferred. Priming the
+     * per-island role and member slices is a side effect. Used on every load (see {@link #postLoad})
+     * and to refresh a cached island after a membership/role change.
+     */
+    private CompletableFuture<Island> cascade(Island island) {
+        UUID islandId = island.uniqueId();
+        return this.plugin.roles()
+                .findByIsland(islandId)
+                .thenCompose(roles -> this.plugin.members().findByIsland(islandId)
+                        .thenApply(members -> {
+                            populate(island, roles, members);
+                            return island;
+                        }));
+    }
+
+    @Override
+    protected CompletableFuture<Island> postLoad(Island island) {
+        return cascade(island);
+    }
+
+    /**
+     * Re-cascades a cached island's relationships after its membership or roles changed. A no-op if
+     * the island is not cached on this server.
+     */
+    public CompletableFuture<Void> refreshRelationships(UUID islandId) {
+        Island island = findCachedById(islandId).orElse(null);
+        if (island == null)
+            return CompletableFuture.completedFuture(null);
+        return cascade(island).thenAccept(ignored -> {
+        });
+    }
+
+    static void populate(Island island, List<IslandRole> roles, List<IslandMember> members) {
+        Map<Long, IslandRole> rolesById = roles.stream()
+                .collect(Collectors.toMap(IslandRole::id, role -> role));
+
+        IslandMember owner = null;
+        for (IslandMember member : members) {
+            if (member.roleId() != null)
+                member.role(rolesById.get(member.roleId()));
+            if (member.isOwner())
+                owner = member;
+        }
+
+        island.roles(roles);
+        island.members(members);
+        island.owner(owner);
+    }
+
+    /**
+     * Loads every island — fully cascaded with its relationships — into the local L1 cache (and name
+     * index) in pages of {@link ASConstants#ISLAND_WARMUP_PAGE_SIZE}, one page at a time, so a large
+     * island table never has to be held in a single result set. Intended to be called once on startup.
      */
     public CompletableFuture<Void> warmup() {
         return warmupPage(0);
@@ -80,10 +135,13 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
         Pageable pageable = Pageable.of(page, ASConstants.ISLAND_WARMUP_PAGE_SIZE, "id");
         return this.repository.findAll(pageable)
                 .thenCompose(result -> {
-                    result.content().forEach(this::cacheLocally);
-                    if (result.hasNext())
-                        return warmupPage(page + 1);
-                    return CompletableFuture.completedFuture(null);
+                    CompletableFuture<?>[] tasks = result.content().stream()
+                            .map(island -> cascade(island).thenAccept(this::cacheLocally))
+                            .toArray(CompletableFuture[]::new);
+                    return CompletableFuture.allOf(tasks)
+                            .thenCompose(ignored -> result.hasNext()
+                                    ? warmupPage(page + 1)
+                                    : CompletableFuture.completedFuture(null));
                 });
     }
 

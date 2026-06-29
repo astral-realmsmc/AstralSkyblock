@@ -40,10 +40,17 @@ public class MemberRepository extends IndexedSyncedRepository<MemberKey, IslandM
                 IslandMember.class
         );
         this.plugin.messaging().registerExchange(exchangeChannel, packet -> {
-            if (packet instanceof MemberObjectUpdatePacket updatePacket)
+            if (packet instanceof MemberObjectUpdatePacket updatePacket) {
+                // Keep the member entry coherent for direct lookups, then rebuild the island's
+                // relationship snapshot (which also re-primes the slice when the island is cached here).
                 cache.synchronous().refresh(new MemberKey(updatePacket.islandId(), updatePacket.playerUuid()));
-            else if (packet instanceof MemberObjectDeletePacket deletePacket)
+                this.plugin.islands().refreshRelationships(updatePacket.islandId());
+            } else if (packet instanceof MemberObjectDeletePacket deletePacket) {
+                // Evict the removed member from L1 (a re-prime would not drop a deleted row), then
+                // rebuild the island's relationship snapshot.
                 invalidateLocally(new MemberKey(deletePacket.islandId(), deletePacket.playerUuid()));
+                this.plugin.islands().refreshRelationships(deletePacket.islandId());
+            }
         });
     }
 
@@ -145,7 +152,10 @@ public class MemberRepository extends IndexedSyncedRepository<MemberKey, IslandM
                         statement.executeUpdate();
                     }
                 })
-                .thenRun(() -> invalidateGlobally(new MemberKey(islandId, playerUuid)));
+                .thenCompose(ignored -> {
+                    invalidateGlobally(new MemberKey(islandId, playerUuid));
+                    return this.plugin.islands().refreshRelationships(islandId);
+                });
     }
 
     /**
@@ -200,16 +210,22 @@ public class MemberRepository extends IndexedSyncedRepository<MemberKey, IslandM
                         promote.executeUpdate();
                     }
                 })
-                .thenApply(success -> {
+                .thenCompose(success -> {
                     invalidateGlobally(new MemberKey(islandId, oldOwner));
                     invalidateGlobally(new MemberKey(islandId, newOwner));
-                    return success;
+                    return this.plugin.islands().refreshRelationships(islandId)
+                            .thenApply(ignored -> success);
                 });
     }
 
     // =====================================================================================
     //  SyncedRepository contract
     // =====================================================================================
+
+    @Override
+    protected boolean sharedCacheEnabled() {
+        return false; // members are local-cache + database only
+    }
 
     @Override
     protected MemberKey keyFromValue(IslandMember value) {
@@ -317,15 +333,17 @@ public class MemberRepository extends IndexedSyncedRepository<MemberKey, IslandM
         values.forEach(member -> this.playerIslandsMap.put(member.playerUuid(), member.islandId()));
     }
 
-
-// =====================================================================================
+    // =====================================================================================
     //  Internals
     // =====================================================================================
 
     private CompletableFuture<IslandMember> reload(UUID islandId, UUID playerUuid) {
         MemberKey key = new MemberKey(islandId, playerUuid);
         invalidateGlobally(key);
-        return findById(key);
+        return findById(key)
+                .thenCompose(member -> this.plugin.islands()
+                        .refreshRelationships(islandId)
+                        .thenApply(ignored -> member));
     }
 
     private IslandMember map(ResultSet resultSet) throws SQLException {

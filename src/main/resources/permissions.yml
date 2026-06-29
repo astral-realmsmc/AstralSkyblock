@@ -1,356 +1,305 @@
 animal-breed:
-  icon:
-    material: BONE
-    name: "<green>Animal Breed"
-    lore:
-      - "<gray>Allows you to breed animals."
+  material: BONE
+  name: "<green>Animal Breed"
+  lore:
+    - "<gray>Allows you to breed animals."
 
 animal-shear:
-  icon:
-    material: SHEARS
-    name: "<green>Animal Shear"
-    lore:
-      - "<gray>Allows you to shear animals."
+  material: SHEARS
+  name: "<green>Animal Shear"
+  lore:
+    - "<gray>Allows you to shear animals."
 
 ban-member:
-  icon:
-    material: BARRIER
-    name: "<green>Ban Member"
-    lore:
-      - "<gray>Allows you to ban players from the island."
+  material: BARRIER
+  name: "<green>Ban Member"
+  lore:
+    - "<gray>Allows you to ban players from the island."
 
 break:
-  icon:
-    material: DIAMOND_PICKAXE
-    name: "<green>Break Blocks"
-    lore:
-      - "<gray>Allows you to break blocks on the island."
+  material: DIAMOND_PICKAXE
+  name: "<green>Break Blocks"
+  lore:
+    - "<gray>Allows you to break blocks on the island."
 
 brush:
-  icon:
-    material: BRUSH
-    name: "<green>Brush"
-    lore:
-      - "<gray>Allows you to brush suspicious blocks."
+  material: BRUSH
+  name: "<green>Brush"
+  lore:
+    - "<gray>Allows you to brush suspicious blocks."
 
 build:
-  icon:
-    material: BRICKS
-    name: "<green>Build"
-    lore:
-      - "<gray>Allows you to place blocks on the island."
+  material: BRICKS
+  name: "<green>Build"
+  lore:
+    - "<gray>Allows you to place blocks on the island."
 
 change-name:
-  icon:
-    material: NAME_TAG
-    name: "<green>Change Name"
-    lore:
-      - "<gray>Allows you to change the island name."
+  material: NAME_TAG
+  name: "<green>Change Name"
+  lore:
+    - "<gray>Allows you to change the island name."
 
 chorus-fruit:
-  icon:
-    material: CHORUS_FRUIT
-    name: "<green>Chorus Fruit"
-    lore:
-      - "<gray>Allows you to teleport with chorus fruit."
+  material: CHORUS_FRUIT
+  name: "<green>Chorus Fruit"
+  lore:
+    - "<gray>Allows you to teleport with chorus fruit."
 
 close-bypass:
-  icon:
-    material: IRON_DOOR
-    name: "<green>Close Bypass"
-    lore:
-      - "<gray>Allows you to enter the island while it is closed."
+  material: IRON_DOOR
+  name: "<green>Close Bypass"
+  lore:
+    - "<gray>Allows you to enter the island while it is closed."
 
 close-island:
-  icon:
-    material: IRON_DOOR
-    name: "<green>Close Island"
-    lore:
-      - "<gray>Allows you to close the island to visitors."
+  material: IRON_DOOR
+  name: "<green>Close Island"
+  lore:
+    - "<gray>Allows you to close the island to visitors."
 
 coop-member:
-  icon:
-    material: LEAD
-    name: "<green>Coop Member"
-    lore:
-      - "<gray>Allows you to coop players onto the island."
+  material: LEAD
+  name: "<green>Coop Member"
+  lore:
+    - "<gray>Allows you to coop players onto the island."
 
 delete-warp:
-  icon:
-    material: RED_BED
-    name: "<green>Delete Warp"
-    lore:
-      - "<gray>Allows you to delete island warps."
+  material: RED_BED
+  name: "<green>Delete Warp"
+  lore:
+    - "<gray>Allows you to delete island warps."
 
 demote-members:
-  icon:
-    material: RED_DYE
-    name: "<green>Demote Members"
-    lore:
-      - "<gray>Allows you to demote island members."
+  material: RED_DYE
+  name: "<green>Demote Members"
+  lore:
+    - "<gray>Allows you to demote island members."
 
 deposit-money:
-  icon:
-    material: GOLD_INGOT
-    name: "<green>Deposit Money"
-    lore:
-      - "<gray>Allows you to deposit money into the island bank."
+  material: GOLD_INGOT
+  name: "<green>Deposit Money"
+  lore:
+    - "<gray>Allows you to deposit money into the island bank."
 
 disband-island:
-  icon:
-    material: TNT
-    name: "<green>Disband Island"
-    lore:
-      - "<gray>Allows you to disband the island."
+  material: TNT
+  name: "<green>Disband Island"
+  lore:
+    - "<gray>Allows you to disband the island."
 
 drop-items:
-  icon:
-    material: DROPPER
-    name: "<green>Drop Items"
-    lore:
-      - "<gray>Allows you to drop items on the island."
+  material: DROPPER
+  name: "<green>Drop Items"
+  lore:
+    - "<gray>Allows you to drop items on the island."
 
 dye-sheep:
-  icon:
-    material: PINK_DYE
-    name: "<green>Dye Sheep"
-    lore:
-      - "<gray>Allows you to dye sheep."
+  material: PINK_DYE
+  name: "<green>Dye Sheep"
+  lore:
+    - "<gray>Allows you to dye sheep."
 
 ender-pearl:
-  icon:
-    material: ENDER_PEARL
-    name: "<green>Ender Pearl"
-    lore:
-      - "<gray>Allows you to teleport with ender pearls."
+  material: ENDER_PEARL
+  name: "<green>Ender Pearl"
+  lore:
+    - "<gray>Allows you to teleport with ender pearls."
 
 entity-ride:
-  icon:
-    material: SADDLE
-    name: "<green>Entity Ride"
-    lore:
-      - "<gray>Allows you to ride entities."
+  material: SADDLE
+  name: "<green>Entity Ride"
+  lore:
+    - "<gray>Allows you to ride entities."
 
 expel-bypass:
-  icon:
-    material: LEATHER_BOOTS
-    name: "<green>Expel Bypass"
-    lore:
-      - "<gray>Allows you to bypass being expelled from the island."
+  material: LEATHER_BOOTS
+  name: "<green>Expel Bypass"
+  lore:
+    - "<gray>Allows you to bypass being expelled from the island."
 
 expel-players:
-  icon:
-    material: IRON_BOOTS
-    name: "<green>Expel Players"
-    lore:
-      - "<gray>Allows you to expel players from the island."
+  material: IRON_BOOTS
+  name: "<green>Expel Players"
+  lore:
+    - "<gray>Allows you to expel players from the island."
 
 fertilize:
-  icon:
-    material: BONE_MEAL
-    name: "<green>Fertilize"
-    lore:
-      - "<gray>Allows you to fertilize crops with bone meal."
+  material: BONE_MEAL
+  name: "<green>Fertilize"
+  lore:
+    - "<gray>Allows you to fertilize crops with bone meal."
 
 fish:
-  icon:
-    material: FISHING_ROD
-    name: "<green>Fish"
-    lore:
-      - "<gray>Allows you to fish on the island."
+  material: FISHING_ROD
+  name: "<green>Fish"
+  lore:
+    - "<gray>Allows you to fish on the island."
 
 fly:
-  icon:
-    material: ELYTRA
-    name: "<green>Fly"
-    lore:
-      - "<gray>Allows you to fly on the island."
+  material: ELYTRA
+  name: "<green>Fly"
+  lore:
+    - "<gray>Allows you to fly on the island."
 
 ignite-creeper:
-  icon:
-    material: FLINT_AND_STEEL
-    name: "<green>Ignite Creeper"
-    lore:
-      - "<gray>Allows you to ignite creepers with flint and steel."
+  material: FLINT_AND_STEEL
+  name: "<green>Ignite Creeper"
+  lore:
+    - "<gray>Allows you to ignite creepers with flint and steel."
 
 invite-member:
-  icon:
-    material: PAPER
-    name: "<green>Invite Member"
-    lore:
-      - "<gray>Allows you to invite players to the island."
+  material: PAPER
+  name: "<green>Invite Member"
+  lore:
+    - "<gray>Allows you to invite players to the island."
 
 island-chest:
-  icon:
-    material: CHEST
-    name: "<green>Island Chest"
-    lore:
-      - "<gray>Allows you to access the island chest."
+  material: CHEST
+  name: "<green>Island Chest"
+  lore:
+    - "<gray>Allows you to access the island chest."
 
 kick-member:
-  icon:
-    material: IRON_BOOTS
-    name: "<green>Kick Member"
-    lore:
-      - "<gray>Allows you to kick members from the island."
+  material: IRON_BOOTS
+  name: "<green>Kick Member"
+  lore:
+    - "<gray>Allows you to kick members from the island."
 
 leash:
-  icon:
-    material: LEAD
-    name: "<green>Leash"
-    lore:
-      - "<gray>Allows you to leash entities."
+  material: LEAD
+  name: "<green>Leash"
+  lore:
+    - "<gray>Allows you to leash entities."
 
 minecart-enter:
-  icon:
-    material: MINECART
-    name: "<green>Minecart Enter"
-    lore:
-      - "<gray>Allows you to enter minecarts."
+  material: MINECART
+  name: "<green>Minecart Enter"
+  lore:
+    - "<gray>Allows you to enter minecarts."
 
 minecart-open:
-  icon:
-    material: CHEST_MINECART
-    name: "<green>Minecart Open"
-    lore:
-      - "<gray>Allows you to open minecarts with containers."
+  material: CHEST_MINECART
+  name: "<green>Minecart Open"
+  lore:
+    - "<gray>Allows you to open minecarts with containers."
 
 name-entity:
-  icon:
-    material: NAME_TAG
-    name: "<green>Name Entity"
-    lore:
-      - "<gray>Allows you to name entities with name tags."
+  material: NAME_TAG
+  name: "<green>Name Entity"
+  lore:
+    - "<gray>Allows you to name entities with name tags."
 
 open-island:
-  icon:
-    material: OAK_DOOR
-    name: "<green>Open Island"
-    lore:
-      - "<gray>Allows you to open the island to visitors."
+  material: OAK_DOOR
+  name: "<green>Open Island"
+  lore:
+    - "<gray>Allows you to open the island to visitors."
 
 pickup-drops:
-  icon:
-    material: HOPPER
-    name: "<green>Pickup Drops"
-    lore:
-      - "<gray>Allows you to pick up dropped items."
+  material: HOPPER
+  name: "<green>Pickup Drops"
+  lore:
+    - "<gray>Allows you to pick up dropped items."
 
 promote-members:
-  icon:
-    material: LIME_DYE
-    name: "<green>Promote Members"
-    lore:
-      - "<gray>Allows you to promote island members."
+  material: LIME_DYE
+  name: "<green>Promote Members"
+  lore:
+    - "<gray>Allows you to promote island members."
 
 rankup:
-  icon:
-    material: EXPERIENCE_BOTTLE
-    name: "<green>Rank Up"
-    lore:
-      - "<gray>Allows you to rank up the island."
+  material: EXPERIENCE_BOTTLE
+  name: "<green>Rank Up"
+  lore:
+    - "<gray>Allows you to rank up the island."
 
 ratings-show:
-  icon:
-    material: NETHER_STAR
-    name: "<green>Show Ratings"
-    lore:
-      - "<gray>Allows you to show the island ratings."
+  material: NETHER_STAR
+  name: "<green>Show Ratings"
+  lore:
+    - "<gray>Allows you to show the island ratings."
 
 saddle-entity:
-  icon:
-    material: SADDLE
-    name: "<green>Saddle Entity"
-    lore:
-      - "<gray>Allows you to saddle entities."
+  material: SADDLE
+  name: "<green>Saddle Entity"
+  lore:
+    - "<gray>Allows you to saddle entities."
 
 sculk-sensor:
-  icon:
-    material: SCULK_SENSOR
-    name: "<green>Sculk Sensor"
-    lore:
-      - "<gray>Allows you to interact with sculk sensors."
+  material: SCULK_SENSOR
+  name: "<green>Sculk Sensor"
+  lore:
+    - "<gray>Allows you to interact with sculk sensors."
 
 set-biome:
-  icon:
-    material: GRASS_BLOCK
-    name: "<green>Set Biome"
-    lore:
-      - "<gray>Allows you to change the island biome."
+  material: GRASS_BLOCK
+  name: "<green>Set Biome"
+  lore:
+    - "<gray>Allows you to change the island biome."
 
 set-home:
-  icon:
-    material: RED_BED
-    name: "<green>Set Home"
-    lore:
-      - "<gray>Allows you to set the island home."
+  material: RED_BED
+  name: "<green>Set Home"
+  lore:
+    - "<gray>Allows you to set the island home."
 
 set-permission:
-  icon:
-    material: WRITABLE_BOOK
-    name: "<green>Set Permission"
-    lore:
-      - "<gray>Allows you to manage island permissions."
+  material: WRITABLE_BOOK
+  name: "<green>Set Permission"
+  lore:
+    - "<gray>Allows you to manage island permissions."
 
 set-role:
-  icon:
-    material: LEATHER_CHESTPLATE
-    name: "<green>Set Role"
-    lore:
-      - "<gray>Allows you to manage island roles."
+  material: LEATHER_CHESTPLATE
+  name: "<green>Set Role"
+  lore:
+    - "<gray>Allows you to manage island roles."
 
 set-settings:
-  icon:
-    material: COMPARATOR
-    name: "<green>Set Settings"
-    lore:
-      - "<gray>Allows you to manage island settings."
+  material: COMPARATOR
+  name: "<green>Set Settings"
+  lore:
+    - "<gray>Allows you to manage island settings."
 
 set-warp:
-  icon:
-    material: LODESTONE
-    name: "<green>Set Warp"
-    lore:
-      - "<gray>Allows you to set island warps."
+  material: LODESTONE
+  name: "<green>Set Warp"
+  lore:
+    - "<gray>Allows you to set island warps."
 
 spawner-break:
-  icon:
-    material: SPAWNER
-    name: "<green>Spawner Break"
-    lore:
-      - "<gray>Allows you to break spawners."
+  material: SPAWNER
+  name: "<green>Spawner Break"
+  lore:
+    - "<gray>Allows you to break spawners."
 
 uncoop-member:
-  icon:
-    material: LEAD
-    name: "<green>Uncoop Member"
-    lore:
-      - "<gray>Allows you to remove cooped players from the island."
+  material: LEAD
+  name: "<green>Uncoop Member"
+  lore:
+    - "<gray>Allows you to remove cooped players from the island."
 
 valuable-break:
-  icon:
-    material: EMERALD_ORE
-    name: "<green>Valuable Break"
-    lore:
-      - "<gray>Allows you to break valuable blocks."
+  material: EMERALD_ORE
+  name: "<green>Valuable Break"
+  lore:
+    - "<gray>Allows you to break valuable blocks."
 
 villager-trading:
-  icon:
-    material: EMERALD
-    name: "<green>Villager Trading"
-    lore:
-      - "<gray>Allows you to trade with villagers."
+  material: EMERALD
+  name: "<green>Villager Trading"
+  lore:
+    - "<gray>Allows you to trade with villagers."
 
 wind-charge:
-  icon:
-    material: WIND_CHARGE
-    name: "<green>Wind Charge"
-    lore:
-      - "<gray>Allows you to use wind charges."
+  material: WIND_CHARGE
+  name: "<green>Wind Charge"
+  lore:
+    - "<gray>Allows you to use wind charges."
 
 withdraw-money:
-  icon:
-    material: GOLD_NUGGET
-    name: "<green>Withdraw Money"
-    lore:
-      - "<gray>Allows you to withdraw money from the island bank."
+  material: GOLD_NUGGET
+  name: "<green>Withdraw Money"
+  lore:
+    - "<gray>Allows you to withdraw money from the island bank."

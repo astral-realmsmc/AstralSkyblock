@@ -84,9 +84,10 @@ public abstract class SyncedRepository<K, V> {
      */
     public @Nullable V invalidateGlobally(K key) {
         V value = invalidateLocally(key);
-        this.plugin.cache()
-                .del(cacheKey(key))
-                .exceptionally(throwable -> logCacheFailure("delete", key, throwable));
+        if (sharedCacheEnabled())
+            this.plugin.cache()
+                    .del(cacheKey(key))
+                    .exceptionally(throwable -> logCacheFailure("delete", key, throwable));
         publishInvalidation(key);
         return value;
     }
@@ -102,6 +103,19 @@ public abstract class SyncedRepository<K, V> {
     }
 
     private CompletableFuture<V> load(K key) {
+        return loadFromStores(key)
+                // Attach transient relationships on every path (L2 deserialize and L3 load), so a
+                // value handed back from the cache is always fully populated.
+                .thenCompose(value -> value == null
+                        ? CompletableFuture.completedFuture(null)
+                        : postLoad(value));
+    }
+
+    private CompletableFuture<V> loadFromStores(K key) {
+        // Local-only repositories skip the shared cache entirely and read straight from the database.
+        if (!sharedCacheEnabled())
+            return loadById(key);
+
         return this.plugin.cache()
                 .get(cacheKey(key))
                 .thenCompose(cachedValue -> {
@@ -121,11 +135,32 @@ public abstract class SyncedRepository<K, V> {
     }
 
     /**
+     * Whether this repository stores its values in the shared L2 (Redis) cache. When {@code false} the
+     * repository is local-cache (L1) + database (L3) only; cross-server coherency still flows through
+     * the update/invalidation messaging (which reloads from the database, not Redis). Default: true.
+     */
+    protected boolean sharedCacheEnabled() {
+        return true;
+    }
+
+    /**
+     * Hook applied to every value produced by the cache loader, regardless of whether it came from L2
+     * (deserialized JSON) or L3 (the database). Subclasses override it to cascade-load relationships
+     * that are {@code transient} (and therefore absent from the persisted/serialized form), so the
+     * value cached in L1 — and every subsequent hit — is fully populated. Default: identity.
+     */
+    protected CompletableFuture<V> postLoad(V value) {
+        return CompletableFuture.completedFuture(value);
+    }
+
+    /**
      * Writes the value through to L1 (synchronously) and L2 (asynchronously). The returned future
      * completes once the L2 write settles — successfully, or after a failure has been logged.
      */
     protected CompletableFuture<Void> cache(V value) {
         cacheLocally(value);
+        if (!sharedCacheEnabled())
+            return CompletableFuture.completedFuture(null);
         return writeToL2(keyFromValue(value), value);
     }
 

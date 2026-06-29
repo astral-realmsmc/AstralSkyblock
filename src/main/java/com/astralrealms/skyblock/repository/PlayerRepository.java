@@ -1,7 +1,6 @@
 package com.astralrealms.skyblock.repository;
 
 import java.sql.PreparedStatement;
-import java.time.Duration;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -9,7 +8,6 @@ import java.util.concurrent.CompletableFuture;
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.model.member.SkyblockPlayer;
 import com.astralrealms.skyblock.utils.ASConstants;
-import com.github.benmanes.caffeine.cache.Caffeine;
 
 /**
  * Canonical UUID &lt;-&gt; name directory. Cached because protection checks, GUIs and command
@@ -24,6 +22,11 @@ public class PlayerRepository extends UUIDSyncedRepository<SkyblockPlayer> {
                 ASConstants.PLAYER_UPDATE_CHANNEL,
                 SkyblockPlayer.class
         );
+    }
+
+    @Override
+    protected boolean sharedCacheEnabled() {
+        return false; // players are local-cache + database only
     }
 
     /**

@@ -45,7 +45,7 @@ public class ServerService {
 
     public CompletableFuture<Void> deleteHostServer(UUID island) {
         return this.plugin.cache()
-                .hdel(ASConstants.ISLAND_SERVER_KEY + ":" + island.toString())
+                .hdel(ASConstants.ISLAND_SERVER_KEY, island.toString())
                 .thenApply(ignored -> null);
     }
 
@@ -60,4 +60,5 @@ public class ServerService {
                 .hget(ASConstants.ISLAND_SERVER_KEY, island.toString())
                 .thenApply(serverId -> serverId.map(UUID::fromString).orElse(null));
     }
+
 }

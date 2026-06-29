@@ -3,6 +3,7 @@ package com.astralrealms.skyblock.service;
 import java.util.Collection;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.Unmodifiable;
@@ -140,7 +141,7 @@ public class IslandService {
                             island.uniqueId().toString(),
                             hostServer
                     ));
-                });
+                }).orTimeout(1, TimeUnit.SECONDS);
     }
 
     public void create(Player player, String name, IslandBlueprint blueprint) {
@@ -281,6 +282,14 @@ public class IslandService {
                     );
                     this.plugin.getSLF4JLogger().info("Island {} deleted for player {}", island.uniqueId(), player.getName());
                 });
+    }
+
+    /**
+     * Re-cascades a cached island's relationships after a membership or role change. Delegates to
+     * {@link IslandRepository#refreshRelationships(UUID)}; called from the member/role write paths.
+     */
+    public CompletableFuture<Void> refreshRelationships(UUID islandId) {
+        return this.repository.refreshRelationships(islandId);
     }
 
     @Unmodifiable
