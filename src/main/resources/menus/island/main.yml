@@ -1,0 +1,133 @@
+id: "island-main"
+title: "%img_internal:neg_8%<white>%img_guis:towns%"
+size: 54
+use-player-inventory: true
+
+items:
+  # Selected island
+  island:
+    slot: 4
+    copy-from: "%parameters_island_owner_player_head%"
+    name: "<bold><primary_color>%parameters_island_name%"
+    lore:
+      - ""
+      - "<#26d971><bold>| Informations"
+      - "  <gray>- <#e3dbcc>Chef : <secondary_color>%parameters_island_owner_player_name%"
+      - "  <gray>- <#e3dbcc>Niveau : <secondary_color>%parameters_island_level%"
+      - "  <gray>- <#e3dbcc>Membres : <secondary_color>%parameters_island_members_size%"
+      - ""
+      - "<white>%img_icons:left-click% <information_color>Pour vous téléporter"
+      - "<secondary_color><italic>Raccourci</italic> <information_color>: /is go"
+    actions:
+      - "[player] is go"
+  # Members
+  members:
+    slot: 20
+    material: "PLAYER_HEAD"
+    priority: 2
+    name: "<bold><primary_color>Membres"
+    lore:
+      - ""
+      - "  <text_color>Permet de voir les <secondary_color>membres"
+      - "  <text_color>présents sur l'<secondary_color>île<text_color>."
+      - ""
+      - "<white>%img_icons:left-click% <information_color>Ouvrir le menu des membres"
+    actions:
+      - "[open-menu] island-members:island=%parameters_island%"
+  # Roles
+  roles:
+    slot: 21
+    material: "BOOK"
+    priority: 2
+    name: "<bold><primary_color>Rôles"
+    lore:
+      - ""
+      - "  <text_color>Permet de modifier les <secondary_color>rôles"
+      - "  <text_color>de l'<secondary_color>île<text_color>."
+      - ""
+      - "<white>%img_icons:left-click% <information_color>Ouvrir le menu des rôles"
+    view-requirements:
+      - "[compare] %skyblock_player_island_hasPermission_SET_ROLE% == true"
+    actions:
+      - "[open-menu] island-roles:island=%parameters_island%"
+  roles-forbidden:
+    slot: 21
+    material: "BARRIER"
+    name: "<bold><primary_color>Rôles"
+    lore:
+      - ""
+      - "<red>Vous n'avez pas la permission"
+      - "<red>d'accéder à ce menu."
+  # Settings
+  settings:
+    slot: 22
+    material: "REDSTONE"
+    priority: 2
+    name: "<bold><primary_color>Paramètres de l'île"
+    lore:
+      - ""
+      - "  <text_color>Permet de modifier les <secondary_color>paramètres <text_color>de l'<secondary_color>île."
+      - ""
+      - "<white>%img_icons:left-click% <information_color>Ouvrir le menu de paramètres"
+    view-requirements:
+      - "[compare] %skyblock_player_island_hasPermission_SET_SETTINGS% == true"
+    actions:
+      - "[open-menu] island-settings:island=%parameters_island%"
+  settings-forbidden:
+    slot: 22
+    material: "BARRIER"
+    name: "<bold><primary_color>Paramètres de l'île"
+    lore:
+      - ""
+      - "<red>Vous n'avez pas la permission"
+      - "<red>d'accéder à ce menu."
+  # Coops
+  coops:
+    slot: 23
+    material: "LEAD"
+    priority: 2
+    name: "<bold><primary_color>Coopérateurs"
+    lore:
+      - ""
+      - "  <text_color>Permet de gérer les <secondary_color>coopérateurs"
+      - "  <text_color>de l'<secondary_color>île<text_color>."
+      - ""
+      - "<white>%img_icons:left-click% <information_color>Ouvrir le menu des coopérateurs"
+    view-requirements:
+      - "[compare] %skyblock_player_island_hasPermission_COOP_MEMBER% == true"
+    actions:
+      - "[open-menu] island-coops:island=%parameters_island%"
+  coops-forbidden:
+    slot: 23
+    material: "BARRIER"
+    name: "<bold><primary_color>Coopérateurs"
+    lore:
+      - ""
+      - "<red>Vous n'avez pas la permission"
+      - "<red>d'accéder à ce menu."
+  # Bans
+  bans:
+    slot: 24
+    copy-from: "%stacksuppliers_ce_icons:ban%"
+    priority: 2
+    name: "<bold><primary_color>Joueurs bannis"
+    item-flags:
+      - HIDE_ATTRIBUTES
+    lore:
+      - ""
+      - "  <text_color>Permet de gérer les <secondary_color>joueurs bannis"
+      - "  <text_color>de l'<secondary_color>île<text_color>."
+      - ""
+      - "<white>%img_icons:left-click% <information_color>Ouvrir le menu des bannis"
+    view-requirements:
+      - "[compare] %skyblock_player_island_hasPermission_BAN_MEMBER% == true"
+    actions:
+      - "[open-menu] island-bans:island=%parameters_island%"
+  bans-forbidden:
+    slot: 24
+    material: "BARRIER"
+    name: "<bold><primary_color>Joueurs bannis"
+    lore:
+      - ""
+      - "<red>Vous n'avez pas la permission"
+      - "<red>d'accéder à ce menu."
