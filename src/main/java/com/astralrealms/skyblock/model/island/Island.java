@@ -15,6 +15,7 @@ import com.astralrealms.skyblock.model.IslandPermission;
 import com.astralrealms.skyblock.model.IslandSettings;
 import com.astralrealms.skyblock.model.member.IslandMember;
 import com.astralrealms.skyblock.model.role.IslandRole;
+import com.astralrealms.skyblock.placeholder.settings.IslandSettingsItemProvider;
 
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -76,7 +77,7 @@ public class Island implements Unique, ComplexPlaceholder {
         if (this.owner != null && this.owner.playerUuid().equals(id))
             return true;
         return this.findMember(id)
-                .map(member -> member.role() != null && member.role().permissions().contains(permission))
+                .map(member -> member.role() != null && member.role().hasPermission(permission))
                 .orElse(false);
     }
 
@@ -124,7 +125,7 @@ public class Island implements Unique, ComplexPlaceholder {
                     yield null;
                 yield this.hasPermission(player.getUniqueId(), IslandPermission.valueOf(context.collapseRemaining()));
             }
-            case "settings" -> this.settings;
+            case "settings" -> new IslandSettingsItemProvider(this);
             case "updatedAt" -> updatedAt;
             case "createdAt" -> createdAt;
             case null, default -> null;

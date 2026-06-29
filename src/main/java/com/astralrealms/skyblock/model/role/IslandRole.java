@@ -11,6 +11,7 @@ import com.astralrealms.core.storage.annotation.Entity;
 import com.astralrealms.core.storage.annotation.Id;
 import com.astralrealms.core.storage.model.SQLAccessor;
 import com.astralrealms.skyblock.model.IslandPermission;
+import com.astralrealms.skyblock.placeholder.permissions.IslandPermissionsItemProvider;
 
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -47,6 +48,13 @@ public class IslandRole implements ComplexPlaceholder {
         this.createdAt = createdAt;
     }
 
+    public boolean hasPermission(IslandPermission permission) {
+        if (permissions == null)
+            return false;
+        return permissions.contains(permission)
+               || permissions.contains(IslandPermission.ALL);
+    }
+
     @Override
     public Object get(PlaceholderContext context) {
         if (!context.hasNext())
@@ -58,6 +66,7 @@ public class IslandRole implements ComplexPlaceholder {
             case "kind" -> kind;
             case "name" -> name;
             case "weight" -> weight;
+            case "permissions" -> new IslandPermissionsItemProvider(this);
             case "default" -> isDefault;
             case "createdAt" -> createdAt;
             default -> null;
