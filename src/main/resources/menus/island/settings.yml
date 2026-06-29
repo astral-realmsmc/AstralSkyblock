@@ -1,0 +1,77 @@
+id: "island-settings"
+title: "%img_internal:neg_8%<white>%img_guis:generic_list%%img_internal:neg_117%<font:alphabet:shift_1>parametres"
+size: 54
+use-player-inventory: true
+
+layouts:
+  settings:
+    taint: "setting"
+    provider: "%parameters_island_settings%"
+
+close-actions:
+  - "[update-island-settings] %parameters_island_id%"
+
+items:
+  setting-enabled:
+    glow: true
+    slots: [1,2,3,4,5,6,7,10,11,12,13,14,15,16,19,20,21,22,23,24,25,28,29,30,31,32,33,34,37,38,39,40,41,42,43]
+    copy-from: "%parameter_setting_item%"
+    lore:
+      - ""
+      - "<secondary_color>[Statut] <information_color>: <green>Activé"
+      - ""
+      - "<white>%img_icons:right-click% <information_color>pour désactiver"
+    taints:
+      - "setting"
+    view-requirements:
+      - "[compare] %parameter_setting_enabled% == true"
+    actions:
+      - "[toggle-island-setting] %parameters_island_id% %parameter_setting%"
+      - "[refresh-layout] setting"
+
+  setting-disabled:
+    slots: [1,2,3,4,5,6,7,10,11,12,13,14,15,16,19,20,21,22,23,24,25,28,29,30,31,32,33,34,37,38,39,40,41,42,43]
+    copy-from: "%parameter_setting_item%"
+    lore:
+      - ""
+      - "<secondary_color>[Statut] <information_color>: <red>Désactivé"
+      - ""
+      - "<white>%img_icons:right-click% <information_color>pour activer"
+    taints:
+      - "setting"
+    view-requirements:
+      - "[compare] %parameter_setting_enabled% == false"
+    actions:
+      - "[toggle-island-setting] %parameters_island_id% %parameter_setting%"
+      - "[refresh-layout] setting"
+
+  previous-page:
+    slot: 46
+    copy-from: "%stacksuppliers_ce_icons:thin_back%"
+    name: "<primary_color><bold>Page précédente"
+    actions:
+      - "[previous-page] setting"
+      - "[refresh-slot] 52 <delay=1>"
+      - "[refresh-slot] 46 <delay=1>"
+    view-requirements:
+      - "[compare] %layouts_settings_hasPreviousPage% == true"
+
+  next-page:
+    slot: 52
+    copy-from: "%stacksuppliers_ce_icons:thin_next%"
+    name: "<primary_color><bold>Page suivante"
+    actions:
+      - "[next-page] setting"
+      - "[refresh-slot] 52 <delay=1>"
+      - "[refresh-slot] 46 <delay=1>"
+    view-requirements:
+      - "[compare] %layouts_settings_hasNextPage% == true"
+
+  back:
+    slot: 49
+    copy-from: "%stacksuppliers_ce_icons:back%"
+    name: "<bold><primary_color>Retour"
+    item-flags:
+      - HIDE_ATTRIBUTES
+    actions:
+      - "[open-menu] island-main:island=%parameters_island%"
