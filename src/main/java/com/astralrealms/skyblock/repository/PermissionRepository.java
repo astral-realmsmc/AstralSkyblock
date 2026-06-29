@@ -3,6 +3,7 @@ package com.astralrealms.skyblock.repository;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.util.*;
+import java.util.Collection;
 import java.util.concurrent.CompletableFuture;
 
 import com.astralrealms.skyblock.AstralSkyblock;
@@ -75,6 +76,16 @@ public class PermissionRepository extends SyncedRepository<Long, RolePermissions
                     result.values().forEach(grants -> cache.synchronous().put(grants.roleId(), grants));
                     return result;
                 });
+    }
+
+    /** Primes every role grant set of an island into L1 (lifecycle activation). */
+    public CompletableFuture<Void> prime(UUID islandId) {
+        return findByIsland(islandId).thenApply(ignored -> null);
+    }
+
+    /** Drops the given roles' grant sets from this server's L1 cache (lifecycle deactivation). */
+    public void evict(Collection<Long> roleIds) {
+        roleIds.forEach(this::invalidateLocally);
     }
 
     /** Grants a single permission to a role (idempotent). */
