@@ -1,0 +1,22 @@
+package com.astralrealms.skyblock.model;
+
+public enum IslandSettings {
+    ALWAYS_DAY,
+    ALWAYS_MIDDLE_DAY,
+    ALWAYS_NIGHT,
+    ALWAYS_MIDDLE_NIGHT,
+    ALWAYS_RAIN,
+    ALWAYS_SHINY,
+    CREEPER_EXPLOSION,
+    CROPS_GROWTH,
+    EGG_LAY,
+    ENDERMAN_GRIEF,
+    FIRE_SPREAD,
+    GHAST_FIREBALL,
+    LAVA_FLOW,
+    PVP,
+    TNT_EXPLOSION,
+    TREE_GROWTH,
+    WATER_FLOW,
+    WITHER_EXPLOSION
+}
