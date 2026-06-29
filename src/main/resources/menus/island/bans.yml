@@ -1,0 +1,59 @@
+id: "island-bans"
+title: "%img_internal:neg_8%<white>%img_guis:generic_list%%img_internal:neg_100%<font:alphabet:shift_1>bans"
+size: 54
+use-player-inventory: true
+
+layouts:
+  bans:
+    taint: "ban"
+    provider: "%parameters_island_bans%"
+
+items:
+  ban:
+    slots: [1,2,3,4,5,6,7,10,11,12,13,14,15,16,19,20,21,22,23,24,25,28,29,30,31,32,33,34,37,38,39,40,41,42,43]
+    copy-from: "%parameter_ban_player_head%"
+    name: "<primary_color><bold>%parameter_ban_player_name%"
+    lore:
+      - ""
+      - "  <text_color>Raison : <secondary_color>%parameter_ban_reason%"
+      - "  <text_color>Banni par : <secondary_color>%parameter_ban_executor_name%"
+      - ""
+      - "<white>%img_icons:left-click% <gray>Débannir ce joueur"
+    taints:
+      - "ban"
+    view-requirements:
+      - "[compare] %skyblock_player_island_hasPermission_BAN_MEMBER% == true"
+    actions:
+      - "[unban-player] %parameters_island_id% %parameter_ban_playerId%"
+      - "[refresh]"
+
+  back:
+    slot: 49
+    copy-from: "%stacksuppliers_ce_icons:back%"
+    name: "<bold><primary_color>Retour"
+    item-flags:
+      - HIDE_ATTRIBUTES
+    actions:
+      - "[open-menu] island-members:island=%parameters_island%"
+
+  previous-page:
+    slot: 46
+    copy-from: "%stacksuppliers_ce_icons:thin_back%"
+    name: "<primary_color><bold>Page précédente"
+    actions:
+      - "[previous-page] ban"
+      - "[refresh-slot] 52 <delay=1>"
+      - "[refresh-slot] 46 <delay=1>"
+    view-requirements:
+      - "[compare] %layouts_bans_hasPreviousPage% == true"
+
+  next-page:
+    slot: 52
+    copy-from: "%stacksuppliers_ce_icons:thin_next%"
+    name: "<primary_color><bold>Page suivante"
+    actions:
+      - "[next-page] ban"
+      - "[refresh-slot] 52 <delay=1>"
+      - "[refresh-slot] 46 <delay=1>"
+    view-requirements:
+      - "[compare] %layouts_bans_hasNextPage% == true"
