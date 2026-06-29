@@ -6,8 +6,6 @@ import java.util.concurrent.CompletableFuture;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.stubbing.Answer;
-
 import com.astralrealms.core.storage.DatabaseService;
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.model.member.IslandMember;
@@ -46,5 +44,19 @@ class MemberRepositoryTest {
 
         assertThat(repo.keysIn(island)).containsExactly(new MemberKey(island, player));
         assertThat(repo.findPlayerIslands(player)).containsExactly(island);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void findByIdLoaderPathPopulatesBothIslandAndPlayerIndexes() {
+        IslandMember member = new IslandMember(island, player, true, null, 0L);
+        // loadById runs database.supply(...); L2 always misses (PluginTestSupport), so the
+        // loader falls through to loadById → database.supply(...) → canned single member.
+        when(database.supply(any())).thenReturn((CompletableFuture) CompletableFuture.completedFuture(member));
+
+        repo.findById(new MemberKey(island, player)).join();
+
+        assertThat(repo.keysIn(island)).contains(new MemberKey(island, player));
+        assertThat(repo.findPlayerIslands(player)).contains(island);
     }
 }

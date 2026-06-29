@@ -82,7 +82,7 @@ public class MemberRepository extends IndexedSyncedRepository<MemberKey, IslandM
                 })
                 .thenApply(member -> {
                     if (member != null)
-                        cache.synchronous().put(keyFromValue(member), member);
+                        cacheLocally(member);
                     return member;
                 });
     }
