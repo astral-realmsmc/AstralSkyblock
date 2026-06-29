@@ -5,5 +5,9 @@ island-created: "%island_name% has been successfully created!"
 # Deletion
 island-deleted: "%island_name% has been successfully deleted."
 
+# Roles
+role-permission-higher: "You cannot assign a role higher than your own."
+
 # Misc
 unexpected-error: "An unexpected error occurred. Please try again later."
+no-permission: "You do not have permission to perform this action."

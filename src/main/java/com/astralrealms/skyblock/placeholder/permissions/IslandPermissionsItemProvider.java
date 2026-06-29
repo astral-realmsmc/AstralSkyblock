@@ -2,7 +2,7 @@ package com.astralrealms.skyblock.placeholder.permissions;
 
 import com.astralrealms.core.placeholder.Placeholder;
 import com.astralrealms.core.provider.ItemProvider;
-import com.astralrealms.skyblock.model.IslandPermission;
+import com.astralrealms.skyblock.model.role.IslandPermission;
 import com.astralrealms.skyblock.model.role.IslandRole;
 
 import lombok.RequiredArgsConstructor;

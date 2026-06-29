@@ -23,7 +23,7 @@ import com.astralrealms.core.storage.model.RowMapper;
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.messaging.packet.repository.LongObjectDeletePacket;
 import com.astralrealms.skyblock.messaging.packet.repository.LongObjectUpdatePacket;
-import com.astralrealms.skyblock.model.IslandPermission;
+import com.astralrealms.skyblock.model.role.IslandPermission;
 import com.astralrealms.skyblock.model.role.IslandRole;
 import com.astralrealms.skyblock.utils.ASConstants;
 

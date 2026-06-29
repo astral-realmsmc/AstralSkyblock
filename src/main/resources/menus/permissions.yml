@@ -9,7 +9,7 @@ layouts:
     provider: "%parameters_role_permissions%"
 
 close-actions:
-  - "[update-role-permissions] %parameters_island_id% %parameters_role_id%"
+  - "[update-role-permissions] %parameters_role%"
 
 items:
   permission-enabled:
@@ -27,7 +27,7 @@ items:
     view-requirements:
       - "[compare] %parameter_permission_enabled% == true"
     actions:
-      - "[toggle-role-permission] %parameters_island_id% %parameters_role_id% %parameter_permission%"
+      - "[toggle-role-permission] %parameters_island% %parameters_role% %parameter_permission%"
       - "[refresh-layout] permission"
 
   permission-disabled:
@@ -44,7 +44,7 @@ items:
     view-requirements:
       - "[compare] %parameter_permission_enabled% == false"
     actions:
-      - "[toggle-role-permission] %parameters_island_id% %parameters_role_id% %parameter_permission%"
+      - "[toggle-role-permission] %parameters_island% %parameters_role% %parameter_permission%"
       - "[refresh-layout] permission"
 
   previous-page:

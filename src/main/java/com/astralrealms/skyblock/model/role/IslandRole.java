@@ -1,6 +1,8 @@
 package com.astralrealms.skyblock.model.role;
 
+import java.util.EnumMap;
 import java.util.EnumSet;
+import java.util.Map;
 import java.util.UUID;
 
 import com.astralrealms.core.placeholder.PlaceholderContext;
@@ -10,7 +12,6 @@ import com.astralrealms.core.storage.annotation.CreatedAt;
 import com.astralrealms.core.storage.annotation.Entity;
 import com.astralrealms.core.storage.annotation.Id;
 import com.astralrealms.core.storage.model.SQLAccessor;
-import com.astralrealms.skyblock.model.IslandPermission;
 import com.astralrealms.skyblock.placeholder.permissions.IslandPermissionsItemProvider;
 
 import lombok.Getter;
@@ -36,7 +37,8 @@ public class IslandRole implements ComplexPlaceholder {
 
     // Relationships — permission loading is deferred (see PermissionRepository follow-up).
     @Setter
-    private transient EnumSet<IslandPermission> permissions;
+    private transient EnumSet<IslandPermission> permissions = EnumSet.noneOf(IslandPermission.class);
+    private final transient Map<IslandPermission, Boolean> dirtyPermissions = new EnumMap<>(IslandPermission.class);
 
     public IslandRole(Long id, UUID islandId, Type kind, String name, int weight, boolean isDefault, long createdAt) {
         this.id = id;
@@ -48,11 +50,30 @@ public class IslandRole implements ComplexPlaceholder {
         this.createdAt = createdAt;
     }
 
+    // Permissions
+    public boolean togglePermission(IslandPermission permission) {
+        boolean hasPermission = this.hasPermission(permission);
+        this.dirtyPermissions.put(permission, !hasPermission);
+        return !hasPermission;
+    }
+
     public boolean hasPermission(IslandPermission permission) {
         if (permissions == null)
             return false;
-        return permissions.contains(permission)
-               || permissions.contains(IslandPermission.ALL);
+        return this.dirtyPermissions.getOrDefault(permission, permissions.contains(permission))
+               || this.dirtyPermissions.getOrDefault(IslandPermission.ALL, permissions.contains(IslandPermission.ALL));
+    }
+
+    public Map<IslandPermission, Boolean> flushPermissions() {
+        Map<IslandPermission, Boolean> flushed = Map.copyOf(dirtyPermissions);
+        for (Map.Entry<IslandPermission, Boolean> entry : flushed.entrySet()) {
+            if (entry.getValue())
+                permissions.add(entry.getKey());
+            else
+                permissions.remove(entry.getKey());
+        }
+        this.dirtyPermissions.clear();
+        return flushed;
     }
 
     @Override

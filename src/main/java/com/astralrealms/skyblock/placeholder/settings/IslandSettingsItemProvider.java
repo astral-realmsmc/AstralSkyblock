@@ -2,7 +2,7 @@ package com.astralrealms.skyblock.placeholder.settings;
 
 import com.astralrealms.core.placeholder.Placeholder;
 import com.astralrealms.core.provider.ItemProvider;
-import com.astralrealms.skyblock.model.IslandSettings;
+import com.astralrealms.skyblock.model.island.IslandSettings;
 import com.astralrealms.skyblock.model.island.Island;
 
 import lombok.RequiredArgsConstructor;

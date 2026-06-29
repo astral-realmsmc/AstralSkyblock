@@ -1,4 +1,4 @@
-package com.astralrealms.skyblock.model;
+package com.astralrealms.skyblock.model.role;
 
 import com.astralrealms.core.configuration.ConfigurationEnum;
 import com.astralrealms.core.paper.model.itemstack.ItemStackWrapper;

@@ -11,8 +11,7 @@ import com.astralrealms.core.placeholder.impl.system.ComplexPlaceholder;
 import com.astralrealms.core.provider.ItemProvider;
 import com.astralrealms.core.storage.annotation.*;
 import com.astralrealms.core.storage.model.SQLAccessor;
-import com.astralrealms.skyblock.model.IslandPermission;
-import com.astralrealms.skyblock.model.IslandSettings;
+import com.astralrealms.skyblock.model.role.IslandPermission;
 import com.astralrealms.skyblock.model.member.IslandMember;
 import com.astralrealms.skyblock.model.role.IslandRole;
 import com.astralrealms.skyblock.placeholder.settings.IslandSettingsItemProvider;
@@ -51,11 +50,12 @@ public class Island implements Unique, ComplexPlaceholder {
     @Setter
     private transient IslandMember owner;
     @Setter
-    private transient Collection<IslandMember> members;
+    private transient Collection<IslandMember> members = List.of();
     @Setter
-    private transient Collection<IslandRole> roles;
+    private transient Collection<IslandRole> roles = List.of();
     @Setter
-    private transient EnumSet<IslandSettings> settings;
+    private transient EnumSet<IslandSettings> settings = EnumSet.noneOf(IslandSettings.class);
+    private transient final Map<IslandSettings, Boolean> dirtySettings = new EnumMap<>(IslandSettings.class);
 
     public Island(UUID uniqueId, String name, boolean locked, int level,
                   double spawnX, double spawnY, double spawnZ, float spawnYaw, float spawnPitch,
@@ -73,11 +73,22 @@ public class Island implements Unique, ComplexPlaceholder {
         this.createdAt = createdAt;
     }
 
-    public boolean hasPermission(UUID id, IslandPermission permission) {
-        if (this.owner != null && this.owner.playerUuid().equals(id))
+    public boolean canEditRole(Player player, IslandRole role) {
+        if (player.hasPermission("skyblock.admin")
+            || (this.owner != null && this.owner.playerUuid().equals(player.getUniqueId())))
             return true;
-        return this.findMember(id)
-                .map(member -> member.role() != null && member.role().hasPermission(permission))
+
+        return this.findMember(player.getUniqueId())
+                .map(member -> member.isOwner() || (member.role() != null && member.role().weight() > role.weight()))
+                .orElse(false);
+    }
+
+    public boolean hasPermission(Player player, IslandPermission permission) {
+        if (player.hasPermission("skyblock.admin")
+            || (this.owner != null && this.owner.playerUuid().equals(player.getUniqueId())))
+            return true;
+        return this.findMember(player.getUniqueId())
+                .map(member -> member.isOwner() || (member.role() != null && member.role().hasPermission(permission)))
                 .orElse(false);
     }
 
@@ -95,6 +106,29 @@ public class Island implements Unique, ComplexPlaceholder {
 
     public Collection<IslandRole> roles() {
         return this.roles == null ? List.of() : this.roles;
+    }
+
+    // Settings
+    public boolean isSettingEnabled(IslandSettings settings) {
+        return this.dirtySettings.getOrDefault(settings, this.settings.contains(settings));
+    }
+
+    public boolean toggleSetting(IslandSettings settings) {
+        boolean enabled = !this.isSettingEnabled(settings);
+        this.dirtySettings.put(settings, enabled);
+        return enabled;
+    }
+
+    public Map<IslandSettings, Boolean> flushSettings() {
+        Map<IslandSettings, Boolean> flushed = Map.copyOf(dirtySettings);
+        for (Map.Entry<IslandSettings, Boolean> entry : flushed.entrySet()) {
+            if (entry.getValue())
+                this.settings.add(entry.getKey());
+            else
+                this.settings.remove(entry.getKey());
+        }
+        this.dirtySettings.clear();
+        return flushed;
     }
 
     // Spawn
@@ -123,7 +157,7 @@ public class Island implements Unique, ComplexPlaceholder {
             case "hasPermission" -> {
                 if (!context.hasNext() || !(context.context() instanceof Player player))
                     yield null;
-                yield this.hasPermission(player.getUniqueId(), IslandPermission.valueOf(context.collapseRemaining()));
+                yield this.hasPermission(player, IslandPermission.valueOf(context.collapseRemaining()));
             }
             case "settings" -> new IslandSettingsItemProvider(this);
             case "updatedAt" -> updatedAt;

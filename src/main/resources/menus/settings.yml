@@ -9,7 +9,7 @@ layouts:
     provider: "%parameters_island_settings%"
 
 close-actions:
-  - "[update-island-settings] %parameters_island_id%"
+  - "[update-island-settings] %parameters_island%"
 
 items:
   setting-enabled:
@@ -26,7 +26,7 @@ items:
     view-requirements:
       - "[compare] %parameter_setting_enabled% == true"
     actions:
-      - "[toggle-island-setting] %parameters_island_id% %parameter_setting%"
+      - "[toggle-island-setting] %parameters_island% %parameter_setting%"
       - "[refresh-layout] setting"
 
   setting-disabled:
@@ -42,7 +42,7 @@ items:
     view-requirements:
       - "[compare] %parameter_setting_enabled% == false"
     actions:
-      - "[toggle-island-setting] %parameters_island_id% %parameter_setting%"
+      - "[toggle-island-setting] %parameters_island% %parameter_setting%"
       - "[refresh-layout] setting"
 
   previous-page:

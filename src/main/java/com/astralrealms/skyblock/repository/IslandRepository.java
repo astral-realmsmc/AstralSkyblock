@@ -21,7 +21,7 @@ import org.jetbrains.annotations.Unmodifiable;
 
 import com.astralrealms.core.storage.pagination.Pageable;
 import com.astralrealms.skyblock.AstralSkyblock;
-import com.astralrealms.skyblock.model.IslandPermission;
+import com.astralrealms.skyblock.model.role.IslandPermission;
 import com.astralrealms.skyblock.model.island.Island;
 import com.astralrealms.skyblock.model.member.IslandMember;
 import com.astralrealms.skyblock.model.role.IslandRole;

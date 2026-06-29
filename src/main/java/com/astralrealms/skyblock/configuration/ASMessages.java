@@ -12,8 +12,11 @@ public enum ASMessages implements MessageEnum {
     ISLAND_CREATED,
     // Deletion
     ISLAND_DELETED,
+    // Roles
+    ROLE_PERMISSION_HIGHER,
     // Misc
-    UNEXPECTED_ERROR
+    UNEXPECTED_ERROR,
+    NO_PERMISSION
     ;
 
     @Getter

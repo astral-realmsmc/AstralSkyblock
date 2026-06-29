@@ -3,7 +3,7 @@ package com.astralrealms.skyblock.placeholder.permissions;
 import com.astralrealms.core.paper.placeholder.itemstack.ItemStackPlaceholder;
 import com.astralrealms.core.placeholder.PlaceholderContext;
 import com.astralrealms.core.placeholder.impl.system.ComplexPlaceholder;
-import com.astralrealms.skyblock.model.IslandPermission;
+import com.astralrealms.skyblock.model.role.IslandPermission;
 import com.astralrealms.skyblock.model.role.IslandRole;
 
 import lombok.RequiredArgsConstructor;

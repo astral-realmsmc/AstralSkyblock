@@ -1,7 +1,6 @@
 package com.astralrealms.skyblock;
 
 
-
 import com.astralrealms.core.cache.CacheService;
 import com.astralrealms.core.messaging.MessagingService;
 import com.astralrealms.core.paper.AstralPaperAPI;
@@ -10,6 +9,9 @@ import com.astralrealms.core.paper.menu.container.MenuContainer;
 import com.astralrealms.core.paper.plugin.AstralPaperPlugin;
 import com.astralrealms.core.placeholder.container.RootPlaceholderContainer;
 import com.astralrealms.core.storage.DatabaseService;
+import com.astralrealms.skyblock.action.island.role.ToggleRolePermissionAction;
+import com.astralrealms.skyblock.action.island.settings.ToggleIslandSettingAction;
+import com.astralrealms.skyblock.action.island.settings.UpdateIslandSettingsAction;
 import com.astralrealms.skyblock.command.SkyblockCommand;
 import com.astralrealms.skyblock.command.completion.IslandBlueprintCompletionHandler;
 import com.astralrealms.skyblock.command.completion.IslandCompletionHandler;
@@ -23,9 +25,9 @@ import com.astralrealms.skyblock.listener.IslandListener;
 import com.astralrealms.skyblock.listener.PlayerConnectionListener;
 import com.astralrealms.skyblock.messaging.ASPacketRegistry;
 import com.astralrealms.skyblock.model.IslandBlueprint;
-import com.astralrealms.skyblock.model.IslandPermission;
-import com.astralrealms.skyblock.model.IslandSettings;
 import com.astralrealms.skyblock.model.island.Island;
+import com.astralrealms.skyblock.model.island.IslandSettings;
+import com.astralrealms.skyblock.model.role.IslandPermission;
 import com.astralrealms.skyblock.placeholder.SkyblockPlaceholders;
 import com.astralrealms.skyblock.service.*;
 
@@ -62,6 +64,14 @@ public final class AstralSkyblock extends AstralPaperPlugin {
 
         // Instance
         instance = this;
+
+        // Actions
+        // -- Roles Permissions
+        this.registerAction("toggle-role-permission", ToggleRolePermissionAction.class);
+        this.registerAction("update-role-permissions", ToggleRolePermissionAction.class);
+        // -- Settings
+        this.registerAction("toggle-island-setting", ToggleIslandSettingAction.class);
+        this.registerAction("update-island-settings", UpdateIslandSettingsAction.class);
 
         // Services
         this.blueprints = new BlueprintService(this);

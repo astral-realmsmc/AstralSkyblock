@@ -8,7 +8,7 @@ import java.util.concurrent.CompletableFuture;
 
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.configuration.RolesConfiguration;
-import com.astralrealms.skyblock.model.IslandPermission;
+import com.astralrealms.skyblock.model.role.IslandPermission;
 import com.astralrealms.skyblock.model.role.IslandRole;
 import com.astralrealms.skyblock.model.role.RoleSeed;
 import com.astralrealms.skyblock.repository.RoleRepository;
