@@ -1,0 +1,26 @@
+id: "island-creation"
+title: "%img_internal:neg_8%<white>%img_guis:generic_list%%img_internal:neg_98%<font:alphabet:shift_1>creation"
+size: 54
+use-player-inventory: true
+
+layouts:
+  blueprints:
+    taint: "blueprint"
+    provider: "%parameters_blueprints%"
+
+items:
+  blueprint:
+    slots: [10,11,12,13,14,15,16,19,20,21,22,23,24,25,28,29,30,31,32,33,34]
+    copy-from: "%parameter_blueprint_icon%"
+    name: "<primary_color><bold>%parameter_blueprint_id%"
+    lore:
+      - ""
+      - "  <text_color>Crée une nouvelle <secondary_color>île"
+      - "  <text_color>à partir de ce <secondary_color>modèle<text_color>."
+      - ""
+      - "<white>%img_icons:left-click% <information_color>Créer cette île"
+    taints:
+      - "blueprint"
+    actions:
+      - "[close]"
+      - "[create-island] %parameter_blueprint_id%"
