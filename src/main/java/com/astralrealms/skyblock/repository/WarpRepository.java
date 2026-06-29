@@ -3,6 +3,7 @@ package com.astralrealms.skyblock.repository;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -134,6 +135,7 @@ public class WarpRepository extends IndexedSyncedRepository<WarpKey, IslandWarp,
     }
 
     private IslandWarp map(ResultSet resultSet) throws SQLException {
+        Timestamp createdAt = resultSet.getTimestamp("created_at");
         return new IslandWarp(
                 resultSet.getObject("island_id", UUID.class),
                 resultSet.getString("name"),
@@ -143,7 +145,7 @@ public class WarpRepository extends IndexedSyncedRepository<WarpKey, IslandWarp,
                 resultSet.getFloat("yaw"),
                 resultSet.getFloat("pitch"),
                 resultSet.getBoolean("is_private"),
-                resultSet.getTimestamp("created_at") == null ? 0L : resultSet.getTimestamp("created_at").getTime()
+                createdAt == null ? 0L : createdAt.getTime()
         );
     }
 }

@@ -9,7 +9,6 @@ import org.jetbrains.annotations.Unmodifiable;
 
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.model.island.IslandWarp;
-import com.astralrealms.skyblock.model.island.WarpKey;
 import com.astralrealms.skyblock.repository.WarpRepository;
 
 import lombok.Getter;
