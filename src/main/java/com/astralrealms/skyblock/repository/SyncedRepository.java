@@ -3,13 +3,13 @@ package com.astralrealms.skyblock.repository;
 import java.time.Duration;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.function.Function;
 
 import org.jetbrains.annotations.Nullable;
 
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.github.benmanes.caffeine.cache.AsyncCacheLoader;
 import com.github.benmanes.caffeine.cache.AsyncLoadingCache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import com.google.gson.Gson;
 
 import lombok.Getter;
@@ -22,7 +22,7 @@ import lombok.Getter;
  *     <li><b>L2</b> – a shared Redis cache, visible to every server instance.</li>
  *     <li><b>L3</b> – the backing database (the source of truth).</li>
  * </ul>
- *
+ * <p>
  * Coherency across servers is maintained with Redis pub/sub: {@link #publishUpdate(Object, Object)}
  * and {@link #publishInvalidation(Object)} notify other instances, whose subscribers are expected to
  * call {@link #invalidateLocally(Object)} (L1 only — L2 is shared and already up to date).
@@ -38,12 +38,18 @@ public abstract class SyncedRepository<K, V> {
     protected final AsyncLoadingCache<K, V> cache;
     protected final Class<V> valueClass;
 
-    public SyncedRepository(AstralSkyblock plugin, String cacheKey, String exchangeChannel, Function<AsyncCacheLoader<K, V>, AsyncLoadingCache<K, V>> cacheBuilder, Class<V> valueClass) {
+    public SyncedRepository(AstralSkyblock plugin, String cacheKey, String exchangeChannel, Class<V> valueClass) {
         this.plugin = plugin;
         this.cacheKey = cacheKey;
         this.exchangeChannel = exchangeChannel;
         this.valueClass = valueClass;
-        this.cache = cacheBuilder.apply((key, _) -> load(key));
+        this.cache = this.buildCache((key, _) -> load(key));
+    }
+
+    protected AsyncLoadingCache<K, V> buildCache(AsyncCacheLoader<K, V> cacheLoader) {
+        return Caffeine.newBuilder()
+                .recordStats()
+                .buildAsync(cacheLoader);
     }
 
     public Optional<V> findCachedById(K key) {
@@ -140,7 +146,8 @@ public abstract class SyncedRepository<K, V> {
                 : this.plugin.cache().set(cacheKey(key), json, ttl);
         return result
                 .exceptionally(throwable -> logCacheFailure("write", key, throwable))
-                .thenAccept(_ -> {});
+                .thenAccept(_ -> {
+                });
     }
 
     private <T> T logCacheFailure(String operation, K key, Throwable throwable) {

@@ -5,9 +5,12 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+
+import org.jetbrains.annotations.Unmodifiable;
 
 import com.astralrealms.core.storage.model.EntityMetadata;
 import com.astralrealms.core.storage.model.RowMapper;
@@ -16,7 +19,10 @@ import com.astralrealms.skyblock.messaging.packet.repository.LongObjectDeletePac
 import com.astralrealms.skyblock.messaging.packet.repository.LongObjectUpdatePacket;
 import com.astralrealms.skyblock.model.role.IslandRole;
 import com.astralrealms.skyblock.utils.ASConstants;
+import com.github.benmanes.caffeine.cache.AsyncCacheLoader;
+import com.github.benmanes.caffeine.cache.AsyncLoadingCache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.github.benmanes.caffeine.cache.RemovalListener;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Multimaps;
@@ -42,9 +48,6 @@ public class RoleRepository extends SyncedRepository<Long, IslandRole> {
                 plugin,
                 ASConstants.ROLE_CACHE_KEY,
                 ASConstants.ROLE_UPDATE_CHANNEL,
-                cacheLoader -> Caffeine.newBuilder()
-                        .maximumSize(500_000)
-                        .buildAsync(cacheLoader),
                 IslandRole.class
         );
         this.plugin.messaging().registerExchange(exchangeChannel, packet -> {
@@ -55,11 +58,35 @@ public class RoleRepository extends SyncedRepository<Long, IslandRole> {
         });
     }
 
+    @Override
+    protected AsyncLoadingCache<Long, IslandRole> buildCache(AsyncCacheLoader<Long, IslandRole> cacheLoader) {
+        return Caffeine.newBuilder()
+                .recordStats()
+                .evictionListener((RemovalListener<Long, IslandRole>) (key, value, cause) -> {
+                    if (value != null)
+                        islandRoleIndex.remove(value.islandId(), value.id());
+                })
+                .buildAsync(cacheLoader);
+    }
+
+    @Override
+    protected void cacheLocally(IslandRole value) {
+        super.cacheLocally(value);
+        islandRoleIndex.put(value.islandId(), value.id());
+    }
+
+    @Unmodifiable
+    public Collection<Long> getIslandRoleIds(UUID islandId) {
+        return List.copyOf(this.islandRoleIndex.get(islandId));
+    }
+
     // =====================================================================================
     //  Domain queries
     // =====================================================================================
 
-    /** All of an island's roles, senior first (weight DESC, id). Primes the per-role cache. */
+    /**
+     * All of an island's roles, senior first (weight DESC, id). Primes the per-role cache.
+     */
     public CompletableFuture<List<IslandRole>> findByIsland(UUID islandId) {
         String query = """
                 SELECT %s FROM island_roles WHERE island_id = ? ORDER BY weight DESC, id
@@ -83,13 +110,17 @@ public class RoleRepository extends SyncedRepository<Long, IslandRole> {
                 });
     }
 
-    /** The island's default member role, or {@code null} if none is configured. */
+    /**
+     * The island's default member role, or {@code null} if none is configured.
+     */
     public CompletableFuture<IslandRole> findDefault(UUID islandId) {
         return findRoleId("SELECT id FROM island_roles WHERE default_guard = ?", islandId)
                 .thenCompose(this::resolve);
     }
 
-    /** A system role of the island ({@code VISITOR}/{@code COOP}), resolved via {@code sys_kind}. */
+    /**
+     * A system role of the island ({@code VISITOR}/{@code COOP}), resolved via {@code sys_kind}.
+     */
     public CompletableFuture<IslandRole> findSystemRole(UUID islandId, IslandRole.Type type) {
         return this.plugin.database()
                 .supply(connection -> {
@@ -104,17 +135,23 @@ public class RoleRepository extends SyncedRepository<Long, IslandRole> {
                 .thenCompose(this::resolve);
     }
 
-    /** Creates a custom member role (kind=MEMBER) and returns it with its generated id. */
+    /**
+     * Creates a custom member role (kind=MEMBER) and returns it with its generated id.
+     */
     public CompletableFuture<IslandRole> create(UUID islandId, String name, int weight) {
         return save(new IslandRole(null, islandId, IslandRole.Type.MEMBER, name, weight, false, 0L));
     }
 
-    /** Renames a role. */
+    /**
+     * Renames a role.
+     */
     public CompletableFuture<Void> rename(long roleId, String name) {
         return update("UPDATE island_roles SET name = ? WHERE id = ?", name, roleId);
     }
 
-    /** Re-weights a role (higher = more senior). */
+    /**
+     * Re-weights a role (higher = more senior).
+     */
     public CompletableFuture<Void> setWeight(long roleId, int weight) {
         return this.plugin.database()
                 .run(connection -> {
@@ -177,7 +214,9 @@ public class RoleRepository extends SyncedRepository<Long, IslandRole> {
                 });
     }
 
-    /** Number of members holding a role (e.g. before deleting it). */
+    /**
+     * Number of members holding a role (e.g. before deleting it).
+     */
     public CompletableFuture<Long> countHolders(UUID islandId, long roleId) {
         return this.plugin.database()
                 .supply(connection -> {

@@ -22,10 +22,6 @@ public class PlayerRepository extends UUIDSyncedRepository<SkyblockPlayer> {
                 plugin,
                 ASConstants.PLAYER_CACHE_KEY,
                 ASConstants.PLAYER_UPDATE_CHANNEL,
-                cacheLoader -> Caffeine.newBuilder()
-                        .maximumSize(100_000)
-                        .expireAfterAccess(Duration.ofMinutes(30))
-                        .buildAsync(cacheLoader),
                 SkyblockPlayer.class
         );
     }

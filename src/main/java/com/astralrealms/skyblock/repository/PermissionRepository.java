@@ -2,11 +2,7 @@ package com.astralrealms.skyblock.repository;
 
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
 import com.astralrealms.skyblock.AstralSkyblock;
@@ -14,7 +10,6 @@ import com.astralrealms.skyblock.messaging.packet.repository.LongObjectDeletePac
 import com.astralrealms.skyblock.messaging.packet.repository.LongObjectUpdatePacket;
 import com.astralrealms.skyblock.model.role.RolePermissions;
 import com.astralrealms.skyblock.utils.ASConstants;
-import com.github.benmanes.caffeine.cache.Caffeine;
 
 /**
  * Role grant sets, keyed by role id. The cacheable unit is the whole {@link RolePermissions} set
@@ -30,9 +25,6 @@ public class PermissionRepository extends SyncedRepository<Long, RolePermissions
                 plugin,
                 ASConstants.PERMISSION_CACHE_KEY,
                 ASConstants.PERMISSION_UPDATE_CHANNEL,
-                cacheLoader -> Caffeine.newBuilder()
-                        .maximumSize(500_000)
-                        .buildAsync(cacheLoader),
                 RolePermissions.class
         );
         this.plugin.messaging().registerExchange(exchangeChannel, packet -> {

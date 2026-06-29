@@ -1,14 +1,13 @@
 package com.astralrealms.skyblock.repository;
 
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Timestamp;
-import java.sql.Types;
+import java.sql.*;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+
+import org.jetbrains.annotations.Unmodifiable;
 
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.messaging.packet.repository.MemberObjectDeletePacket;
@@ -16,7 +15,13 @@ import com.astralrealms.skyblock.messaging.packet.repository.MemberObjectUpdateP
 import com.astralrealms.skyblock.model.member.IslandMember;
 import com.astralrealms.skyblock.model.member.MemberKey;
 import com.astralrealms.skyblock.utils.ASConstants;
+import com.github.benmanes.caffeine.cache.AsyncCacheLoader;
+import com.github.benmanes.caffeine.cache.AsyncLoadingCache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.github.benmanes.caffeine.cache.RemovalListener;
+import com.google.common.collect.HashMultimap;
+import com.google.common.collect.Multimap;
+import com.google.common.collect.Multimaps;
 
 /**
  * Island membership, keyed by the composite {@link MemberKey} (island + player) that mirrors the
@@ -29,17 +34,18 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 public class MemberRepository extends SyncedRepository<MemberKey, IslandMember> {
 
     private static final String COLUMNS = "island_id, player_uuid, is_owner, role_id, joined_at";
+    private final Multimap<UUID, UUID> islandMembersMap;
+    private final Multimap<UUID, UUID> playerIslandsMap;
 
     public MemberRepository(AstralSkyblock plugin) {
         super(
                 plugin,
                 ASConstants.MEMBER_CACHE_KEY,
                 ASConstants.MEMBER_UPDATE_CHANNEL,
-                cacheLoader -> Caffeine.newBuilder()
-                        .maximumSize(250_000)
-                        .buildAsync(cacheLoader),
                 IslandMember.class
         );
+        this.islandMembersMap = Multimaps.synchronizedMultimap(HashMultimap.create());
+        this.playerIslandsMap = Multimaps.synchronizedMultimap(HashMultimap.create());
         this.plugin.messaging().registerExchange(exchangeChannel, packet -> {
             if (packet instanceof MemberObjectUpdatePacket updatePacket)
                 cache.synchronous().refresh(new MemberKey(updatePacket.islandId(), updatePacket.playerUuid()));
@@ -48,11 +54,35 @@ public class MemberRepository extends SyncedRepository<MemberKey, IslandMember> 
         });
     }
 
+    @Override
+    protected AsyncLoadingCache<MemberKey, IslandMember> buildCache(AsyncCacheLoader<MemberKey, IslandMember> cacheLoader) {
+        return Caffeine.newBuilder()
+                .evictionListener((RemovalListener<MemberKey, IslandMember>) (key, _, _) -> {
+                    if (key != null) {
+                        islandMembersMap.remove(key.islandId(), key.playerUuid());
+                        playerIslandsMap.remove(key.playerUuid(), key.islandId());
+                    }
+                })
+                .buildAsync(cacheLoader);
+    }
+
+    @Unmodifiable
+    public Collection<UUID> findIslandMembers(UUID islandId) {
+        return islandMembersMap.get(islandId);
+    }
+
+    @Unmodifiable
+    public Collection<UUID> findPlayerIslands(UUID playerUuid) {
+        return playerIslandsMap.get(playerUuid);
+    }
+
     // =====================================================================================
     //  Domain queries
     // =====================================================================================
 
-    /** Every member of an island. Primes the per-member cache. */
+    /**
+     * Every member of an island. Primes the per-member cache.
+     */
     public CompletableFuture<List<IslandMember>> findByIsland(UUID islandId) {
         String query = "SELECT " + COLUMNS + " FROM island_members WHERE island_id = ?";
         return this.plugin.database()
@@ -73,7 +103,9 @@ public class MemberRepository extends SyncedRepository<MemberKey, IslandMember> 
                 });
     }
 
-    /** The single membership of a player, or {@code null} if they belong to no island. */
+    /**
+     * The single membership of a player, or {@code null} if they belong to no island.
+     */
     public CompletableFuture<IslandMember> findByPlayer(UUID playerUuid) {
         String query = "SELECT " + COLUMNS + " FROM island_members WHERE player_uuid = ?";
         return this.plugin.database()
@@ -92,7 +124,9 @@ public class MemberRepository extends SyncedRepository<MemberKey, IslandMember> 
                 });
     }
 
-    /** The owner of an island (via the {@code owner_guard} unique virtual column), or {@code null}. */
+    /**
+     * The owner of an island (via the {@code owner_guard} unique virtual column), or {@code null}.
+     */
     public CompletableFuture<UUID> findOwner(UUID islandId) {
         return this.plugin.database()
                 .supply(connection -> {
@@ -105,7 +139,9 @@ public class MemberRepository extends SyncedRepository<MemberKey, IslandMember> 
                 });
     }
 
-    /** Adds a member with a role. Fails on {@code uq_member_player} if they already belong to an island. */
+    /**
+     * Adds a member with a role. Fails on {@code uq_member_player} if they already belong to an island.
+     */
     public CompletableFuture<IslandMember> add(UUID islandId, UUID playerUuid, long roleId) {
         return this.plugin.database()
                 .run(connection -> {
@@ -119,7 +155,9 @@ public class MemberRepository extends SyncedRepository<MemberKey, IslandMember> 
                 .thenCompose(ignored -> reload(islandId, playerUuid));
     }
 
-    /** Adds the structural owner (no role). Used during island creation. */
+    /**
+     * Adds the structural owner (no role). Used during island creation.
+     */
     public CompletableFuture<IslandMember> addOwner(UUID islandId, UUID ownerUuid) {
         return this.plugin.database()
                 .run(connection -> {
@@ -132,7 +170,9 @@ public class MemberRepository extends SyncedRepository<MemberKey, IslandMember> 
                 .thenCompose(ignored -> reload(islandId, ownerUuid));
     }
 
-    /** Removes a member (leave / kick). The {@code is_owner} guard prevents removing the owner. */
+    /**
+     * Removes a member (leave / kick). The {@code is_owner} guard prevents removing the owner.
+     */
     public CompletableFuture<Void> remove(UUID islandId, UUID playerUuid) {
         return this.plugin.database()
                 .run(connection -> {
@@ -145,7 +185,9 @@ public class MemberRepository extends SyncedRepository<MemberKey, IslandMember> 
                 .thenRun(() -> invalidateGlobally(new MemberKey(islandId, playerUuid)));
     }
 
-    /** Sets a member's role (promote / demote). The owner is excluded by the guard. */
+    /**
+     * Sets a member's role (promote / demote). The owner is excluded by the guard.
+     */
     public CompletableFuture<IslandMember> setRole(UUID islandId, UUID playerUuid, long roleId) {
         return this.plugin.database()
                 .run(connection -> {
@@ -159,7 +201,9 @@ public class MemberRepository extends SyncedRepository<MemberKey, IslandMember> 
                 .thenCompose(ignored -> reload(islandId, playerUuid));
     }
 
-    /** Number of members on an island (member-limit enforcement). */
+    /**
+     * Number of members on an island (member-limit enforcement).
+     */
     public CompletableFuture<Long> count(UUID islandId) {
         return this.plugin.database()
                 .supply(connection -> {
@@ -232,7 +276,7 @@ public class MemberRepository extends SyncedRepository<MemberKey, IslandMember> 
     @Override
     protected CompletableFuture<IslandMember> saveToDatabase(IslandMember value) {
         String query = "INSERT INTO island_members (island_id, player_uuid, is_owner, role_id) VALUES (?, ?, ?, ?) "
-                + "ON DUPLICATE KEY UPDATE is_owner = VALUES(is_owner), role_id = VALUES(role_id)";
+                       + "ON DUPLICATE KEY UPDATE is_owner = VALUES(is_owner), role_id = VALUES(role_id)";
         return this.plugin.database()
                 .run(connection -> {
                     try (PreparedStatement statement = connection.prepareStatement(query)) {
@@ -271,7 +315,16 @@ public class MemberRepository extends SyncedRepository<MemberKey, IslandMember> 
         this.plugin.messaging().send(exchangeChannel, new MemberObjectDeletePacket(key.islandId(), key.playerUuid()));
     }
 
-    // =====================================================================================
+    @Override
+    protected void cacheLocally(IslandMember value) {
+        super.cacheLocally(value);
+
+        this.islandMembersMap.put(value.islandId(), value.playerUuid());
+        this.playerIslandsMap.put(value.playerUuid(), value.islandId());
+    }
+
+
+// =====================================================================================
     //  Internals
     // =====================================================================================
 

@@ -10,11 +10,11 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
+import com.astralrealms.core.storage.pagination.Pageable;
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.model.island.Island;
-import com.astralrealms.core.storage.pagination.Pageable;
 import com.astralrealms.skyblock.utils.ASConstants;
-import com.github.benmanes.caffeine.cache.Caffeine;
+import com.github.benmanes.caffeine.cache.*;
 
 public class IslandRepository extends UUIDSyncedRepository<Island> {
 
@@ -25,13 +25,22 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
                 plugin,
                 ASConstants.ISLAND_CACHE_KEY,
                 ASConstants.ISLAND_UPDATE_CHANNEL,
-                cacheLoader -> Caffeine.newBuilder()
-                        .maximumSize(250_000)
-                        .buildAsync(cacheLoader),
                 Island.class
         );
     }
 
+    @Override
+    protected AsyncLoadingCache<UUID, Island> buildCache(AsyncCacheLoader<UUID, Island> cacheLoader) {
+        return Caffeine.newBuilder()
+                .maximumSize(250_000)
+                .evictionListener((RemovalListener<UUID, Island>) (key, value, _) -> {
+                    if (value != null && value.name() != null)
+                        nameIslandMap.remove(value.name(), key);
+                    else if (key != null)
+                        nameIslandMap.values().remove(key);
+                })
+                .buildAsync(cacheLoader);
+    }
 
     @Override
     protected void cacheLocally(Island value) {
