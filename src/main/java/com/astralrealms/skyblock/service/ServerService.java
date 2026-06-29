@@ -45,19 +45,19 @@ public class ServerService {
 
     public CompletableFuture<Void> deleteHostServer(UUID island) {
         return this.plugin.cache()
-                .del(ASConstants.ISLAND_SERVER_KEY + ":" + island.toString())
+                .hdel(ASConstants.ISLAND_SERVER_KEY + ":" + island.toString())
                 .thenApply(ignored -> null);
     }
 
     public CompletableFuture<Void> setHostServer(UUID island, UUID server) {
         return this.plugin.cache()
-                .set(ASConstants.ISLAND_SERVER_KEY + ":" + island.toString(), server.toString())
+                .hset(ASConstants.ISLAND_SERVER_KEY, island.toString(), server.toString())
                 .thenApply(ignored -> null);
     }
 
     public CompletableFuture<UUID> findHostServer(UUID island) {
         return this.plugin.cache()
-                .get(ASConstants.ISLAND_SERVER_KEY + ":" + island.toString())
-                .thenApply(serverId -> serverId != null ? UUID.fromString(serverId) : null);
+                .hget(ASConstants.ISLAND_SERVER_KEY, island.toString())
+                .thenApply(serverId -> serverId.map(UUID::fromString).orElse(null));
     }
 }
