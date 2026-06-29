@@ -1,0 +1,24 @@
+id: "island-confirm-disband"
+title: "%img_internal:neg_8%<white>%img_guis:generic_27%%img_internal:neg_176%%img_title%%img_internal:neg_118%<font:alphabet:alphabet>validation"
+size: 54
+use-player-inventory: true
+
+items:
+  confirm:
+    slot: 14
+    copy-from: "%stacksuppliers_ce_icons:check%"
+    name: "<bold><red>Supprimer l'île"
+    item-flags:
+      - HIDE_ATTRIBUTES
+    actions:
+      - "[disband-island] %parameters_island_id%"
+      - "[close]"
+
+  cancel:
+    slot: 12
+    copy-from: "%stacksuppliers_ce_icons:cross%"
+    name: "<bold><primary_color>Annuler"
+    item-flags:
+      - HIDE_ATTRIBUTES
+    actions:
+      - "[open-menu] island-main:island=%parameters_island%"
