@@ -19,29 +19,20 @@ import com.astralrealms.skyblock.messaging.packet.repository.LongObjectDeletePac
 import com.astralrealms.skyblock.messaging.packet.repository.LongObjectUpdatePacket;
 import com.astralrealms.skyblock.model.role.IslandRole;
 import com.astralrealms.skyblock.utils.ASConstants;
-import com.github.benmanes.caffeine.cache.AsyncCacheLoader;
-import com.github.benmanes.caffeine.cache.AsyncLoadingCache;
-import com.github.benmanes.caffeine.cache.Caffeine;
-import com.github.benmanes.caffeine.cache.RemovalListener;
-import com.google.common.collect.HashMultimap;
-import com.google.common.collect.Multimap;
-import com.google.common.collect.Multimaps;
 
 /**
  * Per-island roles, keyed by their generated {@code BIGINT} id. {@link IslandRole} is not
  * {@code Unique}, so this talks to {@link com.astralrealms.core.storage.DatabaseService} directly,
  * reusing the framework {@link RowMapper} for row hydration.
  *
- * <p>The {@code islandRoleIndex} is a best-effort local index of an island's role ids for fast
- * fan-out. It is rebuilt on {@link #findByIsland(UUID)} and maintained on writes; like
- * {@link IslandRepository}, cross-server invalidation of the index is left as a TODO.
+ * <p>The secondary index (island id → role ids) is maintained by the
+ * {@link IndexedSyncedRepository} base on every cache entry path.
  */
-public class RoleRepository extends SyncedRepository<Long, IslandRole> {
+public class RoleRepository extends IndexedSyncedRepository<Long, IslandRole, UUID> {
 
     private static final String COLUMNS = "id, island_id, kind, name, weight, is_default, created_at";
 
     private final RowMapper<IslandRole> mapper = new RowMapper<>(EntityMetadata.of(IslandRole.class));
-    private final Multimap<UUID, Long> islandRoleIndex = Multimaps.synchronizedMultimap(HashMultimap.create());
 
     public RoleRepository(AstralSkyblock plugin) {
         super(
@@ -58,26 +49,9 @@ public class RoleRepository extends SyncedRepository<Long, IslandRole> {
         });
     }
 
-    @Override
-    protected AsyncLoadingCache<Long, IslandRole> buildCache(AsyncCacheLoader<Long, IslandRole> cacheLoader) {
-        return Caffeine.newBuilder()
-                .recordStats()
-                .evictionListener((RemovalListener<Long, IslandRole>) (key, value, cause) -> {
-                    if (value != null)
-                        islandRoleIndex.remove(value.islandId(), value.id());
-                })
-                .buildAsync(cacheLoader);
-    }
-
-    @Override
-    protected void cacheLocally(IslandRole value) {
-        super.cacheLocally(value);
-        islandRoleIndex.put(value.islandId(), value.id());
-    }
-
     @Unmodifiable
     public Collection<Long> getIslandRoleIds(UUID islandId) {
-        return List.copyOf(this.islandRoleIndex.get(islandId));
+        return keysIn(islandId);
     }
 
     // =====================================================================================
@@ -88,26 +62,7 @@ public class RoleRepository extends SyncedRepository<Long, IslandRole> {
      * All of an island's roles, senior first (weight DESC, id). Primes the per-role cache.
      */
     public CompletableFuture<List<IslandRole>> findByIsland(UUID islandId) {
-        String query = """
-                SELECT %s FROM island_roles WHERE island_id = ? ORDER BY weight DESC, id
-                """.formatted(COLUMNS);
-        return this.plugin.database()
-                .supply(connection -> {
-                    List<IslandRole> roles = new ArrayList<>();
-                    try (PreparedStatement statement = connection.prepareStatement(query)) {
-                        statement.setObject(1, islandId);
-                        try (ResultSet resultSet = statement.executeQuery()) {
-                            while (resultSet.next())
-                                roles.add(mapper.map(resultSet));
-                        }
-                    }
-                    return roles;
-                })
-                .thenApply(roles -> {
-                    this.islandRoleIndex.replaceValues(islandId, roles.stream().map(IslandRole::id).toList());
-                    roles.forEach(role -> cache.synchronous().put(role.id(), role));
-                    return roles;
-                });
+        return prime(islandId);
     }
 
     /**
@@ -182,7 +137,7 @@ public class RoleRepository extends SyncedRepository<Long, IslandRole> {
                 })
                 .thenApply(success -> {
                     // The previously-default role also changed; invalidate every cached role of the island.
-                    List.copyOf(this.islandRoleIndex.get(islandId)).forEach(this::invalidateGlobally);
+                    List.copyOf(keysIn(islandId)).forEach(this::invalidateGlobally);
                     invalidateGlobally(newRoleId);
                     return success;
                 });
@@ -208,7 +163,7 @@ public class RoleRepository extends SyncedRepository<Long, IslandRole> {
                     }
                 })
                 .thenApply(success -> {
-                    this.islandRoleIndex.remove(islandId, doomedRoleId);
+                    invalidateLocally(doomedRoleId);
                     invalidateGlobally(doomedRoleId);
                     return success;
                 });
@@ -271,8 +226,7 @@ public class RoleRepository extends SyncedRepository<Long, IslandRole> {
                         statement.setLong(1, key);
                         statement.executeUpdate();
                     }
-                })
-                .thenRun(() -> this.islandRoleIndex.values().remove(key));
+                });
     }
 
     @Override
@@ -283,6 +237,28 @@ public class RoleRepository extends SyncedRepository<Long, IslandRole> {
     @Override
     protected void publishInvalidation(Long key) {
         this.plugin.messaging().send(exchangeChannel, new LongObjectDeletePacket(key));
+    }
+
+    @Override
+    protected UUID indexKeyOf(IslandRole value) {
+        return value.islandId();
+    }
+
+    @Override
+    protected CompletableFuture<List<IslandRole>> loadByIndex(UUID islandId) {
+        String query = "SELECT %s FROM island_roles WHERE island_id = ? ORDER BY weight DESC, id".formatted(COLUMNS);
+        return this.plugin.database()
+                .supply(connection -> {
+                    List<IslandRole> roles = new ArrayList<>();
+                    try (PreparedStatement statement = connection.prepareStatement(query)) {
+                        statement.setObject(1, islandId);
+                        try (ResultSet resultSet = statement.executeQuery()) {
+                            while (resultSet.next())
+                                roles.add(mapper.map(resultSet));
+                        }
+                    }
+                    return roles;
+                });
     }
 
     // =====================================================================================
@@ -319,7 +295,7 @@ public class RoleRepository extends SyncedRepository<Long, IslandRole> {
                     }
                 })
                 .thenApply(saved -> {
-                    this.islandRoleIndex.put(saved.islandId(), saved.id());
+                    index(saved);
                     return saved;
                 });
     }

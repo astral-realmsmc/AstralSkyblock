@@ -30,6 +30,19 @@ public class SkyblockCommand extends BaseCommand {
         this.plugin.islands().create(player, name, finalBlueprint);
     }
 
+    @Subcommand("info")
+    @Syntax("<island>")
+    @Description("Displays information about your island")
+    @CommandCompletion("@islands")
+    public void onInfo(Player player, Island island) {
+        player.sendMessage("Island: " + island.name());
+        player.sendMessage("Owner: " + (island.owner() != null ? island.owner().playerUuid() : "None"));
+        player.sendMessage("Members:");
+        island.members().forEach(member -> {
+            player.sendMessage("- " + member.playerUuid() + " (Role: " + member.roleId() + ")");
+        });
+    }
+
     @Subcommand("save")
     @Syntax("<island>")
     @Description("Saves your island")

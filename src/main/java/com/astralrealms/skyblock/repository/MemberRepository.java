@@ -15,10 +15,6 @@ import com.astralrealms.skyblock.messaging.packet.repository.MemberObjectUpdateP
 import com.astralrealms.skyblock.model.member.IslandMember;
 import com.astralrealms.skyblock.model.member.MemberKey;
 import com.astralrealms.skyblock.utils.ASConstants;
-import com.github.benmanes.caffeine.cache.AsyncCacheLoader;
-import com.github.benmanes.caffeine.cache.AsyncLoadingCache;
-import com.github.benmanes.caffeine.cache.Caffeine;
-import com.github.benmanes.caffeine.cache.RemovalListener;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Multimaps;
@@ -31,11 +27,10 @@ import com.google.common.collect.Multimaps;
  * <p>Note: {@code uq_member_player} guarantees a player belongs to at most one island, so
  * {@link #findByPlayer(UUID)} resolves a single membership.
  */
-public class MemberRepository extends SyncedRepository<MemberKey, IslandMember> {
+public class MemberRepository extends IndexedSyncedRepository<MemberKey, IslandMember, UUID> {
 
     private static final String COLUMNS = "island_id, player_uuid, is_owner, role_id, joined_at";
-    private final Multimap<UUID, UUID> islandMembersMap;
-    private final Multimap<UUID, UUID> playerIslandsMap;
+    private final Multimap<UUID, UUID> playerIslandsMap = Multimaps.synchronizedMultimap(HashMultimap.create());
 
     public MemberRepository(AstralSkyblock plugin) {
         super(
@@ -44,8 +39,6 @@ public class MemberRepository extends SyncedRepository<MemberKey, IslandMember> 
                 ASConstants.MEMBER_UPDATE_CHANNEL,
                 IslandMember.class
         );
-        this.islandMembersMap = Multimaps.synchronizedMultimap(HashMultimap.create());
-        this.playerIslandsMap = Multimaps.synchronizedMultimap(HashMultimap.create());
         this.plugin.messaging().registerExchange(exchangeChannel, packet -> {
             if (packet instanceof MemberObjectUpdatePacket updatePacket)
                 cache.synchronous().refresh(new MemberKey(updatePacket.islandId(), updatePacket.playerUuid()));
@@ -54,53 +47,23 @@ public class MemberRepository extends SyncedRepository<MemberKey, IslandMember> 
         });
     }
 
-    @Override
-    protected AsyncLoadingCache<MemberKey, IslandMember> buildCache(AsyncCacheLoader<MemberKey, IslandMember> cacheLoader) {
-        return Caffeine.newBuilder()
-                .evictionListener((RemovalListener<MemberKey, IslandMember>) (key, _, _) -> {
-                    if (key != null) {
-                        islandMembersMap.remove(key.islandId(), key.playerUuid());
-                        playerIslandsMap.remove(key.playerUuid(), key.islandId());
-                    }
-                })
-                .buildAsync(cacheLoader);
-    }
-
     @Unmodifiable
     public Collection<UUID> findIslandMembers(UUID islandId) {
-        return islandMembersMap.get(islandId);
+        return keysIn(islandId).stream().map(MemberKey::playerUuid).toList();
     }
 
     @Unmodifiable
     public Collection<UUID> findPlayerIslands(UUID playerUuid) {
-        return playerIslandsMap.get(playerUuid);
+        return List.copyOf(playerIslandsMap.get(playerUuid));
     }
 
     // =====================================================================================
     //  Domain queries
     // =====================================================================================
 
-    /**
-     * Every member of an island. Primes the per-member cache.
-     */
+    /** Every member of an island. Primes the per-member cache and indexes. */
     public CompletableFuture<List<IslandMember>> findByIsland(UUID islandId) {
-        String query = "SELECT " + COLUMNS + " FROM island_members WHERE island_id = ?";
-        return this.plugin.database()
-                .supply(connection -> {
-                    List<IslandMember> members = new ArrayList<>();
-                    try (PreparedStatement statement = connection.prepareStatement(query)) {
-                        statement.setObject(1, islandId);
-                        try (ResultSet resultSet = statement.executeQuery()) {
-                            while (resultSet.next())
-                                members.add(map(resultSet));
-                        }
-                    }
-                    return members;
-                })
-                .thenApply(members -> {
-                    members.forEach(member -> cache.synchronous().put(keyFromValue(member), member));
-                    return members;
-                });
+        return prime(islandId);
     }
 
     /**
@@ -119,7 +82,7 @@ public class MemberRepository extends SyncedRepository<MemberKey, IslandMember> 
                 })
                 .thenApply(member -> {
                     if (member != null)
-                        cache.synchronous().put(keyFromValue(member), member);
+                        cacheLocally(member);
                     return member;
                 });
     }
@@ -316,11 +279,42 @@ public class MemberRepository extends SyncedRepository<MemberKey, IslandMember> 
     }
 
     @Override
-    protected void cacheLocally(IslandMember value) {
-        super.cacheLocally(value);
+    protected UUID indexKeyOf(IslandMember value) {
+        return value.islandId();
+    }
 
-        this.islandMembersMap.put(value.islandId(), value.playerUuid());
+    @Override
+    protected CompletableFuture<List<IslandMember>> loadByIndex(UUID islandId) {
+        String query = "SELECT " + COLUMNS + " FROM island_members WHERE island_id = ?";
+        return this.plugin.database()
+                .supply(connection -> {
+                    List<IslandMember> members = new ArrayList<>();
+                    try (PreparedStatement statement = connection.prepareStatement(query)) {
+                        statement.setObject(1, islandId);
+                        try (ResultSet resultSet = statement.executeQuery()) {
+                            while (resultSet.next())
+                                members.add(map(resultSet));
+                        }
+                    }
+                    return members;
+                });
+    }
+
+    @Override
+    protected void index(IslandMember value) {
+        super.index(value);
         this.playerIslandsMap.put(value.playerUuid(), value.islandId());
+    }
+
+    @Override
+    protected void deindex(MemberKey key, IslandMember value) {
+        super.deindex(key, value);
+        this.playerIslandsMap.remove(key.playerUuid(), key.islandId());
+    }
+
+    @Override
+    protected void onPrimed(UUID islandId, List<IslandMember> values) {
+        values.forEach(member -> this.playerIslandsMap.put(member.playerUuid(), member.islandId()));
     }
 
 

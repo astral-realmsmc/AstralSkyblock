@@ -1,14 +1,19 @@
 package com.astralrealms.skyblock.model.island;
 
+import java.util.Collection;
 import java.util.UUID;
 
 import org.bukkit.Location;
+import org.jetbrains.annotations.Unmodifiable;
 
 import com.astralrealms.core.model.Unique;
 import com.astralrealms.core.placeholder.PlaceholderContext;
 import com.astralrealms.core.placeholder.impl.system.ComplexPlaceholder;
+import com.astralrealms.core.provider.ItemProvider;
 import com.astralrealms.core.storage.annotation.*;
 import com.astralrealms.core.storage.model.SQLAccessor;
+import com.astralrealms.skyblock.AstralSkyblock;
+import com.astralrealms.skyblock.model.member.IslandMember;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -40,6 +45,20 @@ public class Island implements Unique, ComplexPlaceholder {
     @Column(type = SQLAccessor.LONG_TIMESTAMP)
     private long createdAt;
 
+    public IslandMember owner() {
+        return this.members()
+                .stream()
+                .filter(IslandMember::isOwner)
+                .findFirst()
+                .orElse(null);
+    }
+
+    @Unmodifiable
+    public Collection<IslandMember> members() {
+        return AstralSkyblock.get()
+                .members()
+                .findIslandMembers(this.uniqueId);
+    }
 
     // Spawn
     public void location(Location location) {
@@ -61,6 +80,8 @@ public class Island implements Unique, ComplexPlaceholder {
             case "name" -> name;
             case "locked" -> locked;
             case "level" -> level;
+            case "members" -> ItemProvider.of(members());
+            case "owner" -> this.owner();
             case "updatedAt" -> updatedAt;
             case "createdAt" -> createdAt;
             case null, default -> null;
