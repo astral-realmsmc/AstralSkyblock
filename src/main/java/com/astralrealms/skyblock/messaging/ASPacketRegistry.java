@@ -3,6 +3,10 @@ package com.astralrealms.skyblock.messaging;
 import com.astralrealms.core.packet.PacketRegistry;
 import com.astralrealms.skyblock.messaging.packet.island.IslandLoadRequestPacket;
 import com.astralrealms.skyblock.messaging.packet.island.IslandLoadResponsePacket;
+import com.astralrealms.skyblock.messaging.packet.repository.IslandPlayerKeyDeletePacket;
+import com.astralrealms.skyblock.messaging.packet.repository.IslandPlayerKeyUpdatePacket;
+import com.astralrealms.skyblock.messaging.packet.repository.IslandStringKeyDeletePacket;
+import com.astralrealms.skyblock.messaging.packet.repository.IslandStringKeyUpdatePacket;
 import com.astralrealms.skyblock.messaging.packet.repository.LongObjectDeletePacket;
 import com.astralrealms.skyblock.messaging.packet.repository.LongObjectUpdatePacket;
 import com.astralrealms.skyblock.messaging.packet.repository.MemberObjectDeletePacket;
@@ -20,6 +24,10 @@ public class ASPacketRegistry extends PacketRegistry {
         this.registerPacket(0x03, LongObjectDeletePacket::new);
         this.registerPacket(0x04, MemberObjectUpdatePacket::new);
         this.registerPacket(0x05, MemberObjectDeletePacket::new);
+        this.registerPacket(0x06, IslandStringKeyUpdatePacket::new);
+        this.registerPacket(0x07, IslandStringKeyDeletePacket::new);
+        this.registerPacket(0x08, IslandPlayerKeyUpdatePacket::new);
+        this.registerPacket(0x09, IslandPlayerKeyDeletePacket::new);
 
         // Islands (0x100 - 0x1FF)
         this.registerPacket(0x100, IslandLoadRequestPacket::new);
