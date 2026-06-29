@@ -1,0 +1,66 @@
+id: "island-member-manage"
+title: "%img_internal:neg_8%<white>%img_guis:generic_27%%img_internal:neg_176%%img_title%%img_internal:neg_111%<font:alphabet:alphabet>membre"
+size: 54
+use-player-inventory: true
+
+items:
+  member:
+    slot: 4
+    copy-from: "%parameters_member_player_head%"
+    name: "<primary_color><bold>%parameters_member_player_name%"
+    lore:
+      - ""
+      - "  <text_color>Rôle : <secondary_color>%parameters_member_role_name%"
+
+  role:
+    slot: 20
+    material: "BOOK"
+    name: "<bold><primary_color>Changer de rôle"
+    lore:
+      - ""
+      - "  <text_color>Permet d'attribuer un <secondary_color>rôle <text_color>à ce membre."
+      - ""
+      - "<white>%img_icons:left-click% <information_color>Ouvrir le sélecteur de rôle"
+    view-requirements:
+      - "[compare] %skyblock_player_island_hasPermission_SET_ROLE% == true"
+    actions:
+      - "[open-menu] island-member-role:island=%parameters_island%:member=%parameters_member%"
+
+  kick:
+    slot: 22
+    material: "IRON_DOOR"
+    name: "<bold><red>Expulser"
+    lore:
+      - ""
+      - "  <text_color>Permet d'<secondary_color>expulser <text_color>ce membre de l'île."
+      - ""
+      - "<white>%img_icons:left-click% <information_color>Expulser ce membre"
+    view-requirements:
+      - "[compare] %skyblock_player_island_hasPermission_KICK_MEMBER% == true"
+    actions:
+      - "[open-menu] island-confirm-kick:island=%parameters_island%:member=%parameters_member%"
+
+  ban:
+    slot: 24
+    copy-from: "%stacksuppliers_ce_icons:ban%"
+    name: "<bold><red>Bannir"
+    item-flags:
+      - HIDE_ATTRIBUTES
+    lore:
+      - ""
+      - "  <text_color>Permet de <secondary_color>bannir <text_color>ce membre de l'île."
+      - ""
+      - "<white>%img_icons:left-click% <information_color>Bannir ce membre"
+    view-requirements:
+      - "[compare] %skyblock_player_island_hasPermission_BAN_MEMBER% == true"
+    actions:
+      - "[open-menu] island-confirm-ban:island=%parameters_island%:member=%parameters_member%"
+
+  back:
+    slot: 49
+    copy-from: "%stacksuppliers_ce_icons:back%"
+    name: "<bold><primary_color>Retour"
+    item-flags:
+      - HIDE_ATTRIBUTES
+    actions:
+      - "[open-menu] island-members:island=%parameters_island%"
