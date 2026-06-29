@@ -126,10 +126,16 @@ The YAML references the following, which the later implementation phase must sup
    for viewer-relative item gating.
 4. **A `MenuService`** (mirroring `AstralTown`'s) plus command/subcommand hooks that call
    `computeAndOpen(player, "<id>", Map.of(...))` with the parameter keys named above.
-5. **Provider placeholders** the layouts read: `parameters_island_settings`,
-   `parameters_role_permissions` must resolve to the toggle entries (each exposing
-   `_item`, `_enabled`, and the enum value), and `parameters_blueprints` to the blueprint
-   collection.
+5. **Provider placeholders** the layouts read:
+   - `parameters_island_settings` and `parameters_role_permissions` must resolve to the
+     toggle entries (each exposing `_item`, `_enabled`, and the enum value);
+   - `parameters_blueprints` to the blueprint collection;
+   - `parameters_island_coops` and `parameters_island_bans` to the island's coop/ban
+     collections. NOTE: `Island.get()` currently exposes neither — these must be added
+     (as `island` placeholder cases or as open-context map entries supplied by the
+     `MenuService` when opening `island-coops` / `island-bans`), or those two lists render
+     empty. The per-element fields the menus read (`coop.player`/`playerId`/`executor`,
+     `ban.player`/`playerId`/`reason`/`executor`) already exist on those models.
 
 These are documented as the contract; the menus are authored against it so that the Java
 phase is a fill-in rather than a redesign.
