@@ -1,6 +1,13 @@
+# Server settings
 maximum-islands: 100
 islands-group: "islands"
 
+# Generators
+generators:
+  enabled: true
+  default: "overworld"
+
+# Settings
 default-settings:
   - CROPS_GROWTH
   - EGG_LAY

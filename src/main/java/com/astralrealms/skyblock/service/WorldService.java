@@ -34,6 +34,7 @@ public class WorldService {
     private final AstralSkyblock plugin;
     private final AdvancedSlimePaperAPI asp = AdvancedSlimePaperAPI.instance();
     private final Map<UUID, SlimeWorldInstance> loadedWorlds = new ConcurrentHashMap<>();
+    private final Map<String, UUID> worldNameToIslandId = new ConcurrentHashMap<>();
 
     private final FileLoader sourceLoader;
     private MysqlLoader worldLoader;
@@ -132,6 +133,7 @@ public class WorldService {
             try {
                 SlimeWorldInstance instance = asp.loadWorld(world, true);
                 this.loadedWorlds.put(id, instance);
+                this.worldNameToIslandId.put(instance.getName(), id);
                 this.plugin.servers()
                         .setHostServer(id, AstralPaperAPI.serverInformation().uniqueId())
                         .exceptionally(throwable -> {
@@ -224,6 +226,7 @@ public class WorldService {
             }
 
             this.loadedWorlds.remove(uniqueId);
+            this.worldNameToIslandId.remove(uniqueId.toString());
             this.plugin.servers()
                     .deleteHostServer(uniqueId)
                     .exceptionally(throwable -> {
@@ -244,6 +247,15 @@ public class WorldService {
                         throw new CompletionException("Failed to delete world for island with UUID: " + uniqueId, e);
                     }
                 });
+    }
+
+    public Optional<Island> findByWorld(World world) {
+        UUID uniqueId = worldNameToIslandId.get(world.getName());
+        if (uniqueId == null)
+            return Optional.empty();
+        return plugin.islands()
+                .repository()
+                .findCachedById(uniqueId);
     }
 
     public Optional<SlimeWorldInstance> findByIslandId(UUID uniqueId) {

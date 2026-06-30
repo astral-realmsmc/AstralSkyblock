@@ -22,10 +22,7 @@ import com.astralrealms.skyblock.configuration.ASMessages;
 import com.astralrealms.skyblock.configuration.ASPLoaderConfiguration;
 import com.astralrealms.skyblock.configuration.RolesConfiguration;
 import com.astralrealms.skyblock.configuration.SkyblockConfiguration;
-import com.astralrealms.skyblock.listener.IslandListener;
-import com.astralrealms.skyblock.listener.IslandPermissionsListener;
-import com.astralrealms.skyblock.listener.IslandSettingsListener;
-import com.astralrealms.skyblock.listener.PlayerConnectionListener;
+import com.astralrealms.skyblock.listener.*;
 import com.astralrealms.skyblock.messaging.ASPacketRegistry;
 import com.astralrealms.skyblock.model.IslandBlueprint;
 import com.astralrealms.skyblock.model.island.Island;
@@ -58,6 +55,7 @@ public final class AstralSkyblock extends AstralPaperPlugin {
     private RoleService roles;
     private MemberService members;
     private ServerService servers;
+    private GeneratorService generators;
     private MenuContainer menus;
     private DialogContainer dialogs;
 
@@ -81,6 +79,7 @@ public final class AstralSkyblock extends AstralPaperPlugin {
         this.worlds = new WorldService(this);
         this.menus = new MenuContainer(this);
         this.dialogs = new DialogContainer(this);
+        this.generators = new GeneratorService(this);
 
         // Configuration
         this.loadConfiguration();
@@ -126,6 +125,8 @@ public final class AstralSkyblock extends AstralPaperPlugin {
                     new IslandSettingsListener(this),
                     new IslandPermissionsListener(this)
             );
+        if (this.configuration.generators().enabled())
+            this.registerListener(new GeneratorListener(this));
 
 
         // Placeholders
@@ -173,6 +174,7 @@ public final class AstralSkyblock extends AstralPaperPlugin {
         this.worlds.load();
         this.menus.load();
         this.dialogs.load();
+        this.generators.load();
     }
 
     public static AstralSkyblock get() {

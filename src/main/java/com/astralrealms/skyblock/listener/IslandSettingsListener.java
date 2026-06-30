@@ -1,7 +1,5 @@
 package com.astralrealms.skyblock.listener;
 
-import java.util.UUID;
-
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
@@ -74,21 +72,11 @@ public class IslandSettingsListener implements Listener {
         if (event.isCancelled())
             return true;
 
-        UUID islandId;
-        try {
-            islandId = UUID.fromString(world.getName());
-        } catch (Exception e) {
-            return false;
-        }
-
-        Island island = this.plugin.islands()
-                .repository()
-                .findCachedById(islandId)
+        Island island = this.plugin.worlds()
+                .findByWorld(world)
                 .orElse(null);
-        if (island == null)
-            return false;
-
-        if (island.isSettingEnabled(settings))
+        if (island == null
+            || island.isSettingEnabled(settings))
             return false;
 
         event.setCancelled(true);

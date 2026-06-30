@@ -1,0 +1,9 @@
+id: "overworld"
+blocks:
+  COBBLESTONE: 50
+  STONE: 5
+  SAND: 5
+  DIRT: 10
+  GRASS_BLOCK: 10
+  OAK_LOG: 5
+  OAK_LEAVES: 5
