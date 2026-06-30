@@ -23,6 +23,7 @@ import com.astralrealms.skyblock.configuration.ASPLoaderConfiguration;
 import com.astralrealms.skyblock.configuration.RolesConfiguration;
 import com.astralrealms.skyblock.configuration.SkyblockConfiguration;
 import com.astralrealms.skyblock.listener.IslandListener;
+import com.astralrealms.skyblock.listener.IslandPermissionsListener;
 import com.astralrealms.skyblock.listener.IslandSettingsListener;
 import com.astralrealms.skyblock.listener.PlayerConnectionListener;
 import com.astralrealms.skyblock.messaging.ASPacketRegistry;
@@ -120,9 +121,10 @@ public final class AstralSkyblock extends AstralPaperPlugin {
         );
 
         // Island group specific listeners
-        if (this.configuration.islandsGroup().equals(AstralPaperAPI.serverInformation().group()))
+        if (this.configuration.isIslandServer())
             this.registerListeners(
-                    new IslandSettingsListener(this)
+                    new IslandSettingsListener(this),
+                    new IslandPermissionsListener(this)
             );
 
 

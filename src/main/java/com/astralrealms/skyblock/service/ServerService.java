@@ -23,7 +23,7 @@ public class ServerService {
         this.repository = new CacheRepository<>(plugin.cache(), ASConstants.SERVER_CACHE_KEY, IslandServer.class, Duration.ofMinutes(1));
 
         // Update task
-        if (AstralPaperAPI.serverInformation().group().equals(this.plugin.configuration().islandsGroup()))
+        if (this.plugin.configuration().isIslandServer())
             Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, this::update, 0, 300);
     }
 
