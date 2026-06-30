@@ -95,8 +95,7 @@ public class Island implements Unique, ComplexPlaceholder {
         if (member.isPresent())
             return member.get().isOwner() || (member.get().role() != null && member.get().role().hasPermission(permission));
 
-        Optional<IslandCoop> coop = findCoop(player.getUniqueId());
-        if (coop.isPresent()) {
+        if (findCoop(player.getUniqueId()).isPresent()) {
             return roles().stream()
                     .filter(r -> r.kind() == IslandRole.Type.COOP)
                     .findFirst()
