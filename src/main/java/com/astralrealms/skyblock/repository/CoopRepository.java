@@ -187,11 +187,10 @@ public class CoopRepository extends IndexedSyncedRepository<IslandPlayerKey, Isl
     @Override
     protected void deindex(IslandPlayerKey key, IslandCoop value) {
         super.deindex(key, value);
-        if (value == null) return;
-        Set<UUID> ids = playerCoopIslandsMap.get(value.playerUuid());
+        Set<UUID> ids = playerCoopIslandsMap.get(key.playerUuid());
         if (ids == null) return;
-        ids.remove(value.islandId());
-        if (ids.isEmpty()) playerCoopIslandsMap.remove(value.playerUuid());
+        ids.remove(key.islandId());
+        if (ids.isEmpty()) playerCoopIslandsMap.remove(key.playerUuid());
     }
 
     // Cache coherency is handled via CoopAddPacket/CoopRemovePacket at the service layer.
