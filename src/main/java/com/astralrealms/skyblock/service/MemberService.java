@@ -78,18 +78,18 @@ public class MemberService {
      * <p>No validation is performed here — the caller (InvitationService) is responsible for
      * checking the member limit and ensuring the player is not already a member.
      */
-    public CompletableFuture<Void> addMember(Island island, UUID playerUuid, UUID invitedBy) {
+    public CompletableFuture<IslandMember> addMember(Island island, UUID playerUuid, UUID invitedBy) {
         IslandRole defaultRole = island.roles().stream()
                 .filter(IslandRole::isDefault)
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException("No default role on island: " + island.uniqueId()));
         return repository.add(island.uniqueId(), playerUuid, defaultRole.id())
-                .thenCompose(member -> plugin.islands().refreshRelationships(island.uniqueId()))
-                .thenAccept(ignored -> {
+                .thenApply(member -> {
                     Bukkit.getPluginManager().callEvent(
                             new IslandMemberJoinEvent(island, playerUuid, invitedBy));
                     plugin.messaging().send(ASConstants.MEMBER_SYNC_CHANNEL,
                             new MemberJoinPacket(island.uniqueId(), playerUuid, invitedBy));
+                    return member;
                 });
     }
 
@@ -111,7 +111,6 @@ public class MemberService {
             return CompletableFuture.completedFuture(null);
 
         return repository.remove(island.uniqueId(), targetUuid)
-                .thenCompose(ignored -> plugin.islands().refreshRelationships(island.uniqueId()))
                 .thenAccept(v -> {
                     Bukkit.getPluginManager().callEvent(new IslandMemberLeaveEvent(
                             island, targetUuid, IslandMemberLeaveEvent.Reason.KICKED));
@@ -128,7 +127,6 @@ public class MemberService {
         IslandMember member = island.findMember(player.getUniqueId()).orElse(null);
         if (member == null || member.isOwner()) return CompletableFuture.completedFuture(null);
         return repository.remove(island.uniqueId(), player.getUniqueId())
-                .thenCompose(ignored -> plugin.islands().refreshRelationships(island.uniqueId()))
                 .thenAccept(v -> {
                     Bukkit.getPluginManager().callEvent(new IslandMemberLeaveEvent(
                             island, player.getUniqueId(), IslandMemberLeaveEvent.Reason.VOLUNTARY));
@@ -161,7 +159,6 @@ public class MemberService {
             return CompletableFuture.completedFuture(null);
 
         return repository.setRole(island.uniqueId(), targetUuid, next.id())
-                .thenCompose(ignored -> plugin.islands().refreshRelationships(island.uniqueId()))
                 .thenAccept(v -> {});
     }
 
@@ -178,13 +175,17 @@ public class MemberService {
         if (target == null || target.isOwner() || senderMember == null)
             return CompletableFuture.completedFuture(null);
 
+        // Non-owners must outrank their target to demote them.
+        if (!senderMember.isOwner() && senderMember.role() != null && target.role() != null
+                && senderMember.role().weight() <= target.role().weight())
+            return CompletableFuture.completedFuture(null);
+
         List<IslandRole> ladder = memberRoleLadder(island);
         int idx = findRoleIndex(ladder, target.role());
         if (idx <= 0) return CompletableFuture.completedFuture(null); // already at lowest role
         IslandRole prev = ladder.get(idx - 1);
 
         return repository.setRole(island.uniqueId(), targetUuid, prev.id())
-                .thenCompose(ignored -> plugin.islands().refreshRelationships(island.uniqueId()))
                 .thenAccept(v -> {});
     }
 
@@ -202,7 +203,6 @@ public class MemberService {
                 .orElseThrow(() -> new IllegalStateException("No MEMBER roles on island: " + island.uniqueId()));
         return repository.transferOwnership(
                         island.uniqueId(), currentOwner.getUniqueId(), highestRole.id(), newOwner.playerUuid())
-                .thenCompose(ignored -> plugin.islands().refreshRelationships(island.uniqueId()))
                 .thenAccept(v -> {});
     }
 
