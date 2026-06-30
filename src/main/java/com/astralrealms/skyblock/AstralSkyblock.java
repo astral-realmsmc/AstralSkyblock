@@ -18,10 +18,7 @@ import com.astralrealms.skyblock.command.completion.IslandBlueprintCompletionHan
 import com.astralrealms.skyblock.command.completion.IslandCompletionHandler;
 import com.astralrealms.skyblock.command.context.IslandBlueprintContextResolver;
 import com.astralrealms.skyblock.command.context.IslandContextResolver;
-import com.astralrealms.skyblock.configuration.ASMessages;
-import com.astralrealms.skyblock.configuration.ASPLoaderConfiguration;
-import com.astralrealms.skyblock.configuration.RolesConfiguration;
-import com.astralrealms.skyblock.configuration.SkyblockConfiguration;
+import com.astralrealms.skyblock.configuration.*;
 import com.astralrealms.skyblock.listener.*;
 import com.astralrealms.skyblock.messaging.ASPacketRegistry;
 import com.astralrealms.skyblock.model.IslandBlueprint;
@@ -43,6 +40,7 @@ public final class AstralSkyblock extends AstralPaperPlugin {
     private SkyblockConfiguration configuration;
     private ASPLoaderConfiguration aspLoaderConfiguration;
     private RolesConfiguration rolesConfiguration;
+    private BlockValueConfiguration blockValuesConfiguration;
 
     // Services
     private DatabaseService database;
@@ -161,6 +159,7 @@ public final class AstralSkyblock extends AstralPaperPlugin {
         this.configuration = this.loadConfiguration("config.yml", SkyblockConfiguration.class);
         this.aspLoaderConfiguration = this.loadConfiguration("loader.yml", ASPLoaderConfiguration.class);
         this.rolesConfiguration = this.loadConfiguration("roles.yml", RolesConfiguration.class);
+        this.blockValuesConfiguration = this.loadConfiguration("block-values.yml", BlockValueConfiguration.class);
 
         // Messages
         this.loadEnum("messages.yml", ASMessages.class);

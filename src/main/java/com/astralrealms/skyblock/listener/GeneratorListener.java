@@ -1,6 +1,7 @@
 package com.astralrealms.skyblock.listener;
 
 import org.bukkit.Material;
+import org.bukkit.block.Block;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -40,6 +41,20 @@ public class GeneratorListener implements Listener {
 
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
     public void onBlockFromToEvent(BlockFromToEvent e) {
+        Block block = e.getBlock();
+        if (!block.getType().equals(Material.LAVA))
+            return;
 
+        Island island = this.plugin.worlds()
+                .findByWorld(block.getWorld())
+                .orElse(null);
+        if (island == null)
+            return;
+
+        GeneratorConfiguration blueprint = this.plugin.generators().defaultGenerator(); // TODO: Replace that
+        BlockData newBlock = blueprint.randomBlock();
+        e.getBlock().setBlockData(newBlock, false);
+
+        e.setCancelled(true);
     }
 }
