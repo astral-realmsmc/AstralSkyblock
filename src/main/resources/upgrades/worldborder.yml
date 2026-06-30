@@ -1,0 +1,38 @@
+type: WORLDBORDER_SIZE
+levels:
+  0:
+    level: 0
+    price: 0
+    value: 1000
+  1:
+    level: 1
+    price: 1000
+    currency: "default"
+    currency-display: "Default Currency"
+    value: 2000
+    unlock-actions:
+      - "[message] gg"
+  2:
+    level: 2
+    price: 2000
+    currency: "default"
+    currency-display: "Default Currency"
+    value: 3000
+    unlock-actions:
+      - "[message] gg"
+  3:
+    level: 3
+    price: 3000
+    currency: "default"
+    currency-display: "Default Currency"
+    value: 4000
+    unlock-actions:
+      - "[message] gg"
+  4:
+    level: 4
+    price: 4000
+    currency: "default"
+    currency-display: "Default Currency"
+    value: 5000
+    unlock-actions:
+      - "[message] gg"
