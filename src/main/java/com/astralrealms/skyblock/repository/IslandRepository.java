@@ -8,6 +8,7 @@ import java.sql.Statement;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.Collectors;
 
 import org.intellij.lang.annotations.Language;
@@ -294,7 +295,7 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
 
         island.roles(roles);
         island.members(members);
-        island.coops(new ArrayList<>(coops));
+        island.coops(new CopyOnWriteArrayList<>(coops));
         island.owner(owner);
         island.settings(settings);
     }

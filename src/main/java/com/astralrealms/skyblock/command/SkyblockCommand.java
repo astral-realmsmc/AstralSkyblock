@@ -59,42 +59,6 @@ public class SkyblockCommand extends BaseCommand {
         this.plugin.islands().create(player, name, finalBlueprint);
     }
 
-    @Subcommand("info")
-    @Syntax("<island>")
-    @Description("Displays information about your island")
-    @CommandCompletion("@islands")
-    public void onInfo(Player player, Island island) {
-        player.sendMessage("Island: " + island.name());
-        player.sendMessage("Owner: " + (island.owner() != null ? island.owner().playerUuid() : "None"));
-        player.sendMessage("Members:");
-        island.members().forEach(member -> {
-            player.sendMessage("- " + member.playerUuid() + " (Role: " + member.roleId() + ")");
-            island.roles()
-                    .stream()
-                    .filter(role -> role.id().equals(member.roleId()))
-                    .findFirst()
-                    .ifPresent(role -> player.sendMessage("  Role Name: " + role.name() + " with " + role.permissions().size() + " permissions"));
-        });
-        player.sendMessage("Roles:");
-        island.roles().forEach(role -> {
-            player.sendMessage("- " + role.name() + " (Weight: " + role.weight() + ", Default: " + role.isDefault() + ")");
-            player.sendMessage("  Permissions: " + role.permissions());
-        });
-    }
-
-    @Subcommand("save")
-    @Syntax("<island>")
-    @Description("Saves your island")
-    @CommandCompletion("@islands")
-    public void onSave(Player player, Island island) {
-        this.plugin.worlds()
-                .save(island.uniqueId())
-                .exceptionally(throwable -> {
-                    this.plugin.getSLF4JLogger().error("Failed to save island {} requested by {}", island.uniqueId(), player.getName(), throwable);
-                    return null;
-                });
-    }
-
     @Subcommand("delete")
     @Description("Deletes your island")
     @Syntax("<island>")

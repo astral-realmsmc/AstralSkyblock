@@ -85,8 +85,9 @@ public class MemberService {
                 .orElseThrow(() -> new IllegalStateException("No default role on island: " + island.uniqueId()));
         return repository.add(island.uniqueId(), playerUuid, defaultRole.id())
                 .thenApply(member -> {
-                    Bukkit.getPluginManager().callEvent(
-                            new IslandMemberJoinEvent(island, playerUuid, invitedBy));
+                    Bukkit.getScheduler().runTask(plugin, () ->
+                            Bukkit.getPluginManager().callEvent(
+                                    new IslandMemberJoinEvent(island, playerUuid, invitedBy)));
                     plugin.messaging().send(ASConstants.MEMBER_SYNC_CHANNEL,
                             new MemberJoinPacket(island.uniqueId(), playerUuid, invitedBy));
                     return member;
@@ -112,8 +113,9 @@ public class MemberService {
 
         return repository.remove(island.uniqueId(), targetUuid)
                 .thenAccept(v -> {
-                    Bukkit.getPluginManager().callEvent(new IslandMemberLeaveEvent(
-                            island, targetUuid, IslandMemberLeaveEvent.Reason.KICKED));
+                    Bukkit.getScheduler().runTask(plugin, () ->
+                            Bukkit.getPluginManager().callEvent(new IslandMemberLeaveEvent(
+                                    island, targetUuid, IslandMemberLeaveEvent.Reason.KICKED)));
                     plugin.messaging().send(ASConstants.MEMBER_SYNC_CHANNEL, new MemberLeavePacket(
                             island.uniqueId(), targetUuid, IslandMemberLeaveEvent.Reason.KICKED));
                 });
@@ -128,8 +130,9 @@ public class MemberService {
         if (member == null || member.isOwner()) return CompletableFuture.completedFuture(null);
         return repository.remove(island.uniqueId(), player.getUniqueId())
                 .thenAccept(v -> {
-                    Bukkit.getPluginManager().callEvent(new IslandMemberLeaveEvent(
-                            island, player.getUniqueId(), IslandMemberLeaveEvent.Reason.VOLUNTARY));
+                    Bukkit.getScheduler().runTask(plugin, () ->
+                            Bukkit.getPluginManager().callEvent(new IslandMemberLeaveEvent(
+                                    island, player.getUniqueId(), IslandMemberLeaveEvent.Reason.VOLUNTARY)));
                     plugin.messaging().send(ASConstants.MEMBER_SYNC_CHANNEL, new MemberLeavePacket(
                             island.uniqueId(), player.getUniqueId(), IslandMemberLeaveEvent.Reason.VOLUNTARY));
                 });
@@ -219,10 +222,12 @@ public class MemberService {
      * <p>Does NOT write to the database.
      */
     private void handleMemberJoinPacket(MemberJoinPacket packet) {
+        if (plugin.islands() == null) return;
         plugin.islands().repository()
                 .findCachedById(packet.islandId())
-                .ifPresent(island -> Bukkit.getPluginManager().callEvent(
-                        new IslandMemberJoinEvent(island, packet.playerId(), packet.invitedBy())));
+                .ifPresent(island -> Bukkit.getScheduler().runTask(plugin, () ->
+                        Bukkit.getPluginManager().callEvent(
+                                new IslandMemberJoinEvent(island, packet.playerId(), packet.invitedBy()))));
     }
 
     /**
@@ -234,10 +239,12 @@ public class MemberService {
      * <p>Does NOT write to the database.
      */
     private void handleMemberLeavePacket(MemberLeavePacket packet) {
+        if (plugin.islands() == null) return;
         plugin.islands().repository()
                 .findCachedById(packet.islandId())
-                .ifPresent(island -> Bukkit.getPluginManager().callEvent(
-                        new IslandMemberLeaveEvent(island, packet.playerId(), packet.reason())));
+                .ifPresent(island -> Bukkit.getScheduler().runTask(plugin, () ->
+                        Bukkit.getPluginManager().callEvent(
+                                new IslandMemberLeaveEvent(island, packet.playerId(), packet.reason()))));
     }
 
     // =========================================================================

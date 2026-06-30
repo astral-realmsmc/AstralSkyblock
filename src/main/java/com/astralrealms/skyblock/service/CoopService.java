@@ -55,7 +55,8 @@ public class CoopService {
         IslandCoop coop = new IslandCoop(island.uniqueId(), playerUuid, addedBy, System.currentTimeMillis());
         return repository.add(coop).thenApply(saved -> {
             island.coops().add(saved);
-            Bukkit.getPluginManager().callEvent(new IslandCoopAddEvent(island, playerUuid, addedBy));
+            Bukkit.getScheduler().runTask(plugin, () ->
+                    Bukkit.getPluginManager().callEvent(new IslandCoopAddEvent(island, playerUuid, addedBy)));
             plugin.messaging().send(ASConstants.COOP_SYNC_CHANNEL, new CoopAddPacket(island.uniqueId(), playerUuid, addedBy));
             return saved;
         });
@@ -68,7 +69,8 @@ public class CoopService {
     public CompletableFuture<Void> remove(Island island, UUID playerUuid) {
         return repository.remove(island.uniqueId(), playerUuid).thenAccept(ignored -> {
             island.coops().removeIf(c -> c.playerUuid().equals(playerUuid));
-            Bukkit.getPluginManager().callEvent(new IslandCoopRemoveEvent(island, playerUuid));
+            Bukkit.getScheduler().runTask(plugin, () ->
+                    Bukkit.getPluginManager().callEvent(new IslandCoopRemoveEvent(island, playerUuid)));
             plugin.messaging().send(ASConstants.COOP_SYNC_CHANNEL, new CoopRemovePacket(island.uniqueId(), playerUuid));
         });
     }
@@ -104,6 +106,7 @@ public class CoopService {
      * <p>Does NOT fire an event (already fired on the originating server) and does NOT persist to DB.
      */
     private void handleCoopAddPacket(CoopAddPacket packet) {
+        if (plugin.islands() == null) return;
         IslandCoop coop = new IslandCoop(packet.islandId(), packet.playerId(), packet.addedBy(), System.currentTimeMillis());
         repository.addLocally(coop);
         plugin.islands().repository()
@@ -119,6 +122,7 @@ public class CoopService {
      * <p>Does NOT fire an event and does NOT touch the database.
      */
     private void handleCoopRemovePacket(CoopRemovePacket packet) {
+        if (plugin.islands() == null) return;
         repository.invalidateLocally(new IslandPlayerKey(packet.islandId(), packet.playerId()));
         plugin.islands().repository()
                 .findCachedById(packet.islandId())

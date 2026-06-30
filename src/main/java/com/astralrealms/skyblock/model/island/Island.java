@@ -1,6 +1,7 @@
 package com.astralrealms.skyblock.model.island;
 
 import java.util.*;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
@@ -55,7 +56,7 @@ public class Island implements Unique, ComplexPlaceholder {
     @Setter
     private transient Collection<IslandRole> roles = new ArrayList<>();
     @Setter
-    private transient Collection<IslandCoop> coops = new ArrayList<>();
+    private transient Collection<IslandCoop> coops = new CopyOnWriteArrayList<>();
     @Setter
     private transient EnumSet<IslandSettings> settings = EnumSet.noneOf(IslandSettings.class);
     private transient final Map<IslandSettings, Boolean> dirtySettings = new EnumMap<>(IslandSettings.class);
