@@ -101,7 +101,7 @@ public class CoopService {
      */
     private void handleCoopAddPacket(CoopAddPacket packet) {
         IslandCoop coop = new IslandCoop(packet.islandId(), packet.playerId(), packet.addedBy(), System.currentTimeMillis());
-        repository.cacheLocally(coop);
+        repository.addLocally(coop);
         plugin.islands().repository()
                 .findCachedById(packet.islandId())
                 .ifPresent(island -> island.coops().add(coop));

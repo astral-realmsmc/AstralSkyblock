@@ -77,9 +77,8 @@ public class CoopRepository extends IndexedSyncedRepository<IslandPlayerKey, Isl
      * database. Used by {@link com.astralrealms.skyblock.service.CoopService} when handling a
      * {@code CoopAddPacket} from another server so that {@link #isCoop(UUID, UUID)} stays accurate.
      */
-    @Override
-    public void cacheLocally(IslandCoop value) {
-        super.cacheLocally(value);
+    public void addLocally(IslandCoop value) {
+        cacheLocally(value);
     }
 
     /**
