@@ -1,8 +1,12 @@
 package com.astralrealms.skyblock.messaging;
 
 import com.astralrealms.core.packet.PacketRegistry;
+import com.astralrealms.skyblock.messaging.packet.island.CoopAddPacket;
+import com.astralrealms.skyblock.messaging.packet.island.CoopRemovePacket;
 import com.astralrealms.skyblock.messaging.packet.island.IslandLoadRequestPacket;
 import com.astralrealms.skyblock.messaging.packet.island.IslandLoadResponsePacket;
+import com.astralrealms.skyblock.messaging.packet.island.MemberJoinPacket;
+import com.astralrealms.skyblock.messaging.packet.island.MemberLeavePacket;
 import com.astralrealms.skyblock.messaging.packet.repository.IslandPlayerKeyDeletePacket;
 import com.astralrealms.skyblock.messaging.packet.repository.IslandPlayerKeyUpdatePacket;
 import com.astralrealms.skyblock.messaging.packet.repository.IslandStringKeyDeletePacket;
@@ -32,5 +36,9 @@ public class ASPacketRegistry extends PacketRegistry {
         // Islands (0x100 - 0x1FF)
         this.registerPacket(0x100, IslandLoadRequestPacket::new);
         this.registerPacket(0x101, IslandLoadResponsePacket::new);
+        this.registerPacket(0x102, MemberJoinPacket::new);
+        this.registerPacket(0x103, MemberLeavePacket::new);
+        this.registerPacket(0x104, CoopAddPacket::new);
+        this.registerPacket(0x105, CoopRemovePacket::new);
     }
 }
