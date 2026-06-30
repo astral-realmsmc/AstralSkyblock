@@ -17,6 +17,7 @@ import org.jetbrains.annotations.Unmodifiable;
 import com.astralrealms.core.storage.pagination.Pageable;
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.model.island.IslandSettings;
+import com.astralrealms.skyblock.model.member.IslandCoop;
 import com.astralrealms.skyblock.model.role.IslandPermission;
 import com.astralrealms.skyblock.model.island.Island;
 import com.astralrealms.skyblock.model.member.IslandMember;
@@ -28,6 +29,7 @@ import com.github.benmanes.caffeine.cache.*;
 public class IslandRepository extends UUIDSyncedRepository<Island> {
 
     private final Map<String, UUID> nameIslandMap = new ConcurrentHashMap<>();
+    private final CoopRepository coopRepository;
 
     public IslandRepository(AstralSkyblock plugin) {
         super(
@@ -36,6 +38,7 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
                 ASConstants.ISLAND_UPDATE_CHANNEL,
                 Island.class
         );
+        this.coopRepository = new CoopRepository(plugin);
     }
 
     @Override
@@ -84,11 +87,12 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
         return this.plugin.roles()
                 .findByIsland(islandId)
                 .thenCompose(roles -> this.plugin.members().findByIsland(islandId)
-                        .thenCompose(members -> this.findSettingsByIsland(islandId)
-                                .thenApply(settings -> {
-                                    populate(island, roles, members, settings);
-                                    return island;
-                                })));
+                        .thenCompose(members -> this.coopRepository.findByIsland(islandId)
+                                .thenCompose(coops -> this.findSettingsByIsland(islandId)
+                                        .thenApply(settings -> {
+                                            populate(island, roles, members, coops, settings);
+                                            return island;
+                                        }))));
     }
 
     @Override
@@ -275,7 +279,8 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
         });
     }
 
-    private void populate(Island island, List<IslandRole> roles, List<IslandMember> members, EnumSet<IslandSettings> settings) {
+    private void populate(Island island, List<IslandRole> roles, List<IslandMember> members,
+                          List<IslandCoop> coops, EnumSet<IslandSettings> settings) {
         Map<Long, IslandRole> rolesById = roles.stream()
                 .collect(Collectors.toMap(IslandRole::id, role -> role));
 
@@ -289,6 +294,7 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
 
         island.roles(roles);
         island.members(members);
+        island.coops(new ArrayList<>(coops));
         island.owner(owner);
         island.settings(settings);
     }

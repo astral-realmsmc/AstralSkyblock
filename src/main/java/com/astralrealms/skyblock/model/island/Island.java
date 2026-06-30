@@ -11,6 +11,7 @@ import com.astralrealms.core.placeholder.impl.system.ComplexPlaceholder;
 import com.astralrealms.core.provider.ItemProvider;
 import com.astralrealms.core.storage.annotation.*;
 import com.astralrealms.core.storage.model.SQLAccessor;
+import com.astralrealms.skyblock.model.member.IslandCoop;
 import com.astralrealms.skyblock.model.role.IslandPermission;
 import com.astralrealms.skyblock.model.member.IslandMember;
 import com.astralrealms.skyblock.model.role.IslandRole;
@@ -50,9 +51,11 @@ public class Island implements Unique, ComplexPlaceholder {
     @Setter
     private transient IslandMember owner;
     @Setter
-    private transient Collection<IslandMember> members = List.of();
+    private transient Collection<IslandMember> members = new ArrayList<>();
     @Setter
-    private transient Collection<IslandRole> roles = List.of();
+    private transient Collection<IslandRole> roles = new ArrayList<>();
+    @Setter
+    private transient Collection<IslandCoop> coops = new ArrayList<>();
     @Setter
     private transient EnumSet<IslandSettings> settings = EnumSet.noneOf(IslandSettings.class);
     private transient final Map<IslandSettings, Boolean> dirtySettings = new EnumMap<>(IslandSettings.class);
@@ -87,9 +90,21 @@ public class Island implements Unique, ComplexPlaceholder {
         if (player.hasPermission("skyblock.admin")
             || (this.owner != null && this.owner.playerUuid().equals(player.getUniqueId())))
             return true;
-        return this.findMember(player.getUniqueId())
-                .map(member -> member.isOwner() || (member.role() != null && member.role().hasPermission(permission)))
-                .orElse(false);
+
+        Optional<IslandMember> member = this.findMember(player.getUniqueId());
+        if (member.isPresent())
+            return member.get().isOwner() || (member.get().role() != null && member.get().role().hasPermission(permission));
+
+        Optional<IslandCoop> coop = findCoop(player.getUniqueId());
+        if (coop.isPresent()) {
+            return roles().stream()
+                    .filter(r -> r.kind() == IslandRole.Type.COOP)
+                    .findFirst()
+                    .map(r -> r.hasPermission(permission))
+                    .orElse(false);
+        }
+
+        return false;
     }
 
     public Optional<IslandMember> findMember(UUID uniqueId) {
@@ -100,12 +115,24 @@ public class Island implements Unique, ComplexPlaceholder {
                 .findFirst();
     }
 
+    public Optional<IslandCoop> findCoop(UUID playerUuid) {
+        if (this.coops == null)
+            return Optional.empty();
+        return this.coops.stream()
+                .filter(c -> c.playerUuid().equals(playerUuid))
+                .findFirst();
+    }
+
     public Collection<IslandMember> members() {
         return this.members == null ? List.of() : this.members;
     }
 
     public Collection<IslandRole> roles() {
         return this.roles == null ? List.of() : this.roles;
+    }
+
+    public Collection<IslandCoop> coops() {
+        return this.coops == null ? List.of() : this.coops;
     }
 
     // Settings
