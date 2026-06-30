@@ -38,7 +38,7 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
                 ASConstants.ISLAND_UPDATE_CHANNEL,
                 Island.class
         );
-        this.coopRepository = new CoopRepository(plugin);
+        this.coopRepository = plugin.coops().repository();
     }
 
     @Override

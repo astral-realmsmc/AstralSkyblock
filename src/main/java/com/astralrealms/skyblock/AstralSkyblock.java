@@ -52,6 +52,8 @@ public final class AstralSkyblock extends AstralPaperPlugin {
     private PlayerService players;
     private RoleService roles;
     private MemberService members;
+    private CoopService coops;
+    private InvitationService invitations;
     private ServerService servers;
     private GeneratorService generators;
     private UpgradeService upgrades;
@@ -97,9 +99,11 @@ public final class AstralSkyblock extends AstralPaperPlugin {
         this.messaging.connect();
 
         // Services
-        this.roles = new RoleService(this);
-        this.members = new MemberService(this);
-        this.islands = new IslandService(this);
+        this.roles       = new RoleService(this);
+        this.members     = new MemberService(this);
+        this.coops       = new CoopService(this);
+        this.invitations = new InvitationService(this, this.members, this.coops);
+        this.islands     = new IslandService(this);
         this.players = new PlayerService(this);
         this.servers = new ServerService(this);
 

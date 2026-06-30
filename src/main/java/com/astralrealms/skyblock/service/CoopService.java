@@ -33,6 +33,10 @@ public class CoopService {
         });
     }
 
+    public CoopRepository repository() {
+        return this.repository;
+    }
+
     // =========================================================================
     //  Write operations
     // =========================================================================
