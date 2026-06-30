@@ -73,6 +73,16 @@ public class CoopRepository extends IndexedSyncedRepository<IslandPlayerKey, Isl
     }
 
     /**
+     * Adds a coop entry to the local L1 cache and secondary index without persisting it to the
+     * database. Used by {@link com.astralrealms.skyblock.service.CoopService} when handling a
+     * {@code CoopAddPacket} from another server so that {@link #isCoop(UUID, UUID)} stays accurate.
+     */
+    @Override
+    public void cacheLocally(IslandCoop value) {
+        super.cacheLocally(value);
+    }
+
+    /**
      * Removes a coop entry from the database and evicts it from the local cache. The service layer
      * is responsible for broadcasting the removal to other servers via CoopRemovePacket.
      */

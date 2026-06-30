@@ -35,4 +35,5 @@ public class ASConstants {
     public static final String FLAG_UPDATE_CHANNEL = "skyblock.flag.update";
     public static final String BAN_UPDATE_CHANNEL = "skyblock.ban.update";
     public static final String COOP_UPDATE_CHANNEL = "skyblock.coop.update";
+    public static final String COOP_SYNC_CHANNEL = "skyblock.coop.sync";
 }
