@@ -5,12 +5,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
@@ -89,10 +84,11 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
         return this.plugin.roles()
                 .findByIsland(islandId)
                 .thenCompose(roles -> this.plugin.members().findByIsland(islandId)
-                        .thenApply(members -> {
-                            populate(island, roles, members);
-                            return island;
-                        }));
+                        .thenCompose(members -> this.findSettingsByIsland(islandId)
+                                .thenApply(settings -> {
+                                    populate(island, roles, members, settings);
+                                    return island;
+                                })));
     }
 
     @Override
@@ -241,6 +237,32 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
                 });
     }
 
+    public CompletableFuture<EnumSet<IslandSettings>> findSettingsByIsland(UUID islandId) {
+        @Language("SQL") String query = """
+                SELECT flag, allowed
+                FROM island_flags
+                WHERE island_id = ?
+                """;
+
+        return this.plugin.database()
+                .supply(connection -> {
+                    EnumSet<IslandSettings> settings = EnumSet.noneOf(IslandSettings.class);
+                    try (PreparedStatement statement = connection.prepareStatement(query)) {
+                        statement.setObject(1, islandId);
+                        try (ResultSet rs = statement.executeQuery()) {
+                            while (rs.next()) {
+                                String flagName = rs.getString("flag");
+                                boolean allowed = rs.getBoolean("allowed");
+                                IslandSettings setting = IslandSettings.valueOf(flagName);
+                                if (allowed)
+                                    settings.add(setting);
+                            }
+                        }
+                    }
+                    return settings;
+                });
+    }
+
     /**
      * Re-cascades a cached island's relationships after its membership or roles changed. A no-op if
      * the island is not cached on this server.
@@ -253,7 +275,7 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
         });
     }
 
-    private void populate(Island island, List<IslandRole> roles, List<IslandMember> members) {
+    private void populate(Island island, List<IslandRole> roles, List<IslandMember> members, EnumSet<IslandSettings> settings) {
         Map<Long, IslandRole> rolesById = roles.stream()
                 .collect(Collectors.toMap(IslandRole::id, role -> role));
 
@@ -268,6 +290,7 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
         island.roles(roles);
         island.members(members);
         island.owner(owner);
+        island.settings(settings);
     }
 
     /**

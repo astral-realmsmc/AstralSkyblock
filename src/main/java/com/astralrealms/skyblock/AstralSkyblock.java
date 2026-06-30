@@ -10,6 +10,7 @@ import com.astralrealms.core.paper.plugin.AstralPaperPlugin;
 import com.astralrealms.core.placeholder.container.RootPlaceholderContainer;
 import com.astralrealms.core.storage.DatabaseService;
 import com.astralrealms.skyblock.action.island.role.ToggleRolePermissionAction;
+import com.astralrealms.skyblock.action.island.role.UpdateRolePermissionsAction;
 import com.astralrealms.skyblock.action.island.settings.ToggleIslandSettingAction;
 import com.astralrealms.skyblock.action.island.settings.UpdateIslandSettingsAction;
 import com.astralrealms.skyblock.command.SkyblockCommand;
@@ -22,6 +23,7 @@ import com.astralrealms.skyblock.configuration.ASPLoaderConfiguration;
 import com.astralrealms.skyblock.configuration.RolesConfiguration;
 import com.astralrealms.skyblock.configuration.SkyblockConfiguration;
 import com.astralrealms.skyblock.listener.IslandListener;
+import com.astralrealms.skyblock.listener.IslandSettingsListener;
 import com.astralrealms.skyblock.listener.PlayerConnectionListener;
 import com.astralrealms.skyblock.messaging.ASPacketRegistry;
 import com.astralrealms.skyblock.model.IslandBlueprint;
@@ -68,7 +70,7 @@ public final class AstralSkyblock extends AstralPaperPlugin {
         // Actions
         // -- Roles Permissions
         this.registerAction("toggle-role-permission", ToggleRolePermissionAction.class);
-        this.registerAction("update-role-permissions", ToggleRolePermissionAction.class);
+        this.registerAction("update-role-permissions", UpdateRolePermissionsAction.class);
         // -- Settings
         this.registerAction("toggle-island-setting", ToggleIslandSettingAction.class);
         this.registerAction("update-island-settings", UpdateIslandSettingsAction.class);
@@ -116,6 +118,13 @@ public final class AstralSkyblock extends AstralPaperPlugin {
                 new PlayerConnectionListener(this),
                 new IslandListener(this)
         );
+
+        // Island group specific listeners
+        if (this.configuration.islandsGroup().equals(AstralPaperAPI.serverInformation().group()))
+            this.registerListeners(
+                    new IslandSettingsListener(this)
+            );
+
 
         // Placeholders
         RootPlaceholderContainer.get().registerPlaceholder(new SkyblockPlaceholders(this));
