@@ -25,7 +25,7 @@ public record ToggleRolePermissionAction(PlaceholderWrapper<Island> island, Plac
         }
 
         IslandRole role = context.parseWrapper(this.role);
-        if (island.canEditRole(player, role)) {
+        if (!island.canEditRole(player, role)) {
             ASMessages.ROLE_PERMISSION_HIGHER.message(player);
             return;
         }

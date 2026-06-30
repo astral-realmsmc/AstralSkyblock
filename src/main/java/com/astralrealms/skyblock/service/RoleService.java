@@ -1,13 +1,16 @@
 package com.astralrealms.skyblock.service;
 
-import java.util.EnumSet;
-import java.util.List;
-import java.util.Locale;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
+import org.bukkit.entity.Player;
+
+import com.astralrealms.core.paper.AstralPaperAPI;
+import com.astralrealms.core.placeholder.container.PlaceholderContainer;
 import com.astralrealms.skyblock.AstralSkyblock;
+import com.astralrealms.skyblock.configuration.ASMessages;
 import com.astralrealms.skyblock.configuration.RolesConfiguration;
+import com.astralrealms.skyblock.model.island.Island;
 import com.astralrealms.skyblock.model.role.IslandPermission;
 import com.astralrealms.skyblock.model.role.IslandRole;
 import com.astralrealms.skyblock.model.role.RoleSeed;
@@ -23,7 +26,9 @@ public class RoleService {
         this.repository = new RoleRepository(plugin);
     }
 
-    /** Every role of an island, senior first. Primes (and refreshes) the per-island role slice. */
+    /**
+     * Every role of an island, senior first. Primes (and refreshes) the per-island role slice.
+     */
     public CompletableFuture<List<IslandRole>> findByIsland(UUID islandId) {
         return this.repository.findByIsland(islandId);
     }
@@ -74,6 +79,38 @@ public class RoleService {
             }
         }
         return permissions;
+    }
+
+    public void updatePermissions(Player player, Island island, IslandRole role) {
+        if (!island.hasPermission(player, IslandPermission.SET_PERMISSION)) {
+            ASMessages.NO_PERMISSION.message(player);
+            return;
+        } else if (!island.canEditRole(player, role)) {
+            ASMessages.ROLE_PERMISSION_HIGHER.message(player);
+            return;
+        }
+
+        Map<IslandPermission, Boolean> permissions = role.flushPermissions();
+        if (permissions.isEmpty())
+            return;
+
+        this.repository.updateRolePermissions(island.uniqueId(), role.id(), permissions)
+                .whenComplete((result, exception) -> {
+                    PlaceholderContainer placeholders = AstralPaperAPI.createPlaceholderContainer(player)
+                            .registerPlaceholder(island)
+                            .registerPlaceholder(role);
+                    if (exception != null) {
+                        this.plugin.getSLF4JLogger().error("Failed to update permissions for role {} on island {}", role.id(), island.uniqueId(), exception);
+                        ASMessages.ROLE_PERMISSION_UPDATE_FAILED.message(player, placeholders);
+                        return;
+                    } else if (!result) {
+                        ASMessages.ROLE_PERMISSION_UPDATE_FAILED.message(player, placeholders);
+                        return;
+                    }
+
+                    ASMessages.ROLE_PERMISSION_UPDATE_SUCCESS.message(player, placeholders);
+                });
+
     }
 
     public CompletableFuture<IslandRole> save(IslandRole role) {

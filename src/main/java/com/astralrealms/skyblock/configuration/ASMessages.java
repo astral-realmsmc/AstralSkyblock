@@ -14,6 +14,12 @@ public enum ASMessages implements MessageEnum {
     ISLAND_DELETED,
     // Roles
     ROLE_PERMISSION_HIGHER,
+    // Role permissions
+    ROLE_PERMISSION_UPDATE_SUCCESS,
+    ROLE_PERMISSION_UPDATE_FAILED,
+    // Settings
+    SETTINGS_UPDATE_SUCCESS,
+    SETTINGS_UPDATE_FAILED,
     // Misc
     UNEXPECTED_ERROR,
     NO_PERMISSION

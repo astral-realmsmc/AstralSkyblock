@@ -8,6 +8,14 @@ island-deleted: "%island_name% has been successfully deleted."
 # Roles
 role-permission-higher: "You cannot assign a role higher than your own."
 
+# Roles permissions
+role-permission-update-success: "You have updated permissions for %role_name% in island %island_name%."
+role-permission-update-failure: "Failed to update permissions for %role_name%. Please try again."
+
+# Settings
+settings-update-success: "Settings for %island_name% have been successfully updated."
+settings-update-failure: "Failed to update settings for %island_name%. Please try again."
+
 # Misc
 unexpected-error: "An unexpected error occurred. Please try again later."
 no-permission: "You do not have permission to perform this action."

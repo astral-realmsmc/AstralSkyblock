@@ -21,6 +21,7 @@ import org.jetbrains.annotations.Unmodifiable;
 
 import com.astralrealms.core.storage.pagination.Pageable;
 import com.astralrealms.skyblock.AstralSkyblock;
+import com.astralrealms.skyblock.model.island.IslandSettings;
 import com.astralrealms.skyblock.model.role.IslandPermission;
 import com.astralrealms.skyblock.model.island.Island;
 import com.astralrealms.skyblock.model.member.IslandMember;
@@ -115,11 +116,12 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
                         insertPermissions(connection, roleId, seed.permissions());
                     }
                     insertOwner(connection, island.uniqueId(), ownerUuid);
+                    Set<IslandSettings> defaultSettings = this.plugin.configuration().defaultSettings();
+                    for (IslandSettings value : IslandSettings.values()) {
+                        insertSettings(connection, island.uniqueId(), value, defaultSettings.contains(value));
+                    }
                     return island;
                 })
-                // Write the bare island through to L1/L2 first (matching the load path, where L2 holds
-                // no transient relationships), then cascade to populate the L1 object and prime the role
-                // and member slices, and finally announce it to other servers.
                 .thenCompose(saved -> cache(saved).thenApply(ignored -> saved))
                 .thenCompose(this::cascade)
                 .thenApply(saved -> {
@@ -128,7 +130,7 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
                 });
     }
 
-    private static void insertIsland(Connection connection, Island island) throws SQLException {
+    private void insertIsland(Connection connection, Island island) throws SQLException {
         @Language("SQL") String INSERT_ISLAND = """
                 INSERT INTO islands (id, name, locked, level, spawn_x, spawn_y, spawn_z, spawn_yaw, spawn_pitch)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -147,7 +149,7 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
         }
     }
 
-    private static long insertRole(Connection connection, IslandRole role) throws SQLException {
+    private long insertRole(Connection connection, IslandRole role) throws SQLException {
         @Language("SQL") String INSERT_ROLE = """
                 INSERT INTO island_roles (island_id, kind, name, weight, is_default)
                 VALUES (?, ?, ?, ?, ?)
@@ -167,7 +169,7 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
         }
     }
 
-    private static void insertPermissions(Connection connection, long roleId, Set<IslandPermission> permissions) throws SQLException {
+    private void insertPermissions(Connection connection, long roleId, Set<IslandPermission> permissions) throws SQLException {
         if (permissions.isEmpty())
             return;
 
@@ -186,7 +188,7 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
         }
     }
 
-    private static void insertOwner(Connection connection, UUID islandId, UUID ownerUuid) throws SQLException {
+    private void insertOwner(Connection connection, UUID islandId, UUID ownerUuid) throws SQLException {
         @Language("SQL") String INSERT_OWNER = """
                 INSERT INTO island_members (island_id, player_uuid, is_owner, role_id)
                 VALUES (?, ?, TRUE, NULL)
@@ -196,6 +198,47 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
             statement.setObject(2, ownerUuid);
             statement.executeUpdate();
         }
+    }
+
+    private void insertSettings(Connection connection, UUID islandId, IslandSettings setting, boolean value) throws SQLException {
+        @Language("SQL") String INSERT_SETTING = """
+                INSERT INTO island_flags (island_id, flag, allowed)
+                VALUES (?, ?, ?)
+                """;
+
+        try (PreparedStatement statement = connection.prepareStatement(INSERT_SETTING)) {
+            statement.setObject(1, islandId);
+            statement.setString(2, setting.name());
+            statement.setBoolean(3, value);
+            statement.executeUpdate();
+        }
+    }
+
+    public CompletableFuture<Boolean> updateSettings(UUID islandId, Map<IslandSettings, Boolean> settings) {
+        @Language("SQL") String UPDATE_SETTING = """
+                INSERT INTO island_flags (island_id, flag, allowed)
+                VALUES (?, ?, ?)
+                ON DUPLICATE KEY UPDATE allowed = VALUES(allowed)
+                """;
+
+        return this.plugin.database()
+                .transactionSupply(connection -> {
+                    try (PreparedStatement statement = connection.prepareStatement(UPDATE_SETTING)) {
+                        for (Map.Entry<IslandSettings, Boolean> entry : settings.entrySet()) {
+                            statement.setObject(1, islandId);
+                            statement.setString(2, entry.getKey().name());
+                            statement.setBoolean(3, entry.getValue());
+                            statement.addBatch();
+                        }
+                        int[] results = statement.executeBatch();
+                        for (int result : results) {
+                            if (result == Statement.EXECUTE_FAILED) {
+                                throw new SQLException("Failed to update island settings");
+                            }
+                        }
+                        return true;
+                    }
+                });
     }
 
     /**
@@ -210,7 +253,7 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
         });
     }
 
-    static void populate(Island island, List<IslandRole> roles, List<IslandMember> members) {
+    private void populate(Island island, List<IslandRole> roles, List<IslandMember> members) {
         Map<Long, IslandRole> rolesById = roles.stream()
                 .collect(Collectors.toMap(IslandRole::id, role -> role));
 

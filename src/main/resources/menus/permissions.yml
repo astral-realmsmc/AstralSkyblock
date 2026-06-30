@@ -9,7 +9,7 @@ layouts:
     provider: "%parameters_role_permissions%"
 
 close-actions:
-  - "[update-role-permissions] %parameters_role%"
+  - "[update-role-permissions] %parameters_island% %parameters_role%"
 
 items:
   permission-enabled:

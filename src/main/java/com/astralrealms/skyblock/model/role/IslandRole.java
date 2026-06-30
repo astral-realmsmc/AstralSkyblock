@@ -53,15 +53,14 @@ public class IslandRole implements ComplexPlaceholder {
     // Permissions
     public boolean togglePermission(IslandPermission permission) {
         boolean hasPermission = this.hasPermission(permission);
-        this.dirtyPermissions.put(permission, !hasPermission);
-        return !hasPermission;
+        boolean newValue = !hasPermission;
+        this.dirtyPermissions.put(permission, newValue);
+        return newValue;
     }
 
     public boolean hasPermission(IslandPermission permission) {
-        if (permissions == null)
-            return false;
-        return this.dirtyPermissions.getOrDefault(permission, permissions.contains(permission))
-               || this.dirtyPermissions.getOrDefault(IslandPermission.ALL, permissions.contains(IslandPermission.ALL));
+        return dirtyPermissions.getOrDefault(permission, permissions.contains(permission))
+               || dirtyPermissions.getOrDefault(IslandPermission.ALL, permissions.contains(IslandPermission.ALL));
     }
 
     public Map<IslandPermission, Boolean> flushPermissions() {

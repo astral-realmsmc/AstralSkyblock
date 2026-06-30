@@ -1,6 +1,7 @@
 package com.astralrealms.skyblock.service;
 
 import java.util.Collection;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -10,12 +11,15 @@ import org.jetbrains.annotations.Unmodifiable;
 
 import com.astralrealms.core.model.location.NetworkLocation;
 import com.astralrealms.core.paper.AstralPaperAPI;
+import com.astralrealms.core.placeholder.container.PlaceholderContainer;
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.configuration.ASMessages;
 import com.astralrealms.skyblock.messaging.packet.island.IslandLoadRequestPacket;
 import com.astralrealms.skyblock.messaging.packet.island.IslandLoadResponsePacket;
 import com.astralrealms.skyblock.model.IslandBlueprint;
 import com.astralrealms.skyblock.model.island.Island;
+import com.astralrealms.skyblock.model.island.IslandSettings;
+import com.astralrealms.skyblock.model.role.IslandPermission;
 import com.astralrealms.skyblock.repository.IslandRepository;
 import com.astralrealms.skyblock.utils.ASConstants;
 
@@ -251,6 +255,34 @@ public class IslandService {
      */
     public CompletableFuture<Void> refreshRelationships(UUID islandId) {
         return this.repository.refreshRelationships(islandId);
+    }
+
+    public void updateSettings(Player player, Island island) {
+        if (!island.hasPermission(player, IslandPermission.SET_SETTINGS)) {
+            ASMessages.NO_PERMISSION.message(player);
+            return;
+        }
+
+        Map<IslandSettings, Boolean> settings = island.flushSettings();
+        if (settings.isEmpty())
+            return;
+
+        this.repository.updateSettings(island.uniqueId(), settings)
+                .whenComplete((result, throwable) -> {
+                    PlaceholderContainer placeholders = AstralPaperAPI.createPlaceholderContainer(player)
+                            .registerPlaceholder(island);
+
+                    if (throwable != null) {
+                        this.plugin.getSLF4JLogger().error("Failed to update settings for island {} for player {}", island.uniqueId(), player.getName(), throwable);
+                        ASMessages.SETTINGS_UPDATE_FAILED.message(player, placeholders);
+                        return;
+                    } else if (!result) {
+                        ASMessages.SETTINGS_UPDATE_FAILED.message(player, placeholders);
+                        return;
+                    }
+
+                    ASMessages.SETTINGS_UPDATE_SUCCESS.message(player, placeholders);
+                });
     }
 
     @Unmodifiable
