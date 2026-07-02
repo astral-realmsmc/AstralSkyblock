@@ -1,4 +1,4 @@
-package com.astralrealms.skyblock.event;
+package com.astralrealms.skyblock.event.coop;
 
 import com.astralrealms.skyblock.model.island.Island;
 import lombok.Getter;

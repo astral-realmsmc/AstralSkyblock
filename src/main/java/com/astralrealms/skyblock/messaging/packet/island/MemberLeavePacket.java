@@ -4,7 +4,7 @@ import java.util.UUID;
 
 import com.astralrealms.core.packet.Packet;
 import com.astralrealms.core.packet.binary.BinaryMessage;
-import com.astralrealms.skyblock.event.IslandMemberLeaveEvent;
+import com.astralrealms.skyblock.event.member.IslandMemberLeaveEvent;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;

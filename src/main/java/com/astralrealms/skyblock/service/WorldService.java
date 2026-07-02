@@ -16,6 +16,7 @@ import org.jetbrains.annotations.Unmodifiable;
 import com.astralrealms.core.paper.AstralPaperAPI;
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.configuration.ASPLoaderConfiguration;
+import com.astralrealms.skyblock.event.island.IslandWorldUnloadedEvent;
 import com.astralrealms.skyblock.listener.IslandSettingsListener;
 import com.astralrealms.skyblock.model.IslandBlueprint;
 import com.astralrealms.skyblock.model.island.Island;
@@ -132,19 +133,31 @@ public class WorldService {
         CompletableFuture<SlimeWorldInstance> future = new CompletableFuture<>();
         Bukkit.getScheduler().runTask(plugin, () -> {
             try {
+                // Load the world instance
                 SlimeWorldInstance instance = asp.loadWorld(world, true);
+
+                // Register the loaded world instance
                 this.loadedWorlds.put(id, instance);
                 this.worldNameToIslandId.put(instance.getName(), id);
-                this.plugin.islands()
+
+                // Apply environment settings to the world based on the island's settings
+                Island island = this.plugin.islands()
                         .repository()
                         .findCachedById(id)
-                        .ifPresent(island -> IslandSettingsListener.applyEnvironment(island, instance.getBukkitWorld()));
+                        .orElseThrow(() -> new IllegalStateException("Island not found for UUID: " + id));
+                IslandSettingsListener.applyEnvironment(island, instance.getBukkitWorld());
+
+                // Set host server for this island
                 this.plugin.servers()
                         .setHostServer(id, AstralPaperAPI.serverInformation().uniqueId())
                         .exceptionally(throwable -> {
                             plugin.getSLF4JLogger().error("Failed to set host server for island with UUID: {}", id, throwable);
                             return null;
                         });
+
+                // Throw event
+                new IslandWorldUnloadedEvent(island, instance.getBukkitWorld()).callEvent();
+
                 future.complete(instance);
             } catch (Exception ex) {
                 future.completeExceptionally(ex);
@@ -224,12 +237,14 @@ public class WorldService {
                 return;
             }
 
+            // Unload world
             boolean success = Bukkit.unloadWorld(bukkitWorld, true);
             if (!success) {
                 future.completeExceptionally(new IllegalStateException("Bukkit refused to unload world for island with UUID: " + uniqueId));
                 return;
             }
 
+            // Remove from loaded worlds and world name mapping
             this.loadedWorlds.remove(uniqueId);
             this.worldNameToIslandId.remove(uniqueId.toString());
             this.plugin.servers()
@@ -238,6 +253,18 @@ public class WorldService {
                         plugin.getSLF4JLogger().error("Failed to delete host server for island with UUID: {}", uniqueId, throwable);
                         return null;
                     });
+
+            // Throw event
+            Island island = this.plugin.islands()
+                    .repository()
+                    .findCachedById(uniqueId)
+                    .orElse(null);
+            if (island != null)
+                new IslandWorldUnloadedEvent(island, bukkitWorld).callEvent();
+            else
+                this.plugin.getSLF4JLogger().warn("Island not found for UUID: {} when unloading world.", uniqueId);
+
+
             future.complete(null);
         });
         return future;

@@ -1,4 +1,4 @@
-package com.astralrealms.skyblock.event;
+package com.astralrealms.skyblock.event.member;
 
 import com.astralrealms.skyblock.model.island.Island;
 import lombok.Getter;

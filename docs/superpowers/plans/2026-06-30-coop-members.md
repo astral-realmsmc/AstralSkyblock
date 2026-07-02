@@ -308,7 +308,8 @@ package com.astralrealms.skyblock.messaging.packet.island;
 
 import com.astralrealms.core.messaging.BinaryMessage;
 import com.astralrealms.core.messaging.packet.Packet;
-import com.astralrealms.skyblock.event.IslandMemberLeaveEvent;
+import com.astralrealms.skyblock.event.member.IslandMemberLeaveEvent;
+
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -335,7 +336,7 @@ public class MemberLeavePacket implements Packet {
     public void read(BinaryMessage msg) {
         this.islandId = msg.readUUID();
         this.playerId = msg.readUUID();
-        this.reason   = IslandMemberLeaveEvent.Reason.valueOf(msg.readString());
+        this.reason = com.astralrealms.skyblock.event.member.IslandMemberLeaveEvent.Reason.valueOf(msg.readString());
     }
 }
 ```
@@ -933,14 +934,15 @@ git commit -m "feat: add InvitationRepository (DB-only, no cache)"
 package com.astralrealms.skyblock.service;
 
 import com.astralrealms.skyblock.AstralSkyblock;
-import com.astralrealms.skyblock.event.IslandCoopAddEvent;
-import com.astralrealms.skyblock.event.IslandCoopRemoveEvent;
+import com.astralrealms.skyblock.event.coop.IslandCoopAddEvent;
+import com.astralrealms.skyblock.event.coop.IslandCoopRemoveEvent;
 import com.astralrealms.skyblock.messaging.packet.island.CoopAddPacket;
 import com.astralrealms.skyblock.messaging.packet.island.CoopRemovePacket;
 import com.astralrealms.skyblock.model.island.Island;
 import com.astralrealms.skyblock.model.member.IslandCoop;
 import com.astralrealms.skyblock.model.member.IslandPlayerKey;
 import com.astralrealms.skyblock.repository.CoopRepository;
+
 import org.bukkit.Bukkit;
 
 import java.util.List;
@@ -955,7 +957,7 @@ public class CoopService {
     public CoopService(AstralSkyblock plugin) {
         this.plugin = plugin;
         this.repository = new CoopRepository(plugin);
-        plugin.messaging().on(CoopAddPacket.class,    this::handleCoopAddPacket);
+        plugin.messaging().on(CoopAddPacket.class, this::handleCoopAddPacket);
         plugin.messaging().on(CoopRemovePacket.class, this::handleCoopRemovePacket);
     }
 
@@ -1036,18 +1038,8 @@ plugin.messaging().on(MemberLeavePacket.class, this::handleMemberLeavePacket);
 Add imports:
 
 ```java
-import com.astralrealms.skyblock.event.IslandMemberJoinEvent;
-import com.astralrealms.skyblock.event.IslandMemberLeaveEvent;
-import com.astralrealms.skyblock.messaging.packet.island.MemberJoinPacket;
-import com.astralrealms.skyblock.messaging.packet.island.MemberLeavePacket;
-import com.astralrealms.skyblock.model.island.Island;
-import com.astralrealms.skyblock.model.member.IslandMember;
-import com.astralrealms.skyblock.model.role.IslandPermission;
-import com.astralrealms.skyblock.model.role.IslandRole;
-import org.bukkit.Bukkit;
-import org.bukkit.entity.Player;
-import java.util.Comparator;
-import java.util.List;
+
+
 ```
 
 - [ ] **Step 2: Add addMember**
@@ -1389,15 +1381,9 @@ Add 11 subcommands. Each resolves the player's island from `members().findPlayer
 Add these imports to `SkyblockCommand.java`:
 
 ```java
-import com.astralrealms.skyblock.event.IslandMemberLeaveEvent;
-import com.astralrealms.skyblock.model.member.IslandInvitation;
-import com.astralrealms.skyblock.model.member.IslandMember;
-import com.astralrealms.skyblock.model.member.InvitationType;
-import com.astralrealms.skyblock.model.role.IslandPermission;
-import co.aikar.commands.annotation.Optional;
-import org.bukkit.Bukkit;
-import org.jetbrains.annotations.Nullable;
-import java.util.List;
+
+
+
 ```
 
 - [ ] **Step 1: Add invite and coop commands**

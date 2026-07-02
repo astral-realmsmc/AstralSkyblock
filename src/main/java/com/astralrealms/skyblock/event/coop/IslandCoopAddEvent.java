@@ -1,12 +1,14 @@
-package com.astralrealms.skyblock.event;
+package com.astralrealms.skyblock.event.coop;
 
-import com.astralrealms.skyblock.model.island.Island;
-import lombok.Getter;
-import lombok.RequiredArgsConstructor;
+import java.util.UUID;
+
 import org.bukkit.event.Event;
 import org.bukkit.event.HandlerList;
 
-import java.util.UUID;
+import com.astralrealms.skyblock.model.island.Island;
+
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
 
 @Getter
 @RequiredArgsConstructor
