@@ -51,10 +51,11 @@ public class GeneratorListener implements Listener {
         if (island == null)
             return;
 
-        GeneratorConfiguration blueprint = this.plugin.generators().defaultGenerator(); // TODO: Replace that
-        BlockData newBlock = blueprint.randomBlock();
-        e.getBlock().setBlockData(newBlock, false);
+        // TODO: Fix that shit
+        //GeneratorConfiguration blueprint = this.plugin.generators().defaultGenerator(); // TODO: Replace that
+        //BlockData newBlock = blueprint.randomBlock();
+        //e.getBlock().setBlockData(newBlock, false);
 
-        e.setCancelled(true);
+        //e.setCancelled(true);
     }
 }

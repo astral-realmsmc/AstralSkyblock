@@ -6,8 +6,15 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 import org.bukkit.Bukkit;
+import org.bukkit.entity.Player;
 
+import com.astralrealms.core.model.player.MinecraftPlayer;
+import com.astralrealms.core.paper.AstralPaperAPI;
+import com.astralrealms.core.paper.placeholder.MinecraftPlayerPlaceholder;
+import com.astralrealms.core.placeholder.container.PlaceholderContainer;
+import com.astralrealms.core.service.impl.ChatService;
 import com.astralrealms.skyblock.AstralSkyblock;
+import com.astralrealms.skyblock.configuration.ASMessages;
 import com.astralrealms.skyblock.model.island.Island;
 import com.astralrealms.skyblock.model.member.InvitationType;
 import com.astralrealms.skyblock.model.member.IslandInvitation;
@@ -43,21 +50,53 @@ public class InvitationService {
      * <p>No permission check is performed here — the caller (command handler / GUI action)
      * is responsible for verifying the sender has the right to invite.
      */
-    public CompletableFuture<Void> create(Island island, UUID senderId, UUID recipientId, InvitationType type) {
+    public CompletableFuture<Void> create(Island island, Player sender, MinecraftPlayer recipient, InvitationType type) {
+        PlaceholderContainer placeholders = AstralPaperAPI.createPlaceholderContainer(sender)
+                .registerPlaceholder(island)
+                .registerDirect("target", new MinecraftPlayerPlaceholder(recipient));
+
         // Recipient already a full member — nothing to do.
-        if (island.findMember(recipientId).isPresent())
+        if (island.findMember(recipient.uniqueId()).isPresent()) {
+            ASMessages.PLAYER_ALREADY_MEMBER.message(sender, placeholders);
             return CompletableFuture.completedFuture(null);
+        }
+
         // For COOP invitations, skip if the player is already coop.
-        if (type == InvitationType.COOP && island.findCoop(recipientId).isPresent())
+        if (type == InvitationType.COOP && island.findCoop(recipient.uniqueId()).isPresent()) {
+            ASMessages.PLAYER_ALREADY_COOP.message(sender, placeholders);
             return CompletableFuture.completedFuture(null);
-        return repository.findPending(island.uniqueId(), recipientId)
+        }
+
+        return repository.findPending(island.uniqueId(), recipient.uniqueId())
                 .thenCompose(existing -> {
-                    if (existing.isPresent())
+                    if (existing.isPresent()) {
+                        ASMessages.INVITATION_ALREADY_SENT.message(sender, placeholders);
                         return CompletableFuture.completedFuture(null);
+                    }
+
                     IslandInvitation invitation = IslandInvitation.create(
-                            island.uniqueId(), senderId, recipientId, type);
-                    // TODO: notify recipient
-                    return repository.create(invitation);
+                            island.uniqueId(),
+                            sender.getUniqueId(),
+                            recipient.uniqueId(),
+                            type
+                    );
+
+                    return repository.create(invitation)
+                            .whenComplete((ignored, ex) -> {
+                                if (ex != null) {
+                                    ASMessages.UNEXPECTED_ERROR.message(sender, placeholders);
+                                    plugin.getSLF4JLogger().error("Failed to create invitation for island {}: {}", island.uniqueId(), ex.getMessage(), ex);
+                                    return;
+                                }
+
+                                // Notify sender
+                                ASMessages.INVITATION_SENT.message(sender, placeholders);
+
+                                // Notify recipient
+                                AstralPaperAPI.getService(ChatService.class)
+                                        .orElseThrow()
+                                        .sendMessage(recipient.uniqueId(), ASMessages.INVITATION_RECEIVED.component(placeholders));
+                            });
                 });
     }
 
@@ -67,31 +106,82 @@ public class InvitationService {
      * then deletes the invitation row. Silently returns if no pending invitation exists or the
      * island is not found in the local cache.
      */
-    public CompletableFuture<Void> accept(UUID islandId, UUID recipientId) {
-        Island island = plugin.islands().repository().findCachedById(islandId).orElse(null);
-        if (island == null)
+    public CompletableFuture<Void> accept(Player player, UUID islandId) {
+        Island island = plugin.islands()
+                .repository()
+                .findCachedById(islandId)
+                .orElse(null);
+        if (island == null) {
+            ASMessages.INVITATION_NOT_FOUND.message(player);
             return CompletableFuture.completedFuture(null);
-        return repository.findPending(islandId, recipientId).thenCompose(opt -> {
-            if (opt.isEmpty())
-                return CompletableFuture.completedFuture(null);
-            IslandInvitation invitation = opt.get();
-            CompletableFuture<?> action = invitation.type() == InvitationType.MEMBER
-                    ? members.addMember(island, recipientId, invitation.senderId())
-                    : coops.add(island, invitation.senderId(), recipientId);
-            return action.thenCompose(ignored -> repository.delete(invitation.uniqueId()));
-        });
+        }
+
+        return repository.findPending(islandId, player.getUniqueId())
+                .thenCompose(opt -> {
+                    if (opt.isEmpty()) {
+                        ASMessages.INVITATION_NOT_FOUND.message(player);
+                        return CompletableFuture.completedFuture(null);
+                    }
+
+                    IslandInvitation invitation = opt.get();
+                    CompletableFuture<?> action = invitation.type() == InvitationType.MEMBER
+                            ? members.addMember(island, player.getUniqueId(), invitation.senderId())
+                            : coops.add(island, invitation.senderId(), player.getUniqueId());
+                    return action.thenCompose(ignored -> repository.delete(invitation.uniqueId()))
+                            .whenComplete((ignored, ex) -> {
+                                PlaceholderContainer placeholders = AstralPaperAPI.createPlaceholderContainer(player)
+                                        .registerPlaceholder(island)
+                                        .registerDirect("sender", new MinecraftPlayerPlaceholder(invitation.senderId()));
+
+                                if (ex != null) {
+                                    ASMessages.UNEXPECTED_ERROR.message(player, placeholders);
+                                    plugin.getSLF4JLogger().error("Failed to accept invitation for island {}: {}", island.uniqueId(), ex.getMessage(), ex);
+                                    return;
+                                }
+
+                                // Notify recipient
+                                ASMessages.INVITATION_ACCEPTED_RECIPIENT.message(player, placeholders);
+
+                                // Notify sender
+                                AstralPaperAPI.getService(ChatService.class)
+                                        .orElseThrow()
+                                        .sendMessage(invitation.senderId(), ASMessages.INVITATION_ACCEPTED_SENDER.component(placeholders));
+                            });
+                });
     }
 
     /**
      * Declines the pending invitation from {@code islandId} for {@code recipientId}.
      * Silently returns if no pending invitation exists.
      */
-    public CompletableFuture<Void> decline(UUID islandId, UUID recipientId) {
-        return repository.findPending(islandId, recipientId).thenCompose(opt -> {
-            if (opt.isEmpty())
-                return CompletableFuture.completedFuture(null);
-            return repository.delete(opt.get().uniqueId());
-        });
+    public CompletableFuture<Void> decline(Player player, UUID islandId) {
+        return repository.findPending(islandId, player.getUniqueId())
+                .thenCompose(opt -> {
+                    if (opt.isEmpty()) {
+                        ASMessages.INVITATION_NOT_FOUND.message(player);
+                        return CompletableFuture.completedFuture(null);
+                    }
+
+                    return repository.delete(opt.get().uniqueId())
+                            .whenComplete((ignored, ex) -> {
+                                PlaceholderContainer placeholders = AstralPaperAPI.createPlaceholderContainer(player)
+                                        .registerDirect("sender", new MinecraftPlayerPlaceholder(opt.get().senderId()));
+
+                                if (ex != null) {
+                                    ASMessages.UNEXPECTED_ERROR.message(player, placeholders);
+                                    plugin.getSLF4JLogger().error("Failed to decline invitation for island {}: {}", islandId, ex.getMessage(), ex);
+                                    return;
+                                }
+
+                                // Notify recipient
+                                ASMessages.INVITATION_DECLINED_RECIPIENT.message(player, placeholders);
+
+                                // Notify sender
+                                AstralPaperAPI.getService(ChatService.class)
+                                        .orElseThrow()
+                                        .sendMessage(opt.get().senderId(), ASMessages.INVITATION_DECLINED_SENDER.component(placeholders));
+                            });
+                });
     }
 
     /**
@@ -99,12 +189,35 @@ public class InvitationService {
      * Silently returns if no pending invitation exists for {@code targetId} on this island, or
      * if the sender does not match the invitation's sender.
      */
-    public CompletableFuture<Void> cancel(Island island, UUID senderId, UUID targetId) {
-        return repository.findPending(island.uniqueId(), targetId).thenCompose(opt -> {
-            if (opt.isEmpty() || !opt.get().senderId().equals(senderId))
-                return CompletableFuture.completedFuture(null);
-            return repository.delete(opt.get().uniqueId());
-        });
+    public CompletableFuture<Void> cancel(Island island, Player sender, MinecraftPlayer target) {
+        return repository.findPending(island.uniqueId(), target.uniqueId())
+                .thenCompose(opt -> {
+                    if (opt.isEmpty() || !opt.get().senderId().equals(sender.getUniqueId())) {
+                        ASMessages.INVITATION_NOT_FOUND.message(sender);
+                        return CompletableFuture.completedFuture(null);
+                    }
+
+                    return repository.delete(opt.get().uniqueId())
+                            .whenComplete((ignored, ex) -> {
+                                PlaceholderContainer placeholders = AstralPaperAPI.createPlaceholderContainer(sender)
+                                        .registerPlaceholder(island)
+                                        .registerDirect("target", new MinecraftPlayerPlaceholder(target));
+
+                                if (ex != null) {
+                                    ASMessages.UNEXPECTED_ERROR.message(sender, placeholders);
+                                    plugin.getSLF4JLogger().error("Failed to cancel invitation for island {}: {}", island.uniqueId(), ex.getMessage(), ex);
+                                    return;
+                                }
+
+                                // Notify sender
+                                ASMessages.INVITATION_CANCELLED_SENDER.message(sender, placeholders);
+
+                                // Notify recipient
+                                AstralPaperAPI.getService(ChatService.class)
+                                        .orElseThrow()
+                                        .sendMessage(target.uniqueId(), ASMessages.INVITATION_CANCELLED_RECIPIENT.component(placeholders));
+                            });
+                });
     }
 
     /**

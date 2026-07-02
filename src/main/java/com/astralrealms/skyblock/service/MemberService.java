@@ -107,8 +107,8 @@ public class MemberService {
         IslandMember kickerMember = island.findMember(kicker.getUniqueId()).orElse(null);
         // Non-owners must outrank their target; owners (role == null) may kick anyone.
         if (kickerMember != null && !kickerMember.isOwner()
-                && kickerMember.role() != null && target.role() != null
-                && kickerMember.role().weight() <= target.role().weight())
+            && kickerMember.role() != null && target.role() != null
+            && kickerMember.role().weight() <= target.role().weight())
             return CompletableFuture.completedFuture(null);
 
         return repository.remove(island.uniqueId(), targetUuid)
@@ -158,11 +158,12 @@ public class MemberService {
         IslandRole next = ladder.get(idx + 1);
         // Non-owners cannot promote to a role at or above their own weight.
         if (!senderMember.isOwner() && senderMember.role() != null
-                && next.weight() >= senderMember.role().weight())
+            && next.weight() >= senderMember.role().weight())
             return CompletableFuture.completedFuture(null);
 
         return repository.setRole(island.uniqueId(), targetUuid, next.id())
-                .thenAccept(v -> {});
+                .thenAccept(v -> {
+                });
     }
 
     /**
@@ -180,7 +181,7 @@ public class MemberService {
 
         // Non-owners must outrank their target to demote them.
         if (!senderMember.isOwner() && senderMember.role() != null && target.role() != null
-                && senderMember.role().weight() <= target.role().weight())
+            && senderMember.role().weight() <= target.role().weight())
             return CompletableFuture.completedFuture(null);
 
         List<IslandRole> ladder = memberRoleLadder(island);
@@ -189,7 +190,8 @@ public class MemberService {
         IslandRole prev = ladder.get(idx - 1);
 
         return repository.setRole(island.uniqueId(), targetUuid, prev.id())
-                .thenAccept(v -> {});
+                .thenAccept(v -> {
+                });
     }
 
     /**
@@ -206,7 +208,8 @@ public class MemberService {
                 .orElseThrow(() -> new IllegalStateException("No MEMBER roles on island: " + island.uniqueId()));
         return repository.transferOwnership(
                         island.uniqueId(), currentOwner.getUniqueId(), highestRole.id(), newOwner.playerUuid())
-                .thenAccept(v -> {});
+                .thenAccept(v -> {
+                });
     }
 
     // =========================================================================
@@ -223,7 +226,8 @@ public class MemberService {
      */
     private void handleMemberJoinPacket(MemberJoinPacket packet) {
         if (plugin.islands() == null) return;
-        plugin.islands().repository()
+        plugin.islands()
+                .repository()
                 .findCachedById(packet.islandId())
                 .ifPresent(island -> Bukkit.getScheduler().runTask(plugin, () ->
                         Bukkit.getPluginManager().callEvent(

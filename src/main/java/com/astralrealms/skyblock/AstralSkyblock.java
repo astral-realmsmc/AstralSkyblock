@@ -20,9 +20,13 @@ import com.astralrealms.skyblock.action.island.role.ToggleRolePermissionAction;
 import com.astralrealms.skyblock.action.island.role.UpdateRolePermissionsAction;
 import com.astralrealms.skyblock.action.island.settings.ToggleIslandSettingAction;
 import com.astralrealms.skyblock.action.island.settings.UpdateIslandSettingsAction;
+import com.astralrealms.skyblock.command.CoopCommand;
+import com.astralrealms.skyblock.command.InvitationCommand;
+import com.astralrealms.skyblock.command.MemberCommand;
 import com.astralrealms.skyblock.command.SkyblockCommand;
 import com.astralrealms.skyblock.command.completion.IslandBlueprintCompletionHandler;
 import com.astralrealms.skyblock.command.completion.IslandCompletionHandler;
+import com.astralrealms.skyblock.command.completion.IslandMemberCompletionHandler;
 import com.astralrealms.skyblock.command.context.IslandBlueprintContextResolver;
 import com.astralrealms.skyblock.command.context.IslandContextResolver;
 import com.astralrealms.skyblock.configuration.*;
@@ -82,14 +86,14 @@ public final class AstralSkyblock extends AstralPaperPlugin {
         this.registerAction("toggle-island-setting", ToggleIslandSettingAction.class);
         this.registerAction("update-island-settings", UpdateIslandSettingsAction.class);
         // -- Members
-        this.registerAction("invite-member",      InviteMemberAction.class);
-        this.registerAction("kick-member",        KickMemberAction.class);
-        this.registerAction("promote-member",     PromoteMemberAction.class);
-        this.registerAction("demote-member",      DemoteMemberAction.class);
+        this.registerAction("invite-member", InviteMemberAction.class);
+        this.registerAction("kick-member", KickMemberAction.class);
+        this.registerAction("promote-member", PromoteMemberAction.class);
+        this.registerAction("demote-member", DemoteMemberAction.class);
         this.registerAction("transfer-ownership", TransferOwnershipAction.class);
         // -- Coop
-        this.registerAction("coop-player",        CoopPlayerAction.class);
-        this.registerAction("uncoop-player",      UncoopPlayerAction.class);
+        this.registerAction("coop-player", CoopPlayerAction.class);
+        this.registerAction("uncoop-player", UncoopPlayerAction.class);
 
         // Services
         this.blueprints = new BlueprintService(this);
@@ -115,11 +119,11 @@ public final class AstralSkyblock extends AstralPaperPlugin {
         this.messaging.connect();
 
         // Services
-        this.roles       = new RoleService(this);
-        this.members     = new MemberService(this);
-        this.coops       = new CoopService(this);
+        this.roles = new RoleService(this);
+        this.members = new MemberService(this);
+        this.coops = new CoopService(this);
         this.invitations = new InvitationService(this, this.members, this.coops);
-        this.islands     = new IslandService(this);
+        this.islands = new IslandService(this);
         this.players = new PlayerService(this);
         this.servers = new ServerService(this);
 
@@ -127,11 +131,15 @@ public final class AstralSkyblock extends AstralPaperPlugin {
         // -- Completion
         this.registerCompletion("islandBlueprints", new IslandBlueprintCompletionHandler(this));
         this.registerCompletion("islands", new IslandCompletionHandler(this));
+        this.registerCompletion("islandMembers", new IslandMemberCompletionHandler(this));
         // -- Context
         this.registerContext(IslandBlueprint.class, new IslandBlueprintContextResolver(this));
         this.commands().getCommandContexts().registerIssuerAwareContext(Island.class, new IslandContextResolver(this));
         // -- Commands
         this.registerCommand(new SkyblockCommand());
+        this.registerCommand(new InvitationCommand());
+        this.registerCommand(new MemberCommand());
+        this.registerCommand(new CoopCommand());
 
         // Listeners
         this.registerListeners(

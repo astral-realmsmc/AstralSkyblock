@@ -290,3 +290,19 @@ CREATE TABLE IF NOT EXISTS island_upgrades
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4
   COLLATE = utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS island_invitations
+(
+    id           UUID        NOT NULL,
+    island_id    UUID        NOT NULL,
+    sender_id    UUID        NOT NULL,
+    recipient_id UUID        NOT NULL,
+    type         VARCHAR(32) NOT NULL,
+    expires_at   BIGINT      NOT NULL,
+    created_at   BIGINT      NOT NULL,
+
+    PRIMARY KEY (id),
+    CONSTRAINT fk_invitation_island FOREIGN KEY (island_id) REFERENCES islands (id) ON DELETE CASCADE,
+    CONSTRAINT fk_invitation_sender FOREIGN KEY (sender_id) REFERENCES players (uuid) ON DELETE CASCADE,
+    CONSTRAINT fk_invitation_recipient FOREIGN KEY (recipient_id) REFERENCES players (uuid) ON DELETE CASCADE
+)

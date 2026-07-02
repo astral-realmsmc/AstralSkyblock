@@ -12,6 +12,22 @@ role-permission-higher: "You cannot assign a role higher than your own."
 role-permission-update-success: "You have updated permissions for %role_name% in island %island_name%."
 role-permission-update-failure: "Failed to update permissions for %role_name%. Please try again."
 
+# Invitations
+player-already-member: "%target_name% is already a member of %island_name%."
+player-already-coop: "%target_name% is already a co-op member of %island_name%."
+invitation-already-sent: "An invitation has already been sent to %target_name% to join %island_name%."
+invitation-sent: "An invitation has been sent to %target_name% to join %island_name%."
+invitation-accepted-sender: "%player_name% has accepted the invitation to join %island_name%."
+invitation-declined-sender: "%player_name% has declined the invitation to join %island_name%."
+invitation-cancelled-sender: "The invitation for %target_name% to join %island_name% has been cancelled."
+invitation-accepted-recipient: "You have accepted the invitation to join %island_name%."
+invitation-declined-recipient: "You have declined the invitation to join %island_name%."
+invitation-cancelled-recipient: "The invitation to join %island_name% has been cancelled."
+invitation-received: "You have received an invitation to join %island_name% from %player_name%."
+no-pending-invitation: "You do not have any pending invitations."
+multiple-pending-invitations: "You have multiple pending invitations. Please specify which one to accept or decline."
+invitation-not-found: "Invitation not found."
+
 # Settings
 settings-update-success: "Settings for %island_name% have been successfully updated."
 settings-update-failure: "Failed to update settings for %island_name%. Please try again."
@@ -19,3 +35,4 @@ settings-update-failure: "Failed to update settings for %island_name%. Please tr
 # Misc
 unexpected-error: "An unexpected error occurred. Please try again later."
 no-permission: "You do not have permission to perform this action."
+no-island: "You do not have an island. Please create one first."

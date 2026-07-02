@@ -14,16 +14,17 @@
 
 package com.astralrealms.skyblock.model.member;
 
+import java.util.UUID;
+
 import com.astralrealms.core.storage.annotation.Column;
 import com.astralrealms.core.storage.annotation.CreatedAt;
 import com.astralrealms.core.storage.annotation.Entity;
 import com.astralrealms.core.storage.annotation.Id;
 import com.astralrealms.core.storage.model.SQLAccessor;
+
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-
-import java.util.UUID;
 
 @Getter
 @Entity("island_invitations")
@@ -32,6 +33,7 @@ import java.util.UUID;
 public class IslandInvitation {
 
     @Id
+    @Column("id")
     private UUID uniqueId;
     private UUID islandId;
     private UUID senderId;
