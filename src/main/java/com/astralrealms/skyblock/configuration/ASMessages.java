@@ -16,7 +16,7 @@ public enum ASMessages implements MessageEnum {
     ROLE_PERMISSION_HIGHER,
     // Role permissions
     ROLE_PERMISSION_UPDATE_SUCCESS,
-    ROLE_PERMISSION_UPDATE_FAILED,
+    ROLE_PERMISSION_UPDATE_FAILURE,
     // Invitations
     PLAYER_ALREADY_MEMBER,
     PLAYER_ALREADY_COOP,
@@ -55,7 +55,7 @@ public enum ASMessages implements MessageEnum {
     COOP_REMOVED_TARGET,
     // Settings
     SETTINGS_UPDATE_SUCCESS,
-    SETTINGS_UPDATE_FAILED,
+    SETTINGS_UPDATE_FAILURE,
     // Misc
     UNEXPECTED_ERROR,
     NO_PERMISSION,

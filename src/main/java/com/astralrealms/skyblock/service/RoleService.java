@@ -101,10 +101,10 @@ public class RoleService {
                             .registerPlaceholder(role);
                     if (exception != null) {
                         this.plugin.getSLF4JLogger().error("Failed to update permissions for role {} on island {}", role.id(), island.uniqueId(), exception);
-                        ASMessages.ROLE_PERMISSION_UPDATE_FAILED.message(player, placeholders);
+                        ASMessages.ROLE_PERMISSION_UPDATE_FAILURE.message(player, placeholders);
                         return;
                     } else if (!result) {
-                        ASMessages.ROLE_PERMISSION_UPDATE_FAILED.message(player, placeholders);
+                        ASMessages.ROLE_PERMISSION_UPDATE_FAILURE.message(player, placeholders);
                         return;
                     }
 

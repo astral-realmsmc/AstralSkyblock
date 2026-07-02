@@ -274,10 +274,10 @@ public class IslandService {
 
                     if (throwable != null) {
                         this.plugin.getSLF4JLogger().error("Failed to update settings for island {} for player {}", island.uniqueId(), player.getName(), throwable);
-                        ASMessages.SETTINGS_UPDATE_FAILED.message(player, placeholders);
+                        ASMessages.SETTINGS_UPDATE_FAILURE.message(player, placeholders);
                         return;
                     } else if (!result) {
-                        ASMessages.SETTINGS_UPDATE_FAILED.message(player, placeholders);
+                        ASMessages.SETTINGS_UPDATE_FAILURE.message(player, placeholders);
                         return;
                     }
 
