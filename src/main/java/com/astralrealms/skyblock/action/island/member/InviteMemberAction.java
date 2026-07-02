@@ -1,5 +1,8 @@
 package com.astralrealms.skyblock.action.island.member;
 
+import org.bukkit.entity.Player;
+
+import com.astralrealms.core.model.player.MinecraftPlayer;
 import com.astralrealms.core.paper.model.action.PaperAction;
 import com.astralrealms.core.paper.model.action.PaperActionContext;
 import com.astralrealms.core.placeholder.wrapper.PlaceholderWrapper;
@@ -8,13 +11,10 @@ import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.model.island.Island;
 import com.astralrealms.skyblock.model.member.InvitationType;
 import com.astralrealms.skyblock.model.role.IslandPermission;
-import org.bukkit.entity.Player;
-
-import java.util.UUID;
 
 public record InviteMemberAction(
         PlaceholderWrapper<Island> island,
-        PlaceholderWrapper<UUID> targetUuid
+        PlaceholderWrapper<MinecraftPlayer> target
 ) implements PaperAction {
 
     @Override
@@ -22,8 +22,9 @@ public record InviteMemberAction(
         Player player = context.executor();
         Island island = context.parseWrapper(this.island);
         if (!island.hasPermission(player, IslandPermission.INVITE_MEMBER)) return;
-        UUID target = context.parseWrapper(this.targetUuid);
-        AstralSkyblock.get().invitations()
-                .create(island, player.getUniqueId(), target, InvitationType.MEMBER);
+        MinecraftPlayer target = context.parseWrapper(this.target);
+        AstralSkyblock.get()
+                .invitations()
+                .create(island, player, target, InvitationType.MEMBER);
     }
 }
