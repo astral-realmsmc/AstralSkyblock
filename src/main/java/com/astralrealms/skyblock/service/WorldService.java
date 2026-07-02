@@ -16,6 +16,7 @@ import org.jetbrains.annotations.Unmodifiable;
 import com.astralrealms.core.paper.AstralPaperAPI;
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.configuration.ASPLoaderConfiguration;
+import com.astralrealms.skyblock.listener.IslandSettingsListener;
 import com.astralrealms.skyblock.model.IslandBlueprint;
 import com.astralrealms.skyblock.model.island.Island;
 import com.infernalsuite.asp.api.AdvancedSlimePaperAPI;
@@ -134,6 +135,10 @@ public class WorldService {
                 SlimeWorldInstance instance = asp.loadWorld(world, true);
                 this.loadedWorlds.put(id, instance);
                 this.worldNameToIslandId.put(instance.getName(), id);
+                this.plugin.islands()
+                        .repository()
+                        .findCachedById(id)
+                        .ifPresent(island -> IslandSettingsListener.applyEnvironment(island, instance.getBukkitWorld()));
                 this.plugin.servers()
                         .setHostServer(id, AstralPaperAPI.serverInformation().uniqueId())
                         .exceptionally(throwable -> {

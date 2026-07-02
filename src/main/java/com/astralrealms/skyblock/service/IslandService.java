@@ -6,6 +6,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.Unmodifiable;
 
@@ -14,6 +15,7 @@ import com.astralrealms.core.paper.AstralPaperAPI;
 import com.astralrealms.core.placeholder.container.PlaceholderContainer;
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.configuration.ASMessages;
+import com.astralrealms.skyblock.listener.IslandSettingsListener;
 import com.astralrealms.skyblock.messaging.packet.island.IslandLoadRequestPacket;
 import com.astralrealms.skyblock.messaging.packet.island.IslandLoadResponsePacket;
 import com.astralrealms.skyblock.model.IslandBlueprint;
@@ -282,6 +284,11 @@ public class IslandService {
                     }
 
                     ASMessages.SETTINGS_UPDATE_SUCCESS.message(player, placeholders);
+
+                    // Time/weather locks require world state, not event cancels — re-apply if hosted here
+                    Bukkit.getScheduler().runTask(this.plugin, () -> this.plugin.worlds()
+                            .findByIslandId(island.uniqueId())
+                            .ifPresent(instance -> IslandSettingsListener.applyEnvironment(island, instance.getBukkitWorld())));
                 });
     }
 

@@ -142,6 +142,10 @@ public class Island implements Unique, ComplexPlaceholder {
 
     public boolean toggleSetting(IslandSettings settings) {
         boolean enabled = !this.isSettingEnabled(settings);
+        if (enabled)
+            for (IslandSettings conflicting : settings.conflictingSettings())
+                if (this.isSettingEnabled(conflicting))
+                    this.dirtySettings.put(conflicting, false);
         this.dirtySettings.put(settings, enabled);
         return enabled;
     }
