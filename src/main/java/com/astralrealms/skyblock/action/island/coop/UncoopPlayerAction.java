@@ -6,7 +6,6 @@ import com.astralrealms.core.placeholder.wrapper.PlaceholderWrapper;
 import com.astralrealms.core.platform.executable.exception.ExecutableRunException;
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.model.island.Island;
-import com.astralrealms.skyblock.model.role.IslandPermission;
 import org.bukkit.entity.Player;
 
 import java.util.UUID;
@@ -20,8 +19,7 @@ public record UncoopPlayerAction(
     public void run(PaperActionContext context) throws ExecutableRunException {
         Player player = context.executor();
         Island island = context.parseWrapper(this.island);
-        if (!island.hasPermission(player, IslandPermission.UNCOOP_MEMBER)) return;
         UUID target = context.parseWrapper(this.targetUuid);
-        AstralSkyblock.get().coops().remove(island, target);
+        AstralSkyblock.get().coops().remove(island, player, target);
     }
 }

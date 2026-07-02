@@ -15,7 +15,6 @@ import com.astralrealms.skyblock.model.role.IslandPermission;
 
 import co.aikar.commands.BaseCommand;
 import co.aikar.commands.annotation.*;
-import net.kyori.adventure.text.Component;
 
 @CommandAlias("skyblock|is|island")
 @Description("Base command for all skyblock commands")
@@ -57,8 +56,7 @@ public class InvitationCommand extends BaseCommand {
             return;
         }
         this.plugin.invitations()
-                .create(island, player, target, InvitationType.COOP)
-                .thenAccept(v -> player.sendMessage(Component.text("Coop invitation sent to " + target.name() + ".")));
+                .create(island, player, target, InvitationType.COOP);
     }
 
     @Subcommand("accept")

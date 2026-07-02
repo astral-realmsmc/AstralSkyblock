@@ -3,6 +3,9 @@ package com.astralrealms.skyblock.command;
 import org.bukkit.entity.Player;
 
 import com.astralrealms.core.model.player.MinecraftPlayer;
+import com.astralrealms.core.paper.AstralPaperAPI;
+import com.astralrealms.core.paper.placeholder.MinecraftPlayerPlaceholder;
+import com.astralrealms.core.placeholder.container.PlaceholderContainer;
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.configuration.ASMessages;
 import com.astralrealms.skyblock.model.island.Island;
@@ -11,7 +14,6 @@ import com.astralrealms.skyblock.model.role.IslandPermission;
 
 import co.aikar.commands.BaseCommand;
 import co.aikar.commands.annotation.*;
-import net.kyori.adventure.text.Component;
 
 
 @CommandAlias("skyblock|is|island")
@@ -28,16 +30,14 @@ public class MemberCommand extends BaseCommand {
     public void onKick(Player player, MinecraftPlayer target) {
         Island island = this.plugin.members().findPlayerIsland(player.getUniqueId()).orElse(null);
         if (island == null) {
-            player.sendMessage(Component.text("You don't have an island."));
+            ASMessages.NO_ISLAND.message(player);
             return;
         }
         if (!island.hasPermission(player, IslandPermission.KICK_MEMBER)) {
             ASMessages.NO_PERMISSION.message(player);
             return;
         }
-        this.plugin.members()
-                .kick(island, player, target.uniqueId())
-                .thenAccept(v -> player.sendMessage(Component.text(target.name() + " has been kicked from the island.")));
+        this.plugin.members().kick(island, player, target.uniqueId());
     }
 
     @Subcommand("leave")
@@ -45,12 +45,10 @@ public class MemberCommand extends BaseCommand {
     public void onLeave(Player player) {
         Island island = this.plugin.members().findPlayerIsland(player.getUniqueId()).orElse(null);
         if (island == null) {
-            player.sendMessage(Component.text("You don't have an island."));
+            ASMessages.NO_ISLAND.message(player);
             return;
         }
-        this.plugin.members()
-                .leave(island, player)
-                .thenAccept(v -> player.sendMessage(Component.text("You have left the island.")));
+        this.plugin.members().leave(island, player);
     }
 
     @Subcommand("promote")
@@ -60,17 +58,14 @@ public class MemberCommand extends BaseCommand {
     public void onPromote(Player player, MinecraftPlayer target) {
         Island island = this.plugin.members().findPlayerIsland(player.getUniqueId()).orElse(null);
         if (island == null) {
-            player.sendMessage(Component.text("You don't have an island."));
+            ASMessages.NO_ISLAND.message(player);
             return;
         }
         if (!island.hasPermission(player, IslandPermission.PROMOTE_MEMBERS)) {
             ASMessages.NO_PERMISSION.message(player);
             return;
         }
-
-        this.plugin.members()
-                .promote(island, player, target.uniqueId())
-                .thenAccept(v -> player.sendMessage(Component.text(target.name() + " has been promoted.")));
+        this.plugin.members().promote(island, player, target.uniqueId());
     }
 
     @Subcommand("demote")
@@ -80,16 +75,14 @@ public class MemberCommand extends BaseCommand {
     public void onDemote(Player player, MinecraftPlayer target) {
         Island island = this.plugin.members().findPlayerIsland(player.getUniqueId()).orElse(null);
         if (island == null) {
-            player.sendMessage(Component.text("You don't have an island."));
+            ASMessages.NO_ISLAND.message(player);
             return;
         }
         if (!island.hasPermission(player, IslandPermission.DEMOTE_MEMBERS)) {
             ASMessages.NO_PERMISSION.message(player);
             return;
         }
-        this.plugin.members()
-                .demote(island, player, target.uniqueId())
-                .thenAccept(v -> player.sendMessage(Component.text(target.name() + " has been demoted.")));
+        this.plugin.members().demote(island, player, target.uniqueId());
     }
 
     @Subcommand("transfer")
@@ -98,18 +91,22 @@ public class MemberCommand extends BaseCommand {
     @CommandCompletion("@islandMembers")
     public void onTransfer(Player player, MinecraftPlayer target) {
         Island island = this.plugin.members().findPlayerIsland(player.getUniqueId()).orElse(null);
-        if (island == null || island.owner() == null
-            || !island.owner().playerUuid().equals(player.getUniqueId())) {
-            player.sendMessage(Component.text("You are not the owner of an island."));
+        if (island == null) {
+            ASMessages.NO_ISLAND.message(player);
+            return;
+        }
+        if (island.owner() == null || !island.owner().playerUuid().equals(player.getUniqueId())) {
+            ASMessages.NOT_ISLAND_OWNER.message(player);
             return;
         }
         IslandMember newOwner = island.findMember(target.uniqueId()).orElse(null);
         if (newOwner == null) {
-            player.sendMessage(Component.text(target.name() + " is not a member of your island."));
+            PlaceholderContainer placeholders = AstralPaperAPI.createPlaceholderContainer(player)
+                    .registerPlaceholder(island)
+                    .registerDirect("target", new MinecraftPlayerPlaceholder(target));
+            ASMessages.MEMBER_NOT_FOUND.message(player, placeholders);
             return;
         }
-        this.plugin.members()
-                .transfer(island, player, newOwner)
-                .thenAccept(v -> player.sendMessage(Component.text("Island ownership transferred to " + target.name() + ".")));
+        this.plugin.members().transfer(island, player, newOwner);
     }
 }

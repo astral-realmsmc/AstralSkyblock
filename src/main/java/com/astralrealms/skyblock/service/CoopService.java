@@ -5,8 +5,14 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 import org.bukkit.Bukkit;
+import org.bukkit.entity.Player;
 
+import com.astralrealms.core.paper.AstralPaperAPI;
+import com.astralrealms.core.paper.placeholder.MinecraftPlayerPlaceholder;
+import com.astralrealms.core.placeholder.container.PlaceholderContainer;
+import com.astralrealms.core.service.impl.ChatService;
 import com.astralrealms.skyblock.AstralSkyblock;
+import com.astralrealms.skyblock.configuration.ASMessages;
 import com.astralrealms.skyblock.event.IslandCoopAddEvent;
 import com.astralrealms.skyblock.event.IslandCoopRemoveEvent;
 import com.astralrealms.skyblock.messaging.packet.island.CoopAddPacket;
@@ -14,6 +20,7 @@ import com.astralrealms.skyblock.messaging.packet.island.CoopRemovePacket;
 import com.astralrealms.skyblock.model.island.Island;
 import com.astralrealms.skyblock.model.member.IslandCoop;
 import com.astralrealms.skyblock.model.member.IslandPlayerKey;
+import com.astralrealms.skyblock.model.role.IslandPermission;
 import com.astralrealms.skyblock.repository.CoopRepository;
 import com.astralrealms.skyblock.utils.ASConstants;
 
@@ -63,16 +70,49 @@ public class CoopService {
     }
 
     /**
-     * Removes a player from the island's coop list. Deletes the entry, updates the local island
+     * Removes a player from the island's coop list. The remover must have
+     * {@link IslandPermission#UNCOOP_MEMBER}. Deletes the entry, updates the local island
      * snapshot, fires {@link IslandCoopRemoveEvent}, and broadcasts a {@link CoopRemovePacket}.
+     * Messages the remover on any failed check and notifies the removed player cross-server
+     * on success.
      */
-    public CompletableFuture<Void> remove(Island island, UUID playerUuid) {
-        return repository.remove(island.uniqueId(), playerUuid).thenAccept(ignored -> {
-            island.coops().removeIf(c -> c.playerUuid().equals(playerUuid));
-            Bukkit.getScheduler().runTask(plugin, () ->
-                    Bukkit.getPluginManager().callEvent(new IslandCoopRemoveEvent(island, playerUuid)));
-            plugin.messaging().send(ASConstants.COOP_SYNC_CHANNEL, new CoopRemovePacket(island.uniqueId(), playerUuid));
-        });
+    public CompletableFuture<Void> remove(Island island, Player remover, UUID playerUuid) {
+        PlaceholderContainer placeholders = AstralPaperAPI.createPlaceholderContainer(remover)
+                .registerPlaceholder(island)
+                .registerDirect("target", new MinecraftPlayerPlaceholder(playerUuid));
+
+        if (!island.hasPermission(remover, IslandPermission.UNCOOP_MEMBER)) {
+            ASMessages.NO_PERMISSION.message(remover);
+            return CompletableFuture.completedFuture(null);
+        }
+        if (!isCoop(island.uniqueId(), playerUuid)) {
+            ASMessages.COOP_NOT_FOUND.message(remover, placeholders);
+            return CompletableFuture.completedFuture(null);
+        }
+
+        return repository.remove(island.uniqueId(), playerUuid)
+                .whenComplete((ignored, ex) -> {
+                    if (ex != null) {
+                        ASMessages.UNEXPECTED_ERROR.message(remover, placeholders);
+                        plugin.getSLF4JLogger().error("Failed to remove coop {} from island {}: {}", playerUuid, island.uniqueId(), ex.getMessage(), ex);
+                        return;
+                    }
+
+                    island.coops().removeIf(c -> c.playerUuid().equals(playerUuid));
+                    Bukkit.getScheduler().runTask(plugin, () ->
+                            Bukkit.getPluginManager().callEvent(new IslandCoopRemoveEvent(island, playerUuid)));
+                    plugin.messaging().send(ASConstants.COOP_SYNC_CHANNEL, new CoopRemovePacket(island.uniqueId(), playerUuid));
+
+                    // Notify remover
+                    ASMessages.COOP_REMOVED_SENDER.message(remover, placeholders);
+
+                    // Notify removed co-op player
+                    AstralPaperAPI.getService(ChatService.class)
+                            .orElseThrow()
+                            .sendMessage(playerUuid, ASMessages.COOP_REMOVED_TARGET.component(placeholders));
+                })
+                .thenAccept(ignored -> {
+                });
     }
 
     // =========================================================================

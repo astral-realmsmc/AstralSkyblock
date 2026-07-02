@@ -28,6 +28,29 @@ no-pending-invitation: "You do not have any pending invitations."
 multiple-pending-invitations: "You have multiple pending invitations. Please specify which one to accept or decline."
 invitation-not-found: "Invitation not found."
 
+# Members
+member-not-found: "%target_name% is not a member of %island_name%."
+member-higher-role: "You cannot do that to a member whose role is equal to or higher than yours."
+member-kicked-sender: "%target_name% has been kicked from %island_name%."
+member-kicked-target: "You have been kicked from %island_name%."
+island-left: "You have left %island_name%."
+owner-cannot-leave: "You cannot leave your own island. Transfer ownership first."
+member-promoted-sender: "%target_name% has been promoted to %role_name%."
+member-promoted-target: "You have been promoted to %role_name% in %island_name%."
+member-already-highest-role: "%target_name% is already at the highest role."
+member-promote-higher: "You cannot promote a member to a role equal to or higher than your own."
+member-demoted-sender: "%target_name% has been demoted to %role_name%."
+member-demoted-target: "You have been demoted to %role_name% in %island_name%."
+member-already-lowest-role: "%target_name% is already at the lowest role."
+not-island-owner: "Only the island owner can do this."
+ownership-transferred-sender: "Island ownership has been transferred to %target_name%."
+ownership-transferred-target: "You are now the owner of %island_name%."
+
+# Coops
+coop-not-found: "%target_name% is not a co-op member of %island_name%."
+coop-removed-sender: "%target_name% is no longer a co-op member of %island_name%."
+coop-removed-target: "You are no longer a co-op member of %island_name%."
+
 # Settings
 settings-update-success: "Settings for %island_name% have been successfully updated."
 settings-update-failure: "Failed to update settings for %island_name%. Please try again."

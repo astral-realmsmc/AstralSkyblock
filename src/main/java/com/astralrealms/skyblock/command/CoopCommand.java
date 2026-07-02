@@ -10,7 +10,6 @@ import com.astralrealms.skyblock.model.role.IslandPermission;
 
 import co.aikar.commands.BaseCommand;
 import co.aikar.commands.annotation.*;
-import net.kyori.adventure.text.Component;
 
 @CommandAlias("skyblock|is|island")
 @Description("Base command for all skyblock commands")
@@ -26,19 +25,13 @@ public class CoopCommand extends BaseCommand {
     public void onUncoop(Player player, MinecraftPlayer target) {
         Island island = this.plugin.members().findPlayerIsland(player.getUniqueId()).orElse(null);
         if (island == null) {
-            player.sendMessage(Component.text("You don't have an island."));
+            ASMessages.NO_ISLAND.message(player);
             return;
         }
         if (!island.hasPermission(player, IslandPermission.UNCOOP_MEMBER)) {
             ASMessages.NO_PERMISSION.message(player);
             return;
         }
-        if (!this.plugin.coops().isCoop(island.uniqueId(), target.uniqueId())) {
-            player.sendMessage(Component.text(target.name() + " is not a coop member of your island."));
-            return;
-        }
-        this.plugin.coops()
-                .remove(island, target.uniqueId())
-                .thenAccept(v -> player.sendMessage(Component.text(target.name() + " is no longer a coop member.")));
+        this.plugin.coops().remove(island, player, target.uniqueId());
     }
 }
