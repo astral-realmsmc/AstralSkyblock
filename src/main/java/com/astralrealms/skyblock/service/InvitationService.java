@@ -155,6 +155,15 @@ public class InvitationService {
      * Silently returns if no pending invitation exists.
      */
     public CompletableFuture<Void> decline(Player player, UUID islandId) {
+        Island island = plugin.islands()
+                .repository()
+                .findCachedById(islandId)
+                .orElse(null);
+        if (island == null) {
+            ASMessages.INVITATION_NOT_FOUND.message(player);
+            return CompletableFuture.completedFuture(null);
+        }
+
         return repository.findPending(islandId, player.getUniqueId())
                 .thenCompose(opt -> {
                     if (opt.isEmpty()) {
@@ -165,6 +174,7 @@ public class InvitationService {
                     return repository.delete(opt.get().uniqueId())
                             .whenComplete((ignored, ex) -> {
                                 PlaceholderContainer placeholders = AstralPaperAPI.createPlaceholderContainer(player)
+                                        .registerPlaceholder(island)
                                         .registerDirect("sender", new MinecraftPlayerPlaceholder(opt.get().senderId()));
 
                                 if (ex != null) {
