@@ -16,6 +16,7 @@ import com.astralrealms.skyblock.model.member.IslandCoop;
 import com.astralrealms.skyblock.model.role.IslandPermission;
 import com.astralrealms.skyblock.model.member.IslandMember;
 import com.astralrealms.skyblock.model.role.IslandRole;
+import com.astralrealms.skyblock.model.upgrade.UpgradeType;
 import com.astralrealms.skyblock.placeholder.settings.IslandSettingsItemProvider;
 
 import lombok.Getter;
@@ -60,6 +61,8 @@ public class Island implements Unique, ComplexPlaceholder {
     @Setter
     private transient EnumSet<IslandSettings> settings = EnumSet.noneOf(IslandSettings.class);
     private transient final Map<IslandSettings, Boolean> dirtySettings = new EnumMap<>(IslandSettings.class);
+    @Setter
+    private transient Map<UpgradeType, Integer> upgrades = new EnumMap<>(UpgradeType.class);
 
     public Island(UUID uniqueId, String name, boolean locked, int level,
                   double spawnX, double spawnY, double spawnZ, float spawnYaw, float spawnPitch,
@@ -135,6 +138,16 @@ public class Island implements Unique, ComplexPlaceholder {
         return this.coops == null ? List.of() : this.coops;
     }
 
+    // Upgrades
+    public Map<UpgradeType, Integer> upgrades() {
+        return this.upgrades == null ? Map.of() : this.upgrades;
+    }
+
+    /** The island's level for an upgrade; 0 when it was never purchased (the override-only default). */
+    public int upgradeLevel(UpgradeType type) {
+        return this.upgrades == null ? 0 : this.upgrades.getOrDefault(type, 0);
+    }
+
     // Settings
     public boolean isSettingEnabled(IslandSettings settings) {
         return this.dirtySettings.getOrDefault(settings, this.settings.contains(settings));
@@ -191,6 +204,11 @@ public class Island implements Unique, ComplexPlaceholder {
                 yield this.hasPermission(player, IslandPermission.valueOf(context.collapseRemaining()));
             }
             case "settings" -> new IslandSettingsItemProvider(this);
+            case "upgradeLevel" -> {
+                if (!context.hasNext())
+                    yield null;
+                yield this.upgradeLevel(UpgradeType.valueOf(context.collapseRemaining()));
+            }
             case "updatedAt" -> updatedAt;
             case "createdAt" -> createdAt;
             case null, default -> null;

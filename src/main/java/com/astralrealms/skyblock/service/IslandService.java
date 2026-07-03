@@ -275,6 +275,14 @@ public class IslandService {
         return this.repository.refreshRelationships(islandId);
     }
 
+    /**
+     * Rebuilds a cached island's upgrade-level snapshot after an upgrade change. Delegates to
+     * {@link IslandRepository#refreshUpgrades(UUID)}; called from the upgrade write paths.
+     */
+    public CompletableFuture<Void> refreshUpgrades(UUID islandId) {
+        return this.repository.refreshUpgrades(islandId);
+    }
+
     public void updateSettings(Player player, Island island) {
         if (!island.hasPermission(player, IslandPermission.SET_SETTINGS)) {
             ASMessages.NO_PERMISSION.message(player);

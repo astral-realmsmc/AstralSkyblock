@@ -24,6 +24,7 @@ import com.astralrealms.skyblock.model.island.Island;
 import com.astralrealms.skyblock.model.member.IslandMember;
 import com.astralrealms.skyblock.model.role.IslandRole;
 import com.astralrealms.skyblock.model.role.RoleSeed;
+import com.astralrealms.skyblock.model.upgrade.UpgradeType;
 import com.astralrealms.skyblock.utils.ASConstants;
 import com.github.benmanes.caffeine.cache.*;
 
@@ -79,9 +80,9 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
 
     /**
      * Cascade-loads an island's relationships onto it: its roles, its members (each resolved to the
-     * role it holds), and its owner. Settings and per-role permissions are deferred. Priming the
-     * per-island role and member slices is a side effect. Used on every load (see {@link #postLoad})
-     * and to refresh a cached island after a membership/role change.
+     * role it holds), its owner, its coops, its settings and its upgrade levels. Priming the
+     * per-island role, member, coop and upgrade slices is a side effect. Used on every load (see
+     * {@link #postLoad}) and to refresh a cached island after a membership/role change.
      */
     private CompletableFuture<Island> cascade(Island island) {
         UUID islandId = island.uniqueId();
@@ -90,10 +91,11 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
                 .thenCompose(roles -> this.plugin.members().findByIsland(islandId)
                         .thenCompose(members -> this.coopRepository.findByIsland(islandId)
                                 .thenCompose(coops -> this.findSettingsByIsland(islandId)
-                                        .thenApply(settings -> {
-                                            populate(island, roles, members, coops, settings);
-                                            return island;
-                                        }))));
+                                        .thenCompose(settings -> this.plugin.upgrades().findByIsland(islandId)
+                                                .thenApply(upgrades -> {
+                                                    populate(island, roles, members, coops, settings, upgrades);
+                                                    return island;
+                                                })))));
     }
 
     @Override
@@ -280,8 +282,23 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
         });
     }
 
+    /**
+     * Rebuilds only a cached island's upgrade-level snapshot after an upgrade changed — an
+     * upgrade touches no other relationship, so the full {@link #refreshRelationships(UUID)}
+     * cascade is not needed. A no-op if the island is not cached on this server.
+     */
+    public CompletableFuture<Void> refreshUpgrades(UUID islandId) {
+        Island island = findCachedById(islandId).orElse(null);
+        if (island == null)
+            return CompletableFuture.completedFuture(null);
+        return this.plugin.upgrades()
+                .findByIsland(islandId)
+                .thenAccept(island::upgrades);
+    }
+
     private void populate(Island island, List<IslandRole> roles, List<IslandMember> members,
-                          List<IslandCoop> coops, EnumSet<IslandSettings> settings) {
+                          List<IslandCoop> coops, EnumSet<IslandSettings> settings,
+                          Map<UpgradeType, Integer> upgrades) {
         Map<Long, IslandRole> rolesById = roles.stream()
                 .collect(Collectors.toMap(IslandRole::id, role -> role));
 
@@ -298,6 +315,7 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
         island.coops(new CopyOnWriteArrayList<>(coops));
         island.owner(owner);
         island.settings(settings);
+        island.upgrades(upgrades);
     }
 
     /**

@@ -101,7 +101,6 @@ public final class AstralSkyblock extends AstralPaperPlugin {
         this.menus = new MenuContainer(this);
         this.dialogs = new DialogContainer(this);
         this.generators = new GeneratorService(this);
-        this.upgrades = new UpgradeService(this);
 
         // Configuration
         this.loadConfiguration();
@@ -122,6 +121,7 @@ public final class AstralSkyblock extends AstralPaperPlugin {
         this.roles = new RoleService(this);
         this.members = new MemberService(this);
         this.coops = new CoopService(this);
+        this.upgrades = new UpgradeService(this);
         this.invitations = new InvitationService(this, this.members, this.coops);
         this.islands = new IslandService(this);
         this.players = new PlayerService(this);
@@ -204,7 +204,10 @@ public final class AstralSkyblock extends AstralPaperPlugin {
         this.menus.load();
         this.dialogs.load();
         this.generators.load();
-        this.upgrades.load();
+        // UpgradeService is constructed after messaging connects (its repository registers a packet
+        // exchange), so on the first enable pass its constructor loads the blueprints itself.
+        if (this.upgrades != null)
+            this.upgrades.load();
     }
 
     public static AstralSkyblock get() {
