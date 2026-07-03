@@ -16,7 +16,8 @@ import org.jetbrains.annotations.Unmodifiable;
 import com.astralrealms.core.paper.AstralPaperAPI;
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.configuration.ASPLoaderConfiguration;
-import com.astralrealms.skyblock.event.island.IslandWorldUnloadedEvent;
+import com.astralrealms.skyblock.event.island.world.IslandWorldLoadedEvent;
+import com.astralrealms.skyblock.event.island.world.IslandWorldUnloadedEvent;
 import com.astralrealms.skyblock.listener.IslandSettingsListener;
 import com.astralrealms.skyblock.model.IslandBlueprint;
 import com.astralrealms.skyblock.model.island.Island;
@@ -107,6 +108,7 @@ public class WorldService {
                     } catch (IOException e) {
                         throw new CompletionException("Failed to save world after creation for island with UUID: " + uniqueId, e);
                     }
+
                     return instance;
                 });
     }
@@ -156,7 +158,7 @@ public class WorldService {
                         });
 
                 // Throw event
-                new IslandWorldUnloadedEvent(island, instance.getBukkitWorld()).callEvent();
+                new IslandWorldLoadedEvent(island, instance.getBukkitWorld()).callEvent();
 
                 future.complete(instance);
             } catch (Exception ex) {

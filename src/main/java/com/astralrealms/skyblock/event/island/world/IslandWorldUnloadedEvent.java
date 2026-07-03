@@ -1,4 +1,4 @@
-package com.astralrealms.skyblock.event.island;
+package com.astralrealms.skyblock.event.island.world;
 
 import org.bukkit.World;
 import org.bukkit.event.Event;

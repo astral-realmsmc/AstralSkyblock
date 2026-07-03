@@ -15,6 +15,8 @@ import com.astralrealms.core.paper.AstralPaperAPI;
 import com.astralrealms.core.placeholder.container.PlaceholderContainer;
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.configuration.ASMessages;
+import com.astralrealms.skyblock.event.island.IslandCreateEvent;
+import com.astralrealms.skyblock.event.island.IslandDeletedEvent;
 import com.astralrealms.skyblock.listener.IslandSettingsListener;
 import com.astralrealms.skyblock.messaging.packet.island.IslandLoadRequestPacket;
 import com.astralrealms.skyblock.messaging.packet.island.IslandLoadResponsePacket;
@@ -188,15 +190,23 @@ public class IslandService {
                                     ASMessages.UNEXPECTED_ERROR.message(player);
                                     return;
                                 }
+
+                                // Teleport player
                                 player.teleportAsync(worldInstance.getBukkitWorld().getSpawnLocation());
 
-                                this.plugin.getSLF4JLogger().info("Island created for player {} in {} ms", island.uniqueId(), System.currentTimeMillis() - startTime);
-
+                                // Notify
                                 ASMessages.ISLAND_CREATED.message(
                                         player,
                                         AstralPaperAPI.createPlaceholderContainer(player)
                                                 .registerPlaceholder(island)
                                 );
+
+                                // Trigger event
+                                new IslandCreateEvent(player, island, worldInstance.getBukkitWorld()).callEvent();
+
+                                // Log
+                                this.plugin.getSLF4JLogger().info("Island created for player {} in {} ms", island.uniqueId(), System.currentTimeMillis() - startTime);
+
                             });
                 })
                 .exceptionally(throwable -> {
@@ -242,12 +252,18 @@ public class IslandService {
                                 return null;
                             });
 
+                    // Notify
                     ASMessages.ISLAND_DELETED.message(
                             player,
                             AstralPaperAPI.createPlaceholderContainer(player)
                                     .registerPlaceholder(island)
                     );
+
+                    // Log
                     this.plugin.getSLF4JLogger().info("Island {} deleted for player {}", island.uniqueId(), player.getName());
+
+                    // Trigger event
+                    new IslandDeletedEvent(player, island).callEvent();
                 });
     }
 
