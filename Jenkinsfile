@@ -23,7 +23,7 @@ pipeline {
 
         stage('Archive') {
             steps {
-                archiveArtifacts artifacts: 'target/AstralSkyblock-*.jar', fingerprint: true
+                archiveArtifacts artifacts: 'target/skyblock-*.jar', fingerprint: true
             }
         }
 
