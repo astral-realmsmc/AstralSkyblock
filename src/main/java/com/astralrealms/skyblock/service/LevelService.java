@@ -7,6 +7,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Chunk;
@@ -41,6 +42,8 @@ public class LevelService {
     // islandId -> epoch millis of its last completed scan, for the /is calc cooldown.
     private final Map<UUID, Long> lastScan = new ConcurrentHashMap<>();
     private volatile List<Island> top = List.of();
+    // Whether a rescan pass is walking the hosted islands, so the timer cannot start a second one.
+    private final AtomicBoolean rescanning = new AtomicBoolean();
 
     public LevelService(AstralSkyblock plugin) {
         this.plugin = plugin;
@@ -245,30 +248,45 @@ public class LevelService {
      * Rescans every island world hosted on this server, strictly one after another: each scan
      * already spends {@code chunks-per-batch} chunk loads and snapshots per tick, so starting one
      * per hosted world at once would multiply that by the number of islands on the server.
+     *
+     * <p>A pass that outlives the timer interval is skipped rather than doubled up — with the scans
+     * serialised, a pass takes roughly {@code islands × scan duration}, and letting the timer start
+     * a second chain over the same list would put the per-tick cost right back where it was.
      */
     private void rescanHostedIslands() {
+        if (!this.rescanning.compareAndSet(false, true)) {
+            this.plugin.getSLF4JLogger().debug("Skipping the island rescan: the previous pass is still running.");
+            return;
+        }
         rescanNext(List.copyOf(this.plugin.worlds().getLoadedWorlds().keySet()), 0);
     }
 
+    /**
+     * Scans the first island at or after {@code index} that is still cached, then continues from the
+     * scheduler once it finishes. Islands that cannot be scanned are skipped in a loop rather than by
+     * recursing, and the continuation goes through the scheduler, so a run of immediate failures
+     * cannot stack up frames on the caller.
+     */
     private void rescanNext(List<UUID> islandIds, int index) {
-        if (index >= islandIds.size())
-            return;
+        for (int cursor = index; cursor < islandIds.size(); cursor++) {
+            UUID islandId = islandIds.get(cursor);
+            Island island = this.plugin.islands()
+                    .repository()
+                    .findCachedById(islandId)
+                    .orElse(null);
+            if (island == null)
+                continue;
 
-        UUID islandId = islandIds.get(index);
-        Island island = this.plugin.islands()
-                .repository()
-                .findCachedById(islandId)
-                .orElse(null);
-        if (island == null) {
-            rescanNext(islandIds, index + 1);
+            int next = cursor + 1;
+            calculate(island).whenComplete((value, throwable) -> {
+                if (throwable != null && !(unwrap(throwable) instanceof ScanInProgressException))
+                    this.plugin.getSLF4JLogger().warn("Failed to rescan island {}: {}", islandId, unwrap(throwable).getMessage());
+                Bukkit.getScheduler().runTask(this.plugin, () -> rescanNext(islandIds, next));
+            });
             return;
         }
 
-        calculate(island).whenComplete((value, throwable) -> {
-            if (throwable != null && !(unwrap(throwable) instanceof ScanInProgressException))
-                this.plugin.getSLF4JLogger().warn("Failed to rescan island {}: {}", islandId, unwrap(throwable).getMessage());
-            rescanNext(islandIds, index + 1);
-        });
+        this.rescanning.set(false);
     }
 
     // =========================================================================

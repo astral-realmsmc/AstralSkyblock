@@ -103,9 +103,22 @@ public class UpgradeService {
      */
     public CompletableFuture<Boolean> advance(UUID islandId, UpgradeType type, int expectedLevel) {
         return this.repository.advanceLevel(islandId, type.name(), expectedLevel)
-                .thenCompose(advanced -> Boolean.TRUE.equals(advanced)
-                        ? this.plugin.islands().refreshUpgrades(islandId).thenApply(ignored -> true)
-                        : CompletableFuture.completedFuture(false));
+                .thenCompose(advanced -> {
+                    if (!Boolean.TRUE.equals(advanced))
+                        return CompletableFuture.completedFuture(false);
+
+                    // The level is committed at this point. A failed snapshot refresh is a display
+                    // problem — surfacing it as a failed advance would have the caller refund a
+                    // level the island already owns, so it is logged and swallowed instead.
+                    return this.plugin.islands()
+                            .refreshUpgrades(islandId)
+                            .exceptionally(throwable -> {
+                                this.plugin.getSLF4JLogger().error("Upgrade {} of island {} was advanced but its snapshot "
+                                                                   + "could not be refreshed", type, islandId, throwable);
+                                return null;
+                            })
+                            .thenApply(ignored -> true);
+                });
     }
 
     /**
@@ -220,8 +233,17 @@ public class UpgradeService {
                 .thenCompose(advanced -> {
                     if (!Boolean.TRUE.equals(advanced))
                         // Somebody bought this level first — on this server or another one. Give the
-                        // money back rather than charging twice for a single level.
-                        return refund(economy, player.getUniqueId(), currency, level.price())
+                        // money back rather than charging twice for a single level, and pull in the
+                        // level they actually bought: until this server's snapshot catches up, every
+                        // retry would price the same level again and bounce off the same conflict.
+                        return this.plugin.islands()
+                                .refreshUpgrades(island.uniqueId())
+                                .exceptionally(throwable -> {
+                                    this.plugin.getSLF4JLogger().error("Failed to refresh the upgrades of island {} after a "
+                                                                       + "lost purchase race", island.uniqueId(), throwable);
+                                    return null;
+                                })
+                                .thenCompose(ignored -> refund(economy, player.getUniqueId(), currency, level.price()))
                                 .thenRun(() -> ASMessages.UPGRADE_LEVEL_CHANGED.message(player, placeholders));
 
                     Bukkit.getScheduler().runTask(this.plugin, () -> {

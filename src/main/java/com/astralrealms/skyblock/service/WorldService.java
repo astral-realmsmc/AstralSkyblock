@@ -406,9 +406,13 @@ public class WorldService {
                 // A refused unload must not abort the deletion: the row is already gone, so leaving the
                 // slime world in storage would orphan it forever. Log and carry on to the storage delete.
                 .handle((ignored, throwable) -> {
-                    if (throwable != null)
+                    if (throwable != null) {
                         this.plugin.getSLF4JLogger().error("Failed to unload world for island {} before deleting it; "
                                                            + "deleting it from storage anyway", uniqueId, throwable);
+                        // Its registrations must go regardless: left in place, the idle sweep would
+                        // later unload the world *with saving* and write the deleted island back.
+                        forget(uniqueId);
+                    }
                     return null;
                 })
                 .thenCompose(ignored -> this.plugin.servers().deleteHostServer(uniqueId))
@@ -425,6 +429,18 @@ public class WorldService {
     }
 
     /**
+     * Drops an island's local registrations without touching the world itself. Used when a deleted
+     * island's world could not be unloaded: the island no longer exists, so nothing here may keep
+     * treating it as a world worth saving.
+     */
+    private void forget(UUID uniqueId) {
+        this.loadedWorlds.remove(uniqueId);
+        this.worldNameToIslandId.remove(uniqueId.toString());
+        this.emptySince.remove(uniqueId);
+        this.loading.remove(uniqueId);
+    }
+
+    /**
      * Moves every player out of {@code world} so it can be unloaded: a local teleport to this
      * server's main world spawn (immediate, which is what Bukkit needs), followed by a best-effort
      * transfer to the configured fallback group. Must run on the main thread.
@@ -434,15 +450,17 @@ public class WorldService {
         if (players.isEmpty())
             return;
 
-        World fallback = Bukkit.getWorlds().stream()
-                .filter(candidate -> !candidate.equals(world))
-                .findFirst()
-                .orElse(null);
+        // The main world, explicitly — "the first world that is not this one" could be another
+        // island, dropping evacuees onto someone else's island past its ban and visit checks.
+        World fallback = Bukkit.getWorlds().isEmpty() ? null : Bukkit.getWorlds().getFirst();
+        if (fallback != null && (fallback.equals(world) || this.worldNameToIslandId.containsKey(fallback.getName())))
+            fallback = null; // nowhere safe locally; the group transfer below still moves them
         this.plugin.getSLF4JLogger().info("Evacuating {} player(s) from island world {}", players.size(), world.getName());
 
+        World destination = fallback;
         for (Player player : players) {
-            if (fallback != null)
-                player.teleport(fallback.getSpawnLocation());
+            if (destination != null)
+                player.teleport(destination.getSpawnLocation());
 
             AstralPaperAPI.getService(TeleportationService.class)
                     .orElseThrow()
