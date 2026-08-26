@@ -51,7 +51,6 @@ import com.astralrealms.skyblock.model.island.Island;
 import com.astralrealms.skyblock.model.island.IslandSettings;
 import com.astralrealms.skyblock.model.role.IslandPermission;
 import com.astralrealms.skyblock.placeholder.SkyblockPlaceholders;
-import com.astralrealms.skyblock.utils.SchemaMigrations;
 import com.astralrealms.skyblock.service.*;
 
 import lombok.Getter;
@@ -136,9 +135,6 @@ public final class AstralSkyblock extends AstralPaperPlugin {
         // Database
         this.database = new DatabaseService(this);
         this.database.connect();
-
-        // Additive schema changes, applied before any repository reads them.
-        SchemaMigrations.applyAll(this);
 
         // Cache
         this.cache = new CacheService(this, AstralPaperAPI.credentialsProvider());

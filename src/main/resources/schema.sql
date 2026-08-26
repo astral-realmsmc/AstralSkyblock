@@ -241,21 +241,21 @@ CREATE TABLE IF NOT EXISTS island_coops
 -- -------------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS island_warps
 (
-    island_id  UUID         NOT NULL,
-    name       VARCHAR(48)  NOT NULL, -- case-insensitive per island via collation
-    x          DOUBLE       NOT NULL,
-    y          DOUBLE       NOT NULL,
-    z          DOUBLE       NOT NULL,
-    yaw        FLOAT        NOT NULL DEFAULT 0,
-    pitch      FLOAT        NOT NULL DEFAULT 0,
-    is_private BOOLEAN      NOT NULL DEFAULT FALSE,
+    island_id    UUID         NOT NULL,
+    name         VARCHAR(48)  NOT NULL, -- case-insensitive per island via collation
+    x            DOUBLE       NOT NULL,
+    y            DOUBLE       NOT NULL,
+    z            DOUBLE       NOT NULL,
+    yaw          FLOAT        NOT NULL DEFAULT 0,
+    pitch        FLOAT        NOT NULL DEFAULT 0,
+    is_private   BOOLEAN      NOT NULL DEFAULT FALSE,
     -- Player customisation. `icon` is a Bukkit Material name (the item held when the icon was set),
     -- `display_name` an optional MiniMessage title shown instead of `name`, and `description` an
     -- optional blurb whose lines are separated by '|'.
     icon         VARCHAR(64)  NULL,
     display_name VARCHAR(128) NULL,
     description  VARCHAR(512) NULL,
-    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    created_at   TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
 
     PRIMARY KEY (island_id, name),
     CONSTRAINT fk_warp_island FOREIGN KEY (island_id) REFERENCES islands (id) ON DELETE CASCADE
