@@ -10,7 +10,7 @@ import com.astralrealms.skyblock.model.island.IslandSettings;
 
 @ConfigSerializable
 public record SkyblockConfiguration(int maximumIslands, String islandsGroup, int worldIdleUnloadSeconds,
-                                    String fallbackGroup, int maximumWarps, Defaults defaults,
+                                    String fallbackGroup, int maximumWarps, Defaults defaults, Level level,
                                     Set<IslandSettings> defaultSettings, Generators generators) {
 
     public boolean isIslandServer() {
@@ -36,6 +36,11 @@ public record SkyblockConfiguration(int maximumIslands, String islandsGroup, int
     @Override
     public int maximumWarps() {
         return this.maximumWarps <= 0 ? 5 : this.maximumWarps;
+    }
+
+    @Override
+    public Level level() {
+        return this.level == null ? Level.FALLBACK : this.level;
     }
 
     @Override
@@ -80,6 +85,56 @@ public record SkyblockConfiguration(int maximumIslands, String islandsGroup, int
         @Override
         public double worldBorderSize() {
             return this.worldBorderSize <= 0 ? 100 : this.worldBorderSize;
+        }
+    }
+
+    /**
+     * Island scoring. An island's {@code value} is the sum of its blocks' configured worth; its
+     * {@code level} is that value divided by {@link #pointsPerLevel()}.
+     */
+    @ConfigSerializable
+    public record Level(int pointsPerLevel, int chunksPerBatch, int rescanIntervalSeconds,
+                        int cooldownSeconds, int topSize, int topRefreshSeconds) {
+
+        private static final Level FALLBACK = new Level(0, 0, 0, 0, 0, 0);
+
+        /** Block value one island level is worth. */
+        @Override
+        public int pointsPerLevel() {
+            return this.pointsPerLevel <= 0 ? 100 : this.pointsPerLevel;
+        }
+
+        /** Chunks snapshotted per tick while scanning — higher scans faster but costs more per tick. */
+        @Override
+        public int chunksPerBatch() {
+            return this.chunksPerBatch <= 0 ? 4 : this.chunksPerBatch;
+        }
+
+        /**
+         * Seconds between automatic rescans of the islands hosted by this server. A negative value
+         * disables them, leaving scoring to {@code /is calc} and island world loads.
+         */
+        @Override
+        public int rescanIntervalSeconds() {
+            return this.rescanIntervalSeconds == 0 ? 900 : this.rescanIntervalSeconds;
+        }
+
+        /** Seconds a player must wait between two on-demand rescans of the same island. */
+        @Override
+        public int cooldownSeconds() {
+            return this.cooldownSeconds < 0 ? 0 : (this.cooldownSeconds == 0 ? 60 : this.cooldownSeconds);
+        }
+
+        /** How many islands the leaderboard holds. */
+        @Override
+        public int topSize() {
+            return this.topSize <= 0 ? 50 : this.topSize;
+        }
+
+        /** Seconds between leaderboard refreshes. */
+        @Override
+        public int topRefreshSeconds() {
+            return this.topRefreshSeconds <= 0 ? 300 : this.topRefreshSeconds;
         }
     }
 

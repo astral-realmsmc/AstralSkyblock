@@ -1,0 +1,58 @@
+id: "island-top"
+title: "%img_internal:neg_8%<white>%img_guis:generic_list%%img_internal:neg_86%<font:alphabet:shift_1>top"
+size: 54
+use-player-inventory: true
+
+layouts:
+  top:
+    taint: "entry"
+    provider: "%skyblock_top%"
+
+items:
+  entry:
+    slots: [10,11,12,13,14,15,16,19,20,21,22,23,24,25,28,29,30,31,32,33,34]
+    copy-from: "%parameter_entry_island_owner_player_head%"
+    name: "<primary_color><bold>#%parameter_entry_rank% <secondary_color>%parameter_entry_island_name%"
+    lore:
+      - ""
+      - "  <text_color>Chef : <secondary_color>%parameter_entry_island_owner_player_name%"
+      - "  <text_color>Niveau : <secondary_color>%parameter_entry_island_level%"
+      - "  <text_color>Valeur : <secondary_color>%parameter_entry_island_value%"
+      - "  <text_color>Membres : <secondary_color>%parameter_entry_island_members_size%"
+      - ""
+      - "<white>%img_icons:left-click% <information_color>Voir les warps de cette île"
+    taints:
+      - "entry"
+    actions:
+      - "[open-menu] island-warps:island=%parameter_entry_island%"
+
+  back:
+    slot: 49
+    copy-from: "%stacksuppliers_ce_icons:back%"
+    name: "<bold><primary_color>Retour"
+    item-flags:
+      - HIDE_ATTRIBUTES
+    actions:
+      - "[player] is"
+
+  previous-page:
+    slot: 46
+    copy-from: "%stacksuppliers_ce_icons:thin_back%"
+    name: "<primary_color><bold>Page précédente"
+    actions:
+      - "[previous-page] entry"
+      - "[refresh-slot] 52 <delay=1>"
+      - "[refresh-slot] 46 <delay=1>"
+    view-requirements:
+      - "[compare] %layouts_top_hasPreviousPage% == true"
+
+  next-page:
+    slot: 52
+    copy-from: "%stacksuppliers_ce_icons:thin_next%"
+    name: "<primary_color><bold>Page suivante"
+    actions:
+      - "[next-page] entry"
+      - "[refresh-slot] 52 <delay=1>"
+      - "[refresh-slot] 46 <delay=1>"
+    view-requirements:
+      - "[compare] %layouts_top_hasNextPage% == true"

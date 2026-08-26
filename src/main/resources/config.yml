@@ -18,6 +18,20 @@ defaults:
   coop-limit: 5
   world-border-size: 100
 
+# Island scoring. An island's value is the sum of its blocks' worth (block-values.yml);
+# its level is that value divided by points-per-level.
+level:
+  points-per-level: 100
+  # Chunks snapshotted per tick while scanning an island.
+  chunks-per-batch: 4
+  # Seconds between automatic rescans of the islands hosted by a server. Negative disables them.
+  rescan-interval-seconds: 900
+  # Seconds a player must wait between two /is calc runs on the same island. Negative disables it.
+  cooldown-seconds: 60
+  # Leaderboard size and refresh rate.
+  top-size: 50
+  top-refresh-seconds: 300
+
 # Generators
 generators:
   enabled: true

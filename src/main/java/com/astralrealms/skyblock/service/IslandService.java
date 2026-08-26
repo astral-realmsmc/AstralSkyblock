@@ -175,6 +175,7 @@ public class IslandService {
                             finalName,
                             true,
                             0,
+                            0,
                             blueprint.spawnLocation().x(),
                             blueprint.spawnLocation().y(),
                             blueprint.spawnLocation().z(),
@@ -251,7 +252,18 @@ public class IslandService {
                 });
     }
 
+    /**
+     * Disbands an island: removes its row (cascading every relationship) and deletes its world.
+     * Requires {@link IslandPermission#DISBAND_ISLAND} on the island being deleted — the command's
+     * context resolver already restricts which island a player can name, but an admin-supplied or
+     * GUI-supplied island must be authorised here too.
+     */
     public void delete(Player player, Island island) {
+        if (!island.hasPermission(player, IslandPermission.DISBAND_ISLAND)) {
+            ASMessages.NO_PERMISSION.message(player);
+            return;
+        }
+
         this.repository.delete(island.uniqueId())
                 .whenComplete((_, throwable) -> {
                     if (throwable != null) {

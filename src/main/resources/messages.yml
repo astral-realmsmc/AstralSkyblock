@@ -85,6 +85,13 @@ upgrade-insufficient-funds: "You cannot afford this upgrade (%level_price% %leve
 upgrade-in-progress: "Another upgrade is already being purchased for this island."
 upgrade-purchased: "%upgrade_type% has been upgraded to level %level_level%."
 
+# Level
+level-recalculating: "Recalculating the level of %island_name%..."
+level-recalculated: "%island_name% is now level %island_level% (value: %island_value%)."
+level-cooldown: "You must wait %cooldown% seconds before recalculating again."
+level-not-hosted: "%island_name% must be loaded to be recalculated — visit it and try again."
+level-in-progress: "%island_name% is already being recalculated."
+
 # Limits
 member-limit-reached: "%island_name% has reached its member limit (%limit%)."
 coop-limit-reached: "%island_name% has reached its co-op limit (%limit%)."

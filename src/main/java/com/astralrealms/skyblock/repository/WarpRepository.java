@@ -50,31 +50,6 @@ public class WarpRepository extends IndexedSyncedRepository<WarpKey, IslandWarp,
         });
     }
 
-    /**
-     * Adds the customisation columns to an {@code island_warps} table created before warps became
-     * customisable. Idempotent (MariaDB {@code ADD COLUMN IF NOT EXISTS}) and safe to run on every
-     * boot; failures are logged rather than thrown so a restricted database user cannot block enable.
-     */
-    public CompletableFuture<Void> migrate() {
-        @Language("SQL") String migration = """
-                ALTER TABLE island_warps
-                    ADD COLUMN IF NOT EXISTS icon VARCHAR(64) NULL,
-                    ADD COLUMN IF NOT EXISTS display_name VARCHAR(128) NULL,
-                    ADD COLUMN IF NOT EXISTS description VARCHAR(512) NULL
-                """;
-        return this.plugin.database()
-                .run(connection -> {
-                    try (PreparedStatement statement = connection.prepareStatement(migration)) {
-                        statement.executeUpdate();
-                    }
-                })
-                .exceptionally(throwable -> {
-                    this.plugin.getSLF4JLogger().error("Failed to migrate island_warps customisation columns; "
-                                                       + "warp icons/names/descriptions may be unavailable", throwable);
-                    return null;
-                });
-    }
-
     // =====================================================================================
     //  Domain queries
     // =====================================================================================

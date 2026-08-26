@@ -32,6 +32,16 @@ public class IslandListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onIslandWorldLoaded(IslandWorldLoadedEvent event) {
         this.plugin.upgrades().applyEffects(event.island());
+
+        // First chance to score the island since it came up here; the periodic rescan takes over
+        // from now on. A scan already in flight (or a world unloaded meanwhile) is not an error.
+        this.plugin.levels()
+                .calculate(event.island())
+                .exceptionally(throwable -> {
+                    this.plugin.getSLF4JLogger().debug("Skipped the load-time level scan of island {}: {}",
+                            event.island().uniqueId(), throwable.getMessage());
+                    return null;
+                });
     }
 
     /**

@@ -51,11 +51,6 @@ public class WarpService {
         return this.repository;
     }
 
-    /** Runs the customisation-column migration; called once when the plugin enables. */
-    public void load() {
-        this.repository.migrate();
-    }
-
     // =========================================================================
     //  Write operations
     // =========================================================================

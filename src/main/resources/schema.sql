@@ -91,6 +91,7 @@ CREATE TABLE IF NOT EXISTS islands
 
     locked      BOOLEAN      NOT NULL DEFAULT FALSE, -- locked = visitors cannot enter
     level       BIGINT       NOT NULL DEFAULT 0,     -- cached rank metric (recalc job); /is top orders by this
+    value       BIGINT       NOT NULL DEFAULT 0,     -- summed block value from the last scan; level = value / points-per-level
 
     created_at  TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     updated_at  TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),

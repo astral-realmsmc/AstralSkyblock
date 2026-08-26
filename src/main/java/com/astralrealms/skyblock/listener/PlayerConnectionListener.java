@@ -1,10 +1,15 @@
 package com.astralrealms.skyblock.listener;
 
+import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
 
+import com.astralrealms.core.paper.AstralPaperAPI;
+import com.astralrealms.core.service.impl.TeleportationService;
 import com.astralrealms.skyblock.AstralSkyblock;
+import com.astralrealms.skyblock.model.island.Island;
 
 import lombok.RequiredArgsConstructor;
 
@@ -16,5 +21,49 @@ public class PlayerConnectionListener implements Listener {
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
         this.plugin.players().load(event.getPlayer());
+    }
+
+    /**
+     * Puts a player back on their island when the island world they logged out in is no longer
+     * loaded here — it was idle-unloaded, or it is now hosted on another server — in which case
+     * Bukkit dropped them into this server's default world on login.
+     *
+     * <p>Players who land in a loaded island world (their own or somebody else's) are left where
+     * they are, as are players with no island at all. Only island servers do this: elsewhere,
+     * standing outside an island world is the normal state.
+     */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onRejoin(PlayerJoinEvent event) {
+        if (!this.plugin.configuration().isIslandServer())
+            return;
+
+        Player player = event.getPlayer();
+        if (this.plugin.worlds().findByWorld(player.getWorld()).isPresent())
+            return; // already in an island world that is loaded here
+
+        Island island = this.plugin.members()
+                .findPlayerIsland(player.getUniqueId())
+                .orElse(null);
+        if (island == null)
+            return;
+
+        this.plugin.islands()
+                .spawnIsland(island)
+                .whenComplete((location, throwable) -> {
+                    if (throwable != null || location == null) {
+                        this.plugin.getSLF4JLogger().error("Failed to restore {} to island {} on join",
+                                player.getName(), island.uniqueId(), throwable);
+                        return;
+                    }
+
+                    AstralPaperAPI.getService(TeleportationService.class)
+                            .orElseThrow()
+                            .teleport(player.getUniqueId(), location)
+                            .exceptionally(error -> {
+                                this.plugin.getSLF4JLogger().error("Failed to teleport {} back to island {} on join",
+                                        player.getName(), island.uniqueId(), error);
+                                return null;
+                            });
+                });
     }
 }

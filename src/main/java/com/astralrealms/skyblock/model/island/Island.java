@@ -36,7 +36,12 @@ public class Island implements Unique, ComplexPlaceholder {
     private UUID uniqueId;
     private String name;
     private boolean locked;
-    private int level;
+    /** Cached rank metric — {@link #value} divided by the configured points per level. */
+    @Setter
+    private long level;
+    /** Sum of the island's block values, as of its last scan. */
+    @Setter
+    private long value;
     // Spawn
     private double spawnX;
     private double spawnY;
@@ -71,13 +76,14 @@ public class Island implements Unique, ComplexPlaceholder {
     @Setter
     private transient Map<UpgradeType, Integer> upgrades = new EnumMap<>(UpgradeType.class);
 
-    public Island(UUID uniqueId, String name, boolean locked, int level,
+    public Island(UUID uniqueId, String name, boolean locked, long level, long value,
                   double spawnX, double spawnY, double spawnZ, float spawnYaw, float spawnPitch,
                   long updatedAt, long createdAt) {
         this.uniqueId = uniqueId;
         this.name = name;
         this.locked = locked;
         this.level = level;
+        this.value = value;
         this.spawnX = spawnX;
         this.spawnY = spawnY;
         this.spawnZ = spawnZ;
@@ -244,6 +250,7 @@ public class Island implements Unique, ComplexPlaceholder {
             case "name" -> name;
             case "locked" -> locked;
             case "level" -> level;
+            case "value" -> value;
             case "members" -> ItemProvider.of(members());
             case "owner" -> this.owner;
             case "roles" -> ItemProvider.of(roles());

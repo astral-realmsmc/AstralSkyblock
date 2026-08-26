@@ -5,6 +5,7 @@ import org.bukkit.entity.Player;
 import com.astralrealms.core.placeholder.PlaceholderContext;
 import com.astralrealms.core.placeholder.impl.system.ComplexPlaceholder;
 import com.astralrealms.skyblock.AstralSkyblock;
+import com.astralrealms.skyblock.placeholder.level.TopIslandItemProvider;
 
 import lombok.RequiredArgsConstructor;
 
@@ -30,6 +31,10 @@ public class SkyblockPlaceholders implements ComplexPlaceholder {
                     case null, default -> null;
                 };
             }
+
+            // The island leaderboard, best first. Served from the cached list the level service
+            // refreshes on a timer, so opening the menu never queries the database.
+            case "top" -> new TopIslandItemProvider(this.plugin.levels().top());
 
             case null, default -> null;
         };

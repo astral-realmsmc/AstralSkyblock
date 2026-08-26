@@ -175,19 +175,20 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
 
     private void insertIsland(Connection connection, Island island) throws SQLException {
         @Language("SQL") String INSERT_ISLAND = """
-                INSERT INTO islands (id, name, locked, level, spawn_x, spawn_y, spawn_z, spawn_yaw, spawn_pitch)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO islands (id, name, locked, level, value, spawn_x, spawn_y, spawn_z, spawn_yaw, spawn_pitch)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """;
         try (PreparedStatement statement = connection.prepareStatement(INSERT_ISLAND)) {
             statement.setObject(1, island.uniqueId());
             statement.setString(2, island.name());
             statement.setBoolean(3, island.locked());
-            statement.setInt(4, island.level());
-            statement.setDouble(5, island.spawnX());
-            statement.setDouble(6, island.spawnY());
-            statement.setDouble(7, island.spawnZ());
-            statement.setFloat(8, island.spawnYaw());
-            statement.setFloat(9, island.spawnPitch());
+            statement.setLong(4, island.level());
+            statement.setLong(5, island.value());
+            statement.setDouble(6, island.spawnX());
+            statement.setDouble(7, island.spawnY());
+            statement.setDouble(8, island.spawnZ());
+            statement.setFloat(9, island.spawnYaw());
+            statement.setFloat(10, island.spawnPitch());
             statement.executeUpdate();
         }
     }
@@ -406,6 +407,42 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
                             .thenCompose(ignored -> result.hasNext()
                                     ? warmupPage(page + 1)
                                     : CompletableFuture.completedFuture(null));
+                });
+    }
+
+    /**
+     * The highest-ranked islands, most valuable first. Reads ids straight from the indexed
+     * {@code level} column and resolves them through the cache, so the leaderboard costs one small
+     * query regardless of how many islands exist.
+     */
+    public CompletableFuture<List<Island>> findTop(int limit) {
+        @Language("SQL") String query = """
+                SELECT id FROM islands
+                WHERE level > 0
+                ORDER BY level DESC, updated_at ASC
+                LIMIT ?
+                """;
+        return this.plugin.database()
+                .supply(connection -> {
+                    List<UUID> ids = new ArrayList<>();
+                    try (PreparedStatement statement = connection.prepareStatement(query)) {
+                        statement.setInt(1, limit);
+                        try (ResultSet resultSet = statement.executeQuery()) {
+                            while (resultSet.next())
+                                ids.add(resultSet.getObject("id", UUID.class));
+                        }
+                    }
+                    return ids;
+                })
+                .thenCompose(ids -> {
+                    List<CompletableFuture<Island>> islands = ids.stream()
+                            .map(this::findById)
+                            .toList();
+                    return CompletableFuture.allOf(islands.toArray(CompletableFuture[]::new))
+                            .thenApply(ignored -> islands.stream()
+                                    .map(CompletableFuture::join)
+                                    .filter(Objects::nonNull)
+                                    .toList());
                 });
     }
 

@@ -90,6 +90,7 @@ SELECT id,
        spawn_pitch,
        locked,
        level,
+       value,
        created_at,
        updated_at
 FROM islands
@@ -230,9 +231,11 @@ UPDATE islands
 SET locked = ?
 WHERE id = ?;
 
--- Set cached level (recalc job; use executeBatch for a bulk recalc).  [level, id]
+-- Set the cached score after a scan (recalc job; use executeBatch for a bulk recalc).
+-- `value` is the summed block worth, `level` is value / points-per-level.  [value, level, id]
 UPDATE islands
-SET level = ?
+SET value = ?,
+    level = ?
 WHERE id = ?;
 
 
