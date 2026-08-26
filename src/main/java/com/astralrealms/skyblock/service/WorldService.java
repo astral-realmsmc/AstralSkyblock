@@ -259,6 +259,12 @@ public class WorldService {
             }
 
             try {
+                // The island may have been deleted while its world was being read from storage:
+                // load() only checks that at entry. Registering now would publish a host mapping the
+                // delete just cleared and route visitors to an island that no longer exists.
+                if (this.deleted.contains(id))
+                    throw new IllegalStateException("Island was deleted while its world was loading: " + id);
+
                 // Register the loaded world instance
                 this.loadedWorlds.put(id, instance);
                 this.worldNameToIslandId.put(instance.getName(), id);
@@ -505,10 +511,12 @@ public class WorldService {
 
             // A refused unload is retried every sweep. The local hop above is cheap and repeatable,
             // but a cross-server transfer is not: ask for one per player at most once a minute, so
-            // somebody who joins the world mid-retry still gets one and nobody gets spammed.
+            // somebody who joins the world mid-retry still gets one and nobody gets spammed. With no
+            // local destination the transfer is the only thing that can free the world, so it is
+            // never throttled there.
             long now = System.currentTimeMillis();
             Long requested = this.lastTransferRequest.get(player.getUniqueId());
-            if (requested != null && now - requested < TRANSFER_REQUEST_COOLDOWN_MILLIS)
+            if (destination != null && requested != null && now - requested < TRANSFER_REQUEST_COOLDOWN_MILLIS)
                 continue;
             this.lastTransferRequest.put(player.getUniqueId(), now);
 
@@ -516,6 +524,9 @@ public class WorldService {
                     .orElseThrow()
                     .sendToGroup(player.getUniqueId(), this.plugin.configuration().fallbackGroup())
                     .exceptionally(throwable -> {
+                        // The request never happened, so it must not hold the cooldown: the next
+                        // sweep should be free to ask again.
+                        this.lastTransferRequest.remove(player.getUniqueId());
                         this.plugin.getSLF4JLogger().error("Failed to send {} to the fallback group after evacuating {}",
                                 player.getName(), world.getName(), throwable);
                         return null;
@@ -540,6 +551,11 @@ public class WorldService {
                 return null;
             });
         }
+
+        // Expired cooldowns carry no information; dropping them keeps the map bounded by the players
+        // evacuated in the last minute rather than by every player ever evacuated.
+        long staleBefore = System.currentTimeMillis() - TRANSFER_REQUEST_COOLDOWN_MILLIS;
+        this.lastTransferRequest.values().removeIf(requested -> requested < staleBefore);
 
         int idleSeconds = this.plugin.configuration().worldIdleUnloadSeconds();
         if (idleSeconds < 0)
