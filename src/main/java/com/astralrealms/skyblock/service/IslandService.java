@@ -83,15 +83,16 @@ public class IslandService {
                             return null;
                         });
             } else if (packet instanceof IslandDeletePacket delete) {
-                // Another server deleted this island. If we host its world, drop it WITHOUT saving so it
-                // isn't re-persisted after its storage row is removed. Broadcast, so no reply is expected.
-                if (plugin.worlds().getLoadedWorlds().containsKey(delete.islandId()))
-                    plugin.worlds()
-                            .dropDeleted(delete.islandId())
-                            .exceptionally(throwable -> {
-                                plugin.getSLF4JLogger().error("Failed to unload deleted island {} on host server", delete.islandId(), throwable);
-                                return null;
-                            });
+                // Another server deleted this island. Mark it here unconditionally — not only when we
+                // currently host it: a load may be in flight, and it would otherwise register a world
+                // for an island whose row is already gone. The unload no-ops when nothing is loaded.
+                // Broadcast, so no reply is expected.
+                plugin.worlds()
+                        .dropDeleted(delete.islandId())
+                        .exceptionally(throwable -> {
+                            plugin.getSLF4JLogger().error("Failed to unload deleted island {} on host server", delete.islandId(), throwable);
+                            return null;
+                        });
             }
             return null;
         });

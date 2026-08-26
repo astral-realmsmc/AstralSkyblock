@@ -47,6 +47,8 @@ public class WorldService {
     private static final long SHUTDOWN_FLUSH_TIMEOUT_SECONDS = 5;
     /** Idle-unload sweep cadence, in ticks (30s at 20 TPS). */
     private static final long IDLE_SWEEP_INTERVAL_TICKS = 20L * 30;
+    /** Minimum gap between two fallback-group transfer requests for the same player. */
+    private static final long TRANSFER_REQUEST_COOLDOWN_MILLIS = 60_000;
 
     private final AstralSkyblock plugin;
     private final AdvancedSlimePaperAPI asp = AdvancedSlimePaperAPI.instance();
@@ -58,10 +60,17 @@ public class WorldService {
     // First tick (millis) a loaded world was observed empty; cleared as soon as a player is present.
     private final Map<UUID, Long> emptySince = new ConcurrentHashMap<>();
     // Islands whose row is gone. Their world must never be written back — not by an unload, not by
-    // the idle sweep, not by the shutdown flush — however long it takes to get it unloaded.
+    // the idle sweep, not by the shutdown flush, and it must never be loaded again.
+    //
+    // Entries are never removed while the server runs. Every attempt so far to release the mark at
+    // some "safe" point has reopened the resurrection it prevents: releasing it when the world
+    // unloads misses a refused unload, releasing it when storage is deleted misses a world still
+    // resident, and releasing it on a no-op unload reopens the load window. An island id is never
+    // reused, so holding a few UUIDs until restart costs nothing and closes all of those.
     private final Set<UUID> deleted = ConcurrentHashMap.newKeySet();
-    // Consecutive unload attempts per island, so a retried unload does not re-transfer its players.
-    private final Map<UUID, Integer> unloadAttempts = new ConcurrentHashMap<>();
+    // Last time each player was asked to move to the fallback group, so a retried evacuation does
+    // not re-request a transfer for someone who is already on their way out.
+    private final Map<UUID, Long> lastTransferRequest = new ConcurrentHashMap<>();
 
     private final FileLoader sourceLoader;
     private MysqlLoader worldLoader;
@@ -157,7 +166,7 @@ public class WorldService {
         this.emptySince.clear();
         this.loading.clear();
         this.deleted.clear();
-        this.unloadAttempts.clear();
+        this.lastTransferRequest.clear();
 
         // Close loader
         if (this.worldLoader != null) {
@@ -380,11 +389,8 @@ public class WorldService {
 
             // Bukkit refuses to unload a world that still holds players, which is the normal case for
             // a disband (typed while standing on the island). Move them out first, then send them on
-            // to the fallback group — the local hop is what actually frees the world. Only the first
-            // attempt asks for the group transfer: a refused unload is retried every sweep, and
-            // re-requesting a cross-server transfer for the same player every 30s helps nobody.
-            int attempt = this.unloadAttempts.merge(uniqueId, 1, Integer::sum);
-            evacuate(bukkitWorld, attempt == 1);
+            // to the fallback group — the local hop is what actually frees the world.
+            evacuate(bukkitWorld);
 
             // Unload world
             boolean success = Bukkit.unloadWorld(bukkitWorld, effectiveSave);
@@ -396,7 +402,6 @@ public class WorldService {
             // Remove from loaded worlds and world name mapping
             this.loadedWorlds.remove(uniqueId);
             this.worldNameToIslandId.remove(uniqueId.toString());
-            this.unloadAttempts.remove(uniqueId);
             this.plugin.servers()
                     .deleteHostServer(uniqueId)
                     .exceptionally(throwable -> {
@@ -428,11 +433,7 @@ public class WorldService {
      */
     public CompletableFuture<Void> dropDeleted(UUID uniqueId) {
         this.deleted.add(uniqueId);
-        return unload(uniqueId, false)
-                .whenComplete((ignored, throwable) -> {
-                    if (throwable == null)
-                        this.deleted.remove(uniqueId);
-                });
+        return unload(uniqueId, false);
     }
 
     public CompletableFuture<Void> delete(UUID uniqueId) {
@@ -470,10 +471,7 @@ public class WorldService {
                     } catch (Exception e) {
                         throw new CompletionException("Failed to delete world for island with UUID: " + uniqueId, e);
                     }
-                })
-                // Only now is there nothing left to protect: the row is gone, the storage entry is
-                // gone. A failure keeps the mark, so nothing can save the world in the meantime.
-                .thenRun(() -> this.deleted.remove(uniqueId));
+                });
     }
 
     /**
@@ -481,7 +479,7 @@ public class WorldService {
      * server's main world spawn (immediate, which is what Bukkit needs), followed by a best-effort
      * transfer to the configured fallback group. Must run on the main thread.
      */
-    private void evacuate(World world, boolean transfer) {
+    private void evacuate(World world) {
         List<Player> players = List.copyOf(world.getPlayers());
         if (players.isEmpty())
             return;
@@ -504,8 +502,15 @@ public class WorldService {
         for (Player player : players) {
             if (destination != null)
                 player.teleport(destination.getSpawnLocation());
-            if (!transfer)
+
+            // A refused unload is retried every sweep. The local hop above is cheap and repeatable,
+            // but a cross-server transfer is not: ask for one per player at most once a minute, so
+            // somebody who joins the world mid-retry still gets one and nobody gets spammed.
+            long now = System.currentTimeMillis();
+            Long requested = this.lastTransferRequest.get(player.getUniqueId());
+            if (requested != null && now - requested < TRANSFER_REQUEST_COOLDOWN_MILLIS)
                 continue;
+            this.lastTransferRequest.put(player.getUniqueId(), now);
 
             AstralPaperAPI.getService(TeleportationService.class)
                     .orElseThrow()
@@ -529,10 +534,7 @@ public class WorldService {
         for (UUID id : List.copyOf(this.deleted)) {
             if (!this.loadedWorlds.containsKey(id))
                 continue;
-            if (this.unloadAttempts.getOrDefault(id, 0) <= 1)
-                this.plugin.getSLF4JLogger().info("Retrying the unload of deleted island world {}", id);
-            else
-                this.plugin.getSLF4JLogger().debug("Retrying the unload of deleted island world {}", id);
+            this.plugin.getSLF4JLogger().debug("Retrying the unload of deleted island world {}", id);
             this.unload(id, false).exceptionally(throwable -> {
                 this.plugin.getSLF4JLogger().error("Failed to unload deleted island world {}", id, throwable);
                 return null;
