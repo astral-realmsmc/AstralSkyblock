@@ -67,6 +67,19 @@ public class InvitationService {
             return CompletableFuture.completedFuture(null);
         }
 
+        // A banned player may not be invited back in until the ban is lifted.
+        if (plugin.bans().isBanned(island.uniqueId(), recipient.uniqueId())) {
+            ASMessages.PLAYER_BANNED_CANNOT_INVITE.message(sender, placeholders);
+            return CompletableFuture.completedFuture(null);
+        }
+
+        // Upgrade-driven caps: inviting into a full island would only fail on accept.
+        if (isFull(island, type, placeholders)) {
+            (type == InvitationType.MEMBER ? ASMessages.MEMBER_LIMIT_REACHED : ASMessages.COOP_LIMIT_REACHED)
+                    .message(sender, placeholders);
+            return CompletableFuture.completedFuture(null);
+        }
+
         return repository.findPending(island.uniqueId(), recipient.uniqueId())
                 .thenCompose(existing -> {
                     if (existing.isPresent()) {
@@ -124,6 +137,22 @@ public class InvitationService {
                     }
 
                     IslandInvitation invitation = opt.get();
+
+                    // The island may have filled up (or banned the recipient) since the invite was
+                    // sent, so the caps are re-checked at the moment they would actually be crossed.
+                    PlaceholderContainer checks = AstralPaperAPI.createPlaceholderContainer(player)
+                            .registerPlaceholder(island);
+                    if (plugin.bans().isBanned(islandId, player.getUniqueId())) {
+                        ASMessages.BANNED_FROM_ISLAND.message(player, checks);
+                        return CompletableFuture.completedFuture(null);
+                    }
+                    if (isFull(island, invitation.type(), checks)) {
+                        (invitation.type() == InvitationType.MEMBER
+                                ? ASMessages.MEMBER_LIMIT_REACHED
+                                : ASMessages.COOP_LIMIT_REACHED).message(player, checks);
+                        return CompletableFuture.completedFuture(null);
+                    }
+
                     CompletableFuture<?> action = invitation.type() == InvitationType.MEMBER
                             ? members.addMember(island, player.getUniqueId(), invitation.senderId())
                             : coops.add(island, invitation.senderId(), player.getUniqueId());
@@ -228,6 +257,19 @@ public class InvitationService {
                                         .sendMessage(target.uniqueId(), ASMessages.INVITATION_CANCELLED_RECIPIENT.component(placeholders));
                             });
                 });
+    }
+
+    /**
+     * Whether the island has no room left for another member (or coop) under its upgrade-driven cap.
+     * Registers the applicable limit as the {@code limit} placeholder for the caller's message.
+     */
+    private boolean isFull(Island island, InvitationType type, PlaceholderContainer placeholders) {
+        int limit = type == InvitationType.MEMBER
+                ? plugin.upgrades().memberLimit(island)
+                : plugin.upgrades().coopLimit(island);
+        int current = type == InvitationType.MEMBER ? island.members().size() : island.coops().size();
+        placeholders.registerDirect("limit", limit);
+        return current >= limit;
     }
 
     /**

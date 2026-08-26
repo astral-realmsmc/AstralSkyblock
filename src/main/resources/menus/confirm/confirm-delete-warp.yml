@@ -1,4 +1,4 @@
-id: "island-confirm-kick"
+id: "island-confirm-delete-warp"
 title: "%img_internal:neg_8%<white>%img_guis:generic_27%%img_internal:neg_176%%img_title%%img_internal:neg_118%<font:alphabet:alphabet>validation"
 size: 54
 use-player-inventory: true
@@ -7,12 +7,15 @@ items:
   confirm:
     slot: 14
     copy-from: "%stacksuppliers_ce_icons:check%"
-    name: "<bold><primary_color>Expulser le membre"
+    name: "<bold><primary_color>Supprimer le warp"
+    lore:
+      - ""
+      - "  <text_color>Warp : <secondary_color>%parameters_warp%"
     item-flags:
       - HIDE_ATTRIBUTES
     actions:
-      - "[kick-member] %parameters_island% %parameters_member_playerId%"
-      - "[open-menu] island-members:island=%parameters_island%"
+      - "[delete-warp] %parameters_island% %parameters_warp%"
+      - "[open-menu] island-warps:island=%parameters_island%"
 
   cancel:
     slot: 12
@@ -21,4 +24,4 @@ items:
     item-flags:
       - HIDE_ATTRIBUTES
     actions:
-      - "[open-menu] island-member-manage:island=%parameters_island%:member=%parameters_member%"
+      - "[open-menu] island-warps:island=%parameters_island%"

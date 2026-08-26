@@ -23,7 +23,7 @@ items:
     view-requirements:
       - "[compare] %skyblock_player_island_hasPermission_UNCOOP_MEMBER% == true"
     actions:
-      - "[uncoop-player] %parameters_island_id% %parameter_coop_playerId%"
+      - "[uncoop-player] %parameters_island% %parameter_coop_playerId%"
       - "[refresh]"
 
   back:

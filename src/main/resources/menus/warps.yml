@@ -1,0 +1,107 @@
+id: "island-warps"
+title: "%img_internal:neg_8%<white>%img_guis:generic_list%%img_internal:neg_100%<font:alphabet:shift_1>warps"
+size: 54
+use-player-inventory: true
+
+layouts:
+  warps:
+    taint: "warp"
+    provider: "%parameters_island_warps%"
+
+items:
+  warp:
+    slots: [1,2,3,4,5,6,7,10,11,12,13,14,15,16,19,20,21,22,23,24,25,28,29,30,31,32,33,34,37,38,39,40,41,42,43]
+    material: "%parameter_warp_icon%"
+    name: "<primary_color><bold>%parameter_warp_displayName%"
+    lore-modifiers:
+      description:
+        type: iterable
+        provider: "%parameter_warp_descriptionLines%"
+        content: "  <text_color>%parameter_line%"
+      visibility:
+        type: conditional
+        entries:
+          private:
+            priority: 10
+            requirements:
+              - "[compare] %parameter_warp_isPrivate% == true"
+            content:
+              - "  <text_color>Visibilité : <secondary_color>Privée"
+          public:
+            priority: 0
+            content:
+              - "  <text_color>Visibilité : <secondary_color>Publique"
+    lore:
+      - ""
+      - "%lore-modifiers_description%"
+      - "%lore-modifiers_visibility%"
+      - ""
+      - "<white>%img_icons:left-click% <information_color>Se téléporter"
+      - "<white>%img_icons:right-click% <information_color>Rendre privée / publique"
+      - "<white>Shift + %img_icons:left-click% <information_color>Utiliser l'objet en main comme icône"
+      - "<white>Shift + %img_icons:right-click% <information_color>Supprimer ce warp"
+    taints:
+      - "warp"
+    actions:
+      - "[warp-teleport] %parameters_island% %parameter_warp_name%"
+      - "[close]"
+    right-click-actions:
+      - "[toggle-warp-visibility] %parameters_island% %parameter_warp_name%"
+      - "[refresh] <delay=2>"
+    right-click-requirements:
+      - "[compare] %skyblock_player_island_hasPermission_SET_WARP% == true"
+    shift-left-click-actions:
+      - "[set-warp-icon] %parameters_island% %parameter_warp_name%"
+      - "[refresh] <delay=2>"
+    shift-left-click-requirements:
+      - "[compare] %skyblock_player_island_hasPermission_SET_WARP% == true"
+    shift-right-click-actions:
+      - "[open-menu] island-confirm-delete-warp:island=%parameters_island%:warp=%parameter_warp_name%"
+    shift-right-click-requirements:
+      - "[compare] %skyblock_player_island_hasPermission_DELETE_WARP% == true"
+
+  create:
+    slot: 48
+    material: "LODESTONE"
+    name: "<bold><primary_color>Créer un warp"
+    lore:
+      - ""
+      - "  <text_color>Crée un <secondary_color>warp <text_color>à votre position,"
+      - "  <text_color>avec l'objet en main comme <secondary_color>icône<text_color>."
+      - ""
+      - "  <text_color>Warps : <secondary_color>%parameters_island_warpCount%"
+      - ""
+      - "<secondary_color><italic>Commande</italic> <information_color>: /is setwarp <nom>"
+    view-requirements:
+      - "[compare] %skyblock_player_island_hasPermission_SET_WARP% == true"
+
+  back:
+    slot: 49
+    copy-from: "%stacksuppliers_ce_icons:back%"
+    name: "<bold><primary_color>Retour"
+    item-flags:
+      - HIDE_ATTRIBUTES
+    actions:
+      - "[open-menu] island-main:island=%parameters_island%"
+
+  previous-page:
+    slot: 46
+    copy-from: "%stacksuppliers_ce_icons:thin_back%"
+    name: "<primary_color><bold>Page précédente"
+    actions:
+      - "[previous-page] warp"
+      - "[refresh-slot] 52 <delay=1>"
+      - "[refresh-slot] 46 <delay=1>"
+    view-requirements:
+      - "[compare] %layouts_warps_hasPreviousPage% == true"
+
+  next-page:
+    slot: 52
+    copy-from: "%stacksuppliers_ce_icons:thin_next%"
+    name: "<primary_color><bold>Page suivante"
+    actions:
+      - "[next-page] warp"
+      - "[refresh-slot] 52 <delay=1>"
+      - "[refresh-slot] 46 <delay=1>"
+    view-requirements:
+      - "[compare] %layouts_warps_hasNextPage% == true"

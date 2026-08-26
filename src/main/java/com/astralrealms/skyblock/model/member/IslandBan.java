@@ -41,7 +41,8 @@ public class IslandBan implements ComplexPlaceholder {
             case "player" -> new MinecraftPlayerPlaceholder(playerUuid);
             case "bannedBy" -> bannedBy;
             case "executor" -> new MinecraftPlayerPlaceholder(bannedBy);
-            case "reason" -> reason;
+            case "reason" -> reason == null ? "" : reason;
+            case "hasReason" -> reason != null && !reason.isBlank();
             case "createdAt" -> createdAt;
             default -> null;
         };

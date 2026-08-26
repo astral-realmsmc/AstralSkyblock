@@ -486,22 +486,24 @@ WHERE player_uuid = ?;
 
 -- Create / move a warp (upsert on (island_id, name)).
 -- [island_id, name, world, x, y, z, yaw, pitch, is_private]
-INSERT INTO island_warps (island_id, name, world, x, y, z, yaw, pitch, is_private)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON DUPLICATE KEY UPDATE world      = VALUES(world),
-                        x          = VALUES(x),
-                        y          = VALUES(y),
-                        z          = VALUES(z),
-                        yaw        = VALUES(yaw),
-                        pitch      = VALUES(pitch),
-                        is_private = VALUES(is_private);
+INSERT INTO island_warps (island_id, name, x, y, z, yaw, pitch, is_private, icon, display_name, description, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON DUPLICATE KEY UPDATE x            = VALUES(x),
+                        y            = VALUES(y),
+                        z            = VALUES(z),
+                        yaw          = VALUES(yaw),
+                        pitch        = VALUES(pitch),
+                        is_private   = VALUES(is_private),
+                        icon         = VALUES(icon),
+                        display_name = VALUES(display_name),
+                        description  = VALUES(description);
 
 -- Delete / fetch one.  [island_id, name] each
 DELETE
 FROM island_warps
 WHERE island_id = ?
   AND name = ?;
-SELECT world, x, y, z, yaw, pitch, is_private
+SELECT x, y, z, yaw, pitch, is_private, icon, display_name, description, created_at
 FROM island_warps
 WHERE island_id = ?
   AND name = ?;

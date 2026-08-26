@@ -115,6 +115,22 @@ public class CoopService {
                 });
     }
 
+    /**
+     * Removes a coop grant without any permission check or player notification, firing
+     * {@link IslandCoopRemoveEvent} and broadcasting a {@link CoopRemovePacket}. Intended for callers
+     * that have already authorised the removal — currently {@link BanService}, which strips a banned
+     * player's coop access.
+     */
+    public CompletableFuture<Void> removeSilently(Island island, UUID playerUuid) {
+        return repository.remove(island.uniqueId(), playerUuid)
+                .thenRun(() -> {
+                    island.coops().removeIf(coop -> coop.playerUuid().equals(playerUuid));
+                    Bukkit.getScheduler().runTask(plugin, () ->
+                            Bukkit.getPluginManager().callEvent(new IslandCoopRemoveEvent(island, playerUuid)));
+                    plugin.messaging().send(ASConstants.COOP_SYNC_CHANNEL, new CoopRemovePacket(island.uniqueId(), playerUuid));
+                });
+    }
+
     // =========================================================================
     //  Read operations
     // =========================================================================

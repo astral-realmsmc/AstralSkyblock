@@ -1,0 +1,16 @@
+# Cobble/basalt generator tier. `key` names a generator blueprint from the generators/ folder —
+# that is what the generator listener resolves for the island. `value` is informational only.
+type: GENERATOR
+levels:
+  0:
+    level: 0
+    price: 0
+    value: 1
+    key: "overworld"
+  1:
+    level: 1
+    price: 10000
+    currency: "default"
+    currency-display: "coins"
+    value: 2
+    key: "overworld"

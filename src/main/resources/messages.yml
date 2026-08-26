@@ -51,6 +51,44 @@ coop-not-found: "%target_name% is not a co-op member of %island_name%."
 coop-removed-sender: "%target_name% is no longer a co-op member of %island_name%."
 coop-removed-target: "You are no longer a co-op member of %island_name%."
 
+# Bans
+player-already-banned: "%target_name% is already banned from %island_name%."
+cannot-ban-self: "You cannot ban yourself."
+ban-not-found: "%target_name% is not banned from %island_name%."
+player-banned-sender: "%target_name% has been banned from %island_name%."
+player-banned-target: "You have been banned from %island_name%."
+player-unbanned-sender: "%target_name% is no longer banned from %island_name%."
+player-unbanned-target: "You are no longer banned from %island_name%."
+banned-from-island: "You are banned from %island_name%."
+player-banned-cannot-invite: "%target_name% is banned from %island_name%. Unban them first."
+
+# Warps
+warp-created: "Warp %warp_name% has been created."
+warp-deleted: "Warp %warp_name% has been deleted."
+warp-moved: "Warp %warp_name% now points to your position."
+warp-not-found: "%island_name% has no warp named %warp_name%."
+warp-already-exists: "%island_name% already has a warp named %warp_name%."
+warp-invalid-name: "Warp names may only contain letters, digits, dashes and underscores (32 characters max)."
+warp-limit-reached: "%island_name% already has its maximum of %warp_limit% warps."
+warp-not-on-island: "You must be standing on the island to do that."
+warp-private: "Warp %warp_name% is private."
+warp-no-item-in-hand: "Hold the item you want to use as the warp icon."
+warp-icon-updated: "The icon of warp %warp_name% has been updated."
+warp-name-updated: "The display name of warp %warp_name% has been updated."
+warp-description-updated: "The description of warp %warp_name% has been updated."
+warp-visibility-updated: "Warp %warp_name% updated — private: %warp_isPrivate%."
+
+# Upgrades
+upgrade-not-found: "That upgrade does not exist."
+upgrade-max-level: "%upgrade_type% is already at its maximum level."
+upgrade-insufficient-funds: "You cannot afford this upgrade (%level_price% %level_currencyDisplay%)."
+upgrade-in-progress: "Another upgrade is already being purchased for this island."
+upgrade-purchased: "%upgrade_type% has been upgraded to level %level_level%."
+
+# Limits
+member-limit-reached: "%island_name% has reached its member limit (%limit%)."
+coop-limit-reached: "%island_name% has reached its co-op limit (%limit%)."
+
 # Settings
 settings-update-success: "Settings for %island_name% have been successfully updated."
 settings-update-failure: "Failed to update settings for %island_name%. Please try again."

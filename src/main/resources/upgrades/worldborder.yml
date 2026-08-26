@@ -1,3 +1,4 @@
+# Island border diameter, in blocks. `value` is the diameter applied to the island world.
 type: WORLDBORDER_SIZE
 levels:
   0:

@@ -105,6 +105,44 @@ items:
       - ""
       - "<red>Vous n'avez pas la permission"
       - "<red>d'accéder à ce menu."
+  # Warps
+  warps:
+    slot: 30
+    material: "LODESTONE"
+    priority: 2
+    name: "<bold><primary_color>Warps"
+    lore:
+      - ""
+      - "  <text_color>Permet de gérer les <secondary_color>warps"
+      - "  <text_color>de l'<secondary_color>île<text_color>."
+      - ""
+      - "<white>%img_icons:left-click% <information_color>Ouvrir le menu des warps"
+    actions:
+      - "[open-menu] island-warps:island=%parameters_island%"
+  # Upgrades
+  upgrades:
+    slot: 32
+    material: "EXPERIENCE_BOTTLE"
+    priority: 2
+    name: "<bold><primary_color>Améliorations"
+    lore:
+      - ""
+      - "  <text_color>Permet d'améliorer les <secondary_color>capacités"
+      - "  <text_color>de l'<secondary_color>île<text_color>."
+      - ""
+      - "<white>%img_icons:left-click% <information_color>Ouvrir le menu des améliorations"
+    view-requirements:
+      - "[compare] %skyblock_player_island_hasPermission_RANKUP% == true"
+    actions:
+      - "[open-menu] island-upgrades:island=%parameters_island%"
+  upgrades-forbidden:
+    slot: 32
+    material: BARRIER
+    name: "<bold><primary_color>Améliorations"
+    lore:
+      - ""
+      - "<red>Vous n'avez pas la permission"
+      - "<red>d'accéder à ce menu."
   # Bans
   bans:
     slot: 24

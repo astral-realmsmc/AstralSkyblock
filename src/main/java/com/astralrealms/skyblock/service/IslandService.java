@@ -97,69 +97,66 @@ public class IslandService {
         });
     }
 
+    /**
+     * Resolves the network location of an island's spawn, loading the world (here or on the
+     * emptiest island server) if nothing hosts it yet.
+     */
     public CompletableFuture<NetworkLocation> spawnIsland(Island island) {
+        return resolveLocation(island, island.spawnX(), island.spawnY(), island.spawnZ(),
+                island.spawnYaw(), island.spawnPitch());
+    }
+
+    /**
+     * Resolves a network location inside an island's world, ensuring the world is loaded somewhere
+     * first: on the server that already hosts it, on this server when it is the emptiest island
+     * server, or on that emptiest server via an {@link IslandLoadRequestPacket}. Completes with
+     * {@code null} when no server can host the island.
+     *
+     * <p>Used both for the island spawn and for warps, which differ only in their coordinates.
+     */
+    public CompletableFuture<NetworkLocation> resolveLocation(Island island, double x, double y, double z,
+                                                              float yaw, float pitch) {
+        UUID islandId = island.uniqueId();
         return this.plugin.servers()
-                .findHostServer(island.uniqueId())
-                .thenCompose((hostServer) -> {
-                    if (hostServer == null) {
-                        return this.plugin.servers()
-                                .findEmptiestServer()
-                                .thenCompose((islandServer) -> {
-                                    if (islandServer == null) {
-                                        this.plugin.getSLF4JLogger().error("Failed to find emptiest server for island {}: result is null", island.uniqueId());
-                                        return CompletableFuture.completedFuture(null);
-                                    } else if (islandServer.uniqueId().equals(AstralPaperAPI.serverInformation().uniqueId())) {
-                                        this.plugin.getSLF4JLogger().info("Found emptiest server {} for island {}: it's the current server, loading locally", islandServer.uniqueId(), island.uniqueId());
-                                        return this.plugin.worlds()
-                                                .load(island)
-                                                .thenApply(worldInstance -> {
-                                                    if (worldInstance == null) {
-                                                        this.plugin.getSLF4JLogger().error("Failed to load island {} on current server: result is null", island.uniqueId());
-                                                        return null;
-                                                    }
+                .findHostServer(islandId)
+                .thenCompose(hostServer -> {
+                    if (hostServer != null)
+                        return CompletableFuture.completedFuture(
+                                new NetworkLocation(x, y, z, yaw, pitch, islandId.toString(), hostServer));
 
-                                                    return new NetworkLocation(
-                                                            island.spawnX(),
-                                                            island.spawnY(),
-                                                            island.spawnZ(),
-                                                            island.spawnYaw(),
-                                                            island.spawnPitch(),
-                                                            island.uniqueId().toString(),
-                                                            AstralPaperAPI.serverInformation().uniqueId()
-                                                    );
-                                                });
-                                    }
+                    return this.plugin.servers()
+                            .findEmptiestServer()
+                            .thenCompose(islandServer -> {
+                                if (islandServer == null) {
+                                    this.plugin.getSLF4JLogger().error("Failed to find emptiest server for island {}: result is null", islandId);
+                                    return CompletableFuture.completedFuture(null);
+                                }
 
-                                    this.plugin.getSLF4JLogger().info("Found emptiest server {} for island {}", islandServer.uniqueId(), island.uniqueId());
-                                    return this.plugin.messaging()
-                                            .sendWithReply(ASConstants.ISLAND_MANAGEMENT_CHANNEL, new IslandLoadRequestPacket(island.uniqueId(), islandServer.uniqueId()))
-                                            .thenCompose(reply -> {
-                                                if (!(reply instanceof IslandLoadResponsePacket responsePacket)
-                                                    || !responsePacket.success())
-                                                    return CompletableFuture.completedFuture(null);
-
-                                                return CompletableFuture.completedFuture(new NetworkLocation(
-                                                        island.spawnX(),
-                                                        island.spawnY(),
-                                                        island.spawnZ(),
-                                                        island.spawnYaw(),
-                                                        island.spawnPitch(),
-                                                        island.uniqueId().toString(),
-                                                        islandServer.uniqueId()
-                                                ));
+                                if (islandServer.uniqueId().equals(AstralPaperAPI.serverInformation().uniqueId())) {
+                                    this.plugin.getSLF4JLogger().info("Found emptiest server {} for island {}: it's the current server, loading locally", islandServer.uniqueId(), islandId);
+                                    return this.plugin.worlds()
+                                            .load(island)
+                                            .thenApply(worldInstance -> {
+                                                if (worldInstance == null) {
+                                                    this.plugin.getSLF4JLogger().error("Failed to load island {} on current server: result is null", islandId);
+                                                    return null;
+                                                }
+                                                return new NetworkLocation(x, y, z, yaw, pitch, islandId.toString(),
+                                                        AstralPaperAPI.serverInformation().uniqueId());
                                             });
-                                });
-                    }
+                                }
 
-                    return CompletableFuture.completedFuture(new NetworkLocation(
-                            island.spawnX(),
-                            island.spawnY(),
-                            island.spawnZ(),
-                            island.spawnYaw(),
-                            island.spawnPitch(),
-                            island.uniqueId().toString(),
-                            hostServer
-                    ));
+                                this.plugin.getSLF4JLogger().info("Found emptiest server {} for island {}", islandServer.uniqueId(), islandId);
+                                return this.plugin.messaging()
+                                        .sendWithReply(ASConstants.ISLAND_MANAGEMENT_CHANNEL, new IslandLoadRequestPacket(islandId, islandServer.uniqueId()))
+                                        .thenApply(reply -> {
+                                            if (!(reply instanceof IslandLoadResponsePacket responsePacket)
+                                                || !responsePacket.success())
+                                                return null;
+                                            return new NetworkLocation(x, y, z, yaw, pitch, islandId.toString(),
+                                                    islandServer.uniqueId());
+                                        });
+                            });
                 }).orTimeout(15, TimeUnit.SECONDS);
     }
 
@@ -300,6 +297,22 @@ public class IslandService {
      */
     public CompletableFuture<Void> refreshUpgrades(UUID islandId) {
         return this.repository.refreshUpgrades(islandId);
+    }
+
+    /**
+     * Rebuilds a cached island's ban snapshot after a ban changed. Delegates to
+     * {@link IslandRepository#refreshBans(UUID)}; called from the ban write paths.
+     */
+    public CompletableFuture<Void> refreshBans(UUID islandId) {
+        return this.repository.refreshBans(islandId);
+    }
+
+    /**
+     * Rebuilds a cached island's warp snapshot after a warp changed. Delegates to
+     * {@link IslandRepository#refreshWarps(UUID)}; called from the warp write paths.
+     */
+    public CompletableFuture<Void> refreshWarps(UUID islandId) {
+        return this.repository.refreshWarps(islandId);
     }
 
     public void updateSettings(Player player, Island island) {

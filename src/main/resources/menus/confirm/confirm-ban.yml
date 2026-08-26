@@ -11,7 +11,7 @@ items:
     item-flags:
       - HIDE_ATTRIBUTES
     actions:
-      - "[ban-member] %parameters_island_id% %parameters_member_playerId%"
+      - "[ban-member] %parameters_island% %parameters_member_playerId%"
       - "[open-menu] island-members:island=%parameters_island%"
 
   cancel:

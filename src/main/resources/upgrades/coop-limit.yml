@@ -1,0 +1,19 @@
+# Maximum number of co-op players an island may grant access to. `value` is the cap itself.
+type: COOP_LIMIT
+levels:
+  0:
+    level: 0
+    price: 0
+    value: 5
+  1:
+    level: 1
+    price: 5000
+    currency: "default"
+    currency-display: "coins"
+    value: 8
+  2:
+    level: 2
+    price: 20000
+    currency: "default"
+    currency-display: "coins"
+    value: 12

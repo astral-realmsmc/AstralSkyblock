@@ -12,12 +12,15 @@ import com.astralrealms.core.placeholder.impl.system.ComplexPlaceholder;
 import com.astralrealms.core.provider.ItemProvider;
 import com.astralrealms.core.storage.annotation.*;
 import com.astralrealms.core.storage.model.SQLAccessor;
+import com.astralrealms.skyblock.model.member.IslandBan;
 import com.astralrealms.skyblock.model.member.IslandCoop;
 import com.astralrealms.skyblock.model.role.IslandPermission;
 import com.astralrealms.skyblock.model.member.IslandMember;
 import com.astralrealms.skyblock.model.role.IslandRole;
 import com.astralrealms.skyblock.model.upgrade.UpgradeType;
 import com.astralrealms.skyblock.placeholder.settings.IslandSettingsItemProvider;
+import com.astralrealms.skyblock.placeholder.upgrade.IslandUpgradeItemProvider;
+import com.astralrealms.skyblock.placeholder.upgrade.IslandUpgradeItemProvider;
 
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -58,6 +61,10 @@ public class Island implements Unique, ComplexPlaceholder {
     private transient Collection<IslandRole> roles = new ArrayList<>();
     @Setter
     private transient Collection<IslandCoop> coops = new CopyOnWriteArrayList<>();
+    @Setter
+    private transient Collection<IslandBan> bans = new CopyOnWriteArrayList<>();
+    @Setter
+    private transient Collection<IslandWarp> warps = new CopyOnWriteArrayList<>();
     @Setter
     private transient EnumSet<IslandSettings> settings = EnumSet.noneOf(IslandSettings.class);
     private transient final Map<IslandSettings, Boolean> dirtySettings = new EnumMap<>(IslandSettings.class);
@@ -138,6 +145,48 @@ public class Island implements Unique, ComplexPlaceholder {
         return this.coops == null ? List.of() : this.coops;
     }
 
+    public Collection<IslandBan> bans() {
+        return this.bans == null ? List.of() : this.bans;
+    }
+
+    public Collection<IslandWarp> warps() {
+        return this.warps == null ? List.of() : this.warps;
+    }
+
+    /** Whether the player is banned from this island, from the island's own cascaded snapshot. */
+    public boolean isBanned(UUID playerUuid) {
+        return this.bans != null && this.bans.stream()
+                .anyMatch(ban -> ban.playerUuid().equals(playerUuid));
+    }
+
+    /** A warp of this island by name, case-insensitively. */
+    public Optional<IslandWarp> findWarp(String name) {
+        if (this.warps == null || name == null)
+            return Optional.empty();
+        return this.warps.stream()
+                .filter(warp -> warp.name().equalsIgnoreCase(name))
+                .findFirst();
+    }
+
+    /**
+     * Whether the player belongs to this island — a member (including the owner) or a coop — and so
+     * may see its private warps.
+     */
+    public boolean isInsider(Player player) {
+        return player.hasPermission("skyblock.admin")
+               || this.findMember(player.getUniqueId()).isPresent()
+               || this.findCoop(player.getUniqueId()).isPresent();
+    }
+
+    /** The warps this player may see: public ones, plus private ones when they belong to the island. */
+    public Collection<IslandWarp> visibleWarps(Player player) {
+        if (isInsider(player))
+            return warps();
+        return warps().stream()
+                .filter(warp -> !warp.isPrivate())
+                .toList();
+    }
+
     // Upgrades
     public Map<UpgradeType, Integer> upgrades() {
         return this.upgrades == null ? Map.of() : this.upgrades;
@@ -204,6 +253,14 @@ public class Island implements Unique, ComplexPlaceholder {
                 yield this.hasPermission(player, IslandPermission.valueOf(context.collapseRemaining()));
             }
             case "settings" -> new IslandSettingsItemProvider(this);
+            case "bans" -> ItemProvider.of(bans());
+            case "warps" -> {
+                if (context.context() instanceof Player player)
+                    yield ItemProvider.of(visibleWarps(player));
+                yield ItemProvider.of(warps());
+            }
+            case "warpCount" -> warps().size();
+            case "upgrades" -> new IslandUpgradeItemProvider(this);
             case "upgradeLevel" -> {
                 if (!context.hasNext())
                     yield null;

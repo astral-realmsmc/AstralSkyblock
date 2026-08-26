@@ -28,9 +28,12 @@ public class GeneratorListener implements Listener {
         if (island == null)
             return;
 
-        GeneratorConfiguration blueprint = this.plugin.generators().defaultGenerator(); // TODO: Replace that
         if (e.getNewState().getType() != Material.COBBLESTONE
             && e.getNewState().getType() != Material.BASALT)
+            return;
+
+        GeneratorConfiguration blueprint = this.plugin.upgrades().generator(island);
+        if (blueprint == null)
             return;
 
         BlockData newBlock = blueprint.randomBlock();

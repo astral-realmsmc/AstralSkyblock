@@ -6,6 +6,18 @@ islands-group: "islands"
 # 0 uses the 5 minute default; a negative value disables idle unloading.
 world-idle-unload-seconds: 300
 
+# Server group players are sent to when they are evicted from an island (e.g. on a ban).
+fallback-group: "hub"
+
+# Maximum number of warps an island may define. 0 uses the default of 5.
+maximum-warps: 5
+
+# Baseline values used when the matching upgrade has no blueprint configured.
+defaults:
+  member-limit: 5
+  coop-limit: 5
+  world-border-size: 100
+
 # Generators
 generators:
   enabled: true

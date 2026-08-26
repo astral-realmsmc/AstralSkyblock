@@ -100,6 +100,22 @@ public class MemberService {
     }
 
     /**
+     * Removes a member without any permission or rank check, firing {@link IslandMemberLeaveEvent}
+     * and broadcasting a {@link MemberLeavePacket} with the given reason. Intended for callers that
+     * have already authorised the removal themselves — currently {@link BanService}, which strips a
+     * banned player's membership. The island owner is protected by the repository's guard.
+     */
+    public CompletableFuture<Void> removeSilently(Island island, UUID playerUuid, IslandMemberLeaveEvent.Reason reason) {
+        return repository.remove(island.uniqueId(), playerUuid)
+                .thenRun(() -> {
+                    Bukkit.getScheduler().runTask(plugin, () ->
+                            Bukkit.getPluginManager().callEvent(new IslandMemberLeaveEvent(island, playerUuid, reason)));
+                    plugin.messaging().send(ASConstants.MEMBER_SYNC_CHANNEL,
+                            new MemberLeavePacket(island.uniqueId(), playerUuid, reason));
+                });
+    }
+
+    /**
      * Kicks a member from the island. The kicker must have {@link IslandPermission#KICK_MEMBER}
      * and outrank the target (owners always outrank everyone). Messages the kicker on any
      * failed check and notifies the kicked player cross-server on success.

@@ -40,10 +40,13 @@ public class UpgradeRepository extends IndexedSyncedRepository<UpgradeKey, Islan
                 // The entry may be brand new here (first purchase made on another server); refresh
                 // both reloads a cached level and loads a missing one.
                 cache.synchronous().refresh(new UpgradeKey(updatePacket.islandId(), updatePacket.key()))
-                        .thenAccept(ignored -> this.plugin.islands().refreshUpgrades(updatePacket.islandId()));
+                        .thenCompose(ignored -> this.plugin.islands().refreshUpgrades(updatePacket.islandId()))
+                        .thenRun(() -> this.plugin.upgrades().applyEffects(updatePacket.islandId()));
             } else if (packet instanceof IslandStringKeyDeletePacket deletePacket) {
                 invalidateLocally(new UpgradeKey(deletePacket.islandId(), deletePacket.key()));
-                this.plugin.islands().refreshUpgrades(deletePacket.islandId());
+                this.plugin.islands()
+                        .refreshUpgrades(deletePacket.islandId())
+                        .thenRun(() -> this.plugin.upgrades().applyEffects(deletePacket.islandId()));
             }
         });
     }

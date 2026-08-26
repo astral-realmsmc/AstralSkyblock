@@ -9,6 +9,8 @@ import com.astralrealms.core.paper.menu.container.MenuContainer;
 import com.astralrealms.core.paper.plugin.AstralPaperPlugin;
 import com.astralrealms.core.placeholder.container.RootPlaceholderContainer;
 import com.astralrealms.core.storage.DatabaseService;
+import com.astralrealms.skyblock.action.island.ban.BanMemberAction;
+import com.astralrealms.skyblock.action.island.ban.UnbanPlayerAction;
 import com.astralrealms.skyblock.action.island.coop.CoopPlayerAction;
 import com.astralrealms.skyblock.action.island.coop.UncoopPlayerAction;
 import com.astralrealms.skyblock.action.island.member.DemoteMemberAction;
@@ -20,13 +22,24 @@ import com.astralrealms.skyblock.action.island.role.ToggleRolePermissionAction;
 import com.astralrealms.skyblock.action.island.role.UpdateRolePermissionsAction;
 import com.astralrealms.skyblock.action.island.settings.ToggleIslandSettingAction;
 import com.astralrealms.skyblock.action.island.settings.UpdateIslandSettingsAction;
+import com.astralrealms.skyblock.action.island.upgrade.PurchaseUpgradeAction;
+import com.astralrealms.skyblock.action.island.warp.DeleteWarpAction;
+import com.astralrealms.skyblock.action.island.warp.SetWarpIconAction;
+import com.astralrealms.skyblock.action.island.warp.ToggleWarpVisibilityAction;
+import com.astralrealms.skyblock.action.island.warp.WarpTeleportAction;
+import com.astralrealms.skyblock.command.BanCommand;
 import com.astralrealms.skyblock.command.CoopCommand;
 import com.astralrealms.skyblock.command.InvitationCommand;
 import com.astralrealms.skyblock.command.MemberCommand;
 import com.astralrealms.skyblock.command.SkyblockCommand;
+import com.astralrealms.skyblock.command.UpgradeCommand;
+import com.astralrealms.skyblock.command.WarpCommand;
+import com.astralrealms.skyblock.command.completion.IslandBanCompletionHandler;
 import com.astralrealms.skyblock.command.completion.IslandBlueprintCompletionHandler;
 import com.astralrealms.skyblock.command.completion.IslandCompletionHandler;
 import com.astralrealms.skyblock.command.completion.IslandMemberCompletionHandler;
+import com.astralrealms.skyblock.command.completion.IslandUpgradeCompletionHandler;
+import com.astralrealms.skyblock.command.completion.IslandWarpCompletionHandler;
 import com.astralrealms.skyblock.command.context.IslandBlueprintContextResolver;
 import com.astralrealms.skyblock.command.context.IslandContextResolver;
 import com.astralrealms.skyblock.configuration.*;
@@ -64,6 +77,8 @@ public final class AstralSkyblock extends AstralPaperPlugin {
     private RoleService roles;
     private MemberService members;
     private CoopService coops;
+    private BanService bans;
+    private WarpService warps;
     private InvitationService invitations;
     private ServerService servers;
     private GeneratorService generators;
@@ -94,6 +109,16 @@ public final class AstralSkyblock extends AstralPaperPlugin {
         // -- Coop
         this.registerAction("coop-player", CoopPlayerAction.class);
         this.registerAction("uncoop-player", UncoopPlayerAction.class);
+        // -- Bans
+        this.registerAction("ban-member", BanMemberAction.class);
+        this.registerAction("unban-player", UnbanPlayerAction.class);
+        // -- Warps
+        this.registerAction("warp-teleport", WarpTeleportAction.class);
+        this.registerAction("delete-warp", DeleteWarpAction.class);
+        this.registerAction("set-warp-icon", SetWarpIconAction.class);
+        this.registerAction("toggle-warp-visibility", ToggleWarpVisibilityAction.class);
+        // -- Upgrades
+        this.registerAction("purchase-upgrade", PurchaseUpgradeAction.class);
 
         // Services
         this.blueprints = new BlueprintService(this);
@@ -121,6 +146,9 @@ public final class AstralSkyblock extends AstralPaperPlugin {
         this.roles = new RoleService(this);
         this.members = new MemberService(this);
         this.coops = new CoopService(this);
+        this.bans = new BanService(this);
+        this.warps = new WarpService(this);
+        this.warps.load();
         this.upgrades = new UpgradeService(this);
         this.invitations = new InvitationService(this, this.members, this.coops);
         this.islands = new IslandService(this);
@@ -132,6 +160,9 @@ public final class AstralSkyblock extends AstralPaperPlugin {
         this.registerCompletion("islandBlueprints", new IslandBlueprintCompletionHandler(this));
         this.registerCompletion("islands", new IslandCompletionHandler(this));
         this.registerCompletion("islandMembers", new IslandMemberCompletionHandler(this));
+        this.registerCompletion("islandWarps", new IslandWarpCompletionHandler(this));
+        this.registerCompletion("islandBans", new IslandBanCompletionHandler(this));
+        this.registerCompletion("islandUpgrades", new IslandUpgradeCompletionHandler(this));
         // -- Context
         this.registerContext(IslandBlueprint.class, new IslandBlueprintContextResolver(this));
         this.commands().getCommandContexts().registerIssuerAwareContext(Island.class, new IslandContextResolver(this));
@@ -140,6 +171,9 @@ public final class AstralSkyblock extends AstralPaperPlugin {
         this.registerCommand(new InvitationCommand());
         this.registerCommand(new MemberCommand());
         this.registerCommand(new CoopCommand());
+        this.registerCommand(new BanCommand());
+        this.registerCommand(new WarpCommand());
+        this.registerCommand(new UpgradeCommand());
 
         // Listeners
         this.registerListeners(

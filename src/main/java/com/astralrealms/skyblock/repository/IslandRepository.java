@@ -18,6 +18,8 @@ import org.jetbrains.annotations.Unmodifiable;
 import com.astralrealms.core.storage.pagination.Pageable;
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.model.island.IslandSettings;
+import com.astralrealms.skyblock.model.island.IslandWarp;
+import com.astralrealms.skyblock.model.member.IslandBan;
 import com.astralrealms.skyblock.model.member.IslandCoop;
 import com.astralrealms.skyblock.model.role.IslandPermission;
 import com.astralrealms.skyblock.model.island.Island;
@@ -80,22 +82,60 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
 
     /**
      * Cascade-loads an island's relationships onto it: its roles, its members (each resolved to the
-     * role it holds), its owner, its coops, its settings and its upgrade levels. Priming the
-     * per-island role, member, coop and upgrade slices is a side effect. Used on every load (see
-     * {@link #postLoad}) and to refresh a cached island after a membership/role change.
+     * role it holds), its owner, its coops, its bans, its warps, its settings and its upgrade
+     * levels. Priming the per-island role, member, coop, ban, warp and upgrade slices is a side
+     * effect. Used on every load (see {@link #postLoad}) and to refresh a cached island after a
+     * membership/role change.
+     *
+     * <p>The loads are chained rather than run in parallel: warmup already cascades a whole page of
+     * islands concurrently, and fanning every island out over six simultaneous queries would
+     * multiply the pressure on the connection pool.
      */
     private CompletableFuture<Island> cascade(Island island) {
         UUID islandId = island.uniqueId();
+        Cascaded cascaded = new Cascaded();
         return this.plugin.roles()
                 .findByIsland(islandId)
-                .thenCompose(roles -> this.plugin.members().findByIsland(islandId)
-                        .thenCompose(members -> this.coopRepository.findByIsland(islandId)
-                                .thenCompose(coops -> this.findSettingsByIsland(islandId)
-                                        .thenCompose(settings -> this.plugin.upgrades().findByIsland(islandId)
-                                                .thenApply(upgrades -> {
-                                                    populate(island, roles, members, coops, settings, upgrades);
-                                                    return island;
-                                                })))));
+                .thenCompose(roles -> {
+                    cascaded.roles = roles;
+                    return this.plugin.members().findByIsland(islandId);
+                })
+                .thenCompose(members -> {
+                    cascaded.members = members;
+                    return this.coopRepository.findByIsland(islandId);
+                })
+                .thenCompose(coops -> {
+                    cascaded.coops = coops;
+                    return this.plugin.bans().repository().findByIsland(islandId);
+                })
+                .thenCompose(bans -> {
+                    cascaded.bans = bans;
+                    return this.plugin.warps().repository().findByIsland(islandId);
+                })
+                .thenCompose(warps -> {
+                    cascaded.warps = warps;
+                    return this.findSettingsByIsland(islandId);
+                })
+                .thenCompose(settings -> {
+                    cascaded.settings = settings;
+                    return this.plugin.upgrades().findByIsland(islandId);
+                })
+                .thenApply(upgrades -> {
+                    cascaded.upgrades = upgrades;
+                    populate(island, cascaded);
+                    return island;
+                });
+    }
+
+    /** Mutable carrier for the results of the cascade chain. */
+    private static final class Cascaded {
+        private List<IslandRole> roles = List.of();
+        private List<IslandMember> members = List.of();
+        private List<IslandCoop> coops = List.of();
+        private List<IslandBan> bans = List.of();
+        private List<IslandWarp> warps = List.of();
+        private EnumSet<IslandSettings> settings = EnumSet.noneOf(IslandSettings.class);
+        private Map<UpgradeType, Integer> upgrades = Map.of();
     }
 
     @Override
@@ -296,26 +336,54 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
                 .thenAccept(island::upgrades);
     }
 
-    private void populate(Island island, List<IslandRole> roles, List<IslandMember> members,
-                          List<IslandCoop> coops, EnumSet<IslandSettings> settings,
-                          Map<UpgradeType, Integer> upgrades) {
-        Map<Long, IslandRole> rolesById = roles.stream()
+    /**
+     * Rebuilds only a cached island's ban snapshot after a ban changed. A no-op if the island is not
+     * cached on this server.
+     */
+    public CompletableFuture<Void> refreshBans(UUID islandId) {
+        Island island = findCachedById(islandId).orElse(null);
+        if (island == null)
+            return CompletableFuture.completedFuture(null);
+        return this.plugin.bans()
+                .repository()
+                .findByIsland(islandId)
+                .thenAccept(bans -> island.bans(new CopyOnWriteArrayList<>(bans)));
+    }
+
+    /**
+     * Rebuilds only a cached island's warp snapshot after a warp changed. A no-op if the island is
+     * not cached on this server.
+     */
+    public CompletableFuture<Void> refreshWarps(UUID islandId) {
+        Island island = findCachedById(islandId).orElse(null);
+        if (island == null)
+            return CompletableFuture.completedFuture(null);
+        return this.plugin.warps()
+                .repository()
+                .findByIsland(islandId)
+                .thenAccept(warps -> island.warps(new CopyOnWriteArrayList<>(warps)));
+    }
+
+    private void populate(Island island, Cascaded cascaded) {
+        Map<Long, IslandRole> rolesById = cascaded.roles.stream()
                 .collect(Collectors.toMap(IslandRole::id, role -> role));
 
         IslandMember owner = null;
-        for (IslandMember member : members) {
+        for (IslandMember member : cascaded.members) {
             if (member.roleId() != null)
                 member.role(rolesById.get(member.roleId()));
             if (member.isOwner())
                 owner = member;
         }
 
-        island.roles(roles);
-        island.members(members);
-        island.coops(new CopyOnWriteArrayList<>(coops));
+        island.roles(cascaded.roles);
+        island.members(cascaded.members);
+        island.coops(new CopyOnWriteArrayList<>(cascaded.coops));
+        island.bans(new CopyOnWriteArrayList<>(cascaded.bans));
+        island.warps(new CopyOnWriteArrayList<>(cascaded.warps));
         island.owner(owner);
-        island.settings(settings);
-        island.upgrades(upgrades);
+        island.settings(cascaded.settings);
+        island.upgrades(cascaded.upgrades);
     }
 
     /**
