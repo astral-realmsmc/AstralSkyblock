@@ -87,7 +87,7 @@ public class IslandService {
                 // isn't re-persisted after its storage row is removed. Broadcast, so no reply is expected.
                 if (plugin.worlds().getLoadedWorlds().containsKey(delete.islandId()))
                     plugin.worlds()
-                            .unload(delete.islandId(), false)
+                            .dropDeleted(delete.islandId())
                             .exceptionally(throwable -> {
                                 plugin.getSLF4JLogger().error("Failed to unload deleted island {} on host server", delete.islandId(), throwable);
                                 return null;

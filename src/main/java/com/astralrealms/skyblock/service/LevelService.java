@@ -8,6 +8,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Chunk;
@@ -46,6 +47,7 @@ public class LevelService {
     private volatile List<Island> top = List.of();
     // Whether a rescan pass is walking the hosted islands, so the timer cannot start a second one.
     private final AtomicBoolean rescanning = new AtomicBoolean();
+    private final AtomicInteger rescanGeneration = new AtomicInteger();
     private volatile long rescanStartedAt;
 
     public LevelService(AstralSkyblock plugin) {
@@ -87,8 +89,15 @@ public class LevelService {
             return CompletableFuture.failedFuture(new ScanInProgressException(island.uniqueId()));
 
         CompletableFuture<Long> result = new CompletableFuture<>();
-        Scan scan = new Scan(island.uniqueId(), world, chunkCoordinates(island, world));
-        Bukkit.getScheduler().runTask(this.plugin, () -> processBatch(scan, result));
+        try {
+            Scan scan = new Scan(island.uniqueId(), world, chunkCoordinates(island, world));
+            Bukkit.getScheduler().runTask(this.plugin, () -> processBatch(scan, result));
+        } catch (Exception exception) {
+            // Nothing has been chained onto `result` yet, so the slot has to be released here or the
+            // island can never be scanned again for the rest of this server's life.
+            this.scanning.remove(island.uniqueId());
+            return CompletableFuture.failedFuture(exception);
+        }
 
         return result
                 .thenCompose(value -> persist(island, value).thenApply(ignored -> value))
@@ -148,7 +157,7 @@ public class LevelService {
                     scan.spawners.addAll(spawners);
                     return batchValue;
                 })
-                .whenComplete((batchValue, throwable) -> Bukkit.getScheduler().runTask(this.plugin, () -> {
+                .whenComplete((batchValue, throwable) -> resume(result, () -> {
                     if (throwable != null) {
                         result.completeExceptionally(throwable);
                         return;
@@ -167,6 +176,19 @@ public class LevelService {
                         result.completeExceptionally(exception);
                     }
                 }));
+    }
+
+    /**
+     * Hands the rest of a batch back to the main thread. Scheduling itself throws once the plugin is
+     * disabling, and that throw would land in a discarded completion stage — leaving the scan's
+     * future, and everything waiting on it, hanging forever. It fails the scan instead.
+     */
+    private void resume(CompletableFuture<Long> result, Runnable body) {
+        try {
+            Bukkit.getScheduler().runTask(this.plugin, body);
+        } catch (Exception exception) {
+            result.completeExceptionally(exception);
+        }
     }
 
     private ChunkSnapshot snapshot(Chunk chunk) {
@@ -267,8 +289,8 @@ public class LevelService {
     private void rescanHostedIslands() {
         if (!this.rescanning.compareAndSet(false, true)) {
             // A pass that has outlived several intervals is not running any more, it is stuck: its
-            // continuation was lost (a disable mid-pass, say). Take the latch back rather than
-            // leaving the server without rescans until it restarts.
+            // continuation was lost (a disable mid-pass, say). Take it over rather than leaving the
+            // server without rescans until it restarts.
             long running = System.currentTimeMillis() - this.rescanStartedAt;
             long stuckAfter = this.plugin.configuration().level().rescanIntervalSeconds() * 1000L * STUCK_PASS_INTERVALS;
             if (running < stuckAfter) {
@@ -278,8 +300,12 @@ public class LevelService {
             this.plugin.getSLF4JLogger().warn("The island rescan started {}s ago never finished; starting a new pass.", running / 1000);
         }
 
+        // Bumping the generation retires whatever the previous pass was doing: if it was merely slow
+        // rather than stuck, its next continuation sees a stale generation and stops, so the two
+        // chains can never walk the island list side by side.
+        int generation = this.rescanGeneration.incrementAndGet();
         this.rescanStartedAt = System.currentTimeMillis();
-        rescanNext(List.copyOf(this.plugin.worlds().getLoadedWorlds().keySet()), 0);
+        rescanNext(List.copyOf(this.plugin.worlds().getLoadedWorlds().keySet()), 0, generation);
     }
 
     /**
@@ -288,7 +314,10 @@ public class LevelService {
      * recursing, and the continuation goes through the scheduler, so a run of immediate failures
      * cannot stack up frames on the caller.
      */
-    private void rescanNext(List<UUID> islandIds, int index) {
+    private void rescanNext(List<UUID> islandIds, int index, int generation) {
+        if (generation != this.rescanGeneration.get())
+            return; // a newer pass took over; this chain is retired and must not touch the latch
+
         for (int cursor = index; cursor < islandIds.size(); cursor++) {
             UUID islandId = islandIds.get(cursor);
             Island island = this.plugin.islands()
@@ -299,22 +328,29 @@ public class LevelService {
                 continue;
 
             int next = cursor + 1;
-            try {
-                calculate(island).whenComplete((value, throwable) -> {
-                    if (throwable != null && !(unwrap(throwable) instanceof ScanInProgressException))
-                        this.plugin.getSLF4JLogger().warn("Failed to rescan island {}: {}", islandId, unwrap(throwable).getMessage());
-                    Bukkit.getScheduler().runTask(this.plugin, () -> rescanNext(islandIds, next));
-                });
-            } catch (Exception exception) {
-                // calculate() schedules main-thread work, which throws outright once the plugin is
-                // disabling. Release the latch instead of ending the pass while still holding it.
-                this.plugin.getSLF4JLogger().warn("Island rescan pass aborted at {}: {}", islandId, exception.getMessage());
-                this.rescanning.set(false);
-            }
+            calculate(island).whenComplete((value, throwable) -> {
+                if (throwable != null && !(unwrap(throwable) instanceof ScanInProgressException))
+                    this.plugin.getSLF4JLogger().warn("Failed to rescan island {}: {}", islandId, unwrap(throwable).getMessage());
+
+                try {
+                    Bukkit.getScheduler().runTask(this.plugin, () -> rescanNext(islandIds, next, generation));
+                } catch (Exception exception) {
+                    // Scheduling throws once the plugin is disabling; end the pass rather than
+                    // leaving the latch held by a chain that will never continue.
+                    this.plugin.getSLF4JLogger().warn("Island rescan pass aborted at {}: {}", islandId, exception.getMessage());
+                    endPass(generation);
+                }
+            });
             return;
         }
 
-        this.rescanning.set(false);
+        endPass(generation);
+    }
+
+    /** Releases the pass latch, unless a newer pass has already taken it over. */
+    private void endPass(int generation) {
+        if (generation == this.rescanGeneration.get())
+            this.rescanning.set(false);
     }
 
     // =========================================================================
