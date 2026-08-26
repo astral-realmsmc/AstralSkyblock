@@ -83,6 +83,7 @@ upgrade-not-found: "That upgrade does not exist."
 upgrade-max-level: "%upgrade_type% is already at its maximum level."
 upgrade-insufficient-funds: "You cannot afford this upgrade (%level_price% %level_currencyDisplay%)."
 upgrade-in-progress: "Another upgrade is already being purchased for this island."
+upgrade-level-changed: "%upgrade_type% was upgraded by someone else while you were buying it — you have been refunded."
 upgrade-purchased: "%upgrade_type% has been upgraded to level %level_level%."
 
 # Level

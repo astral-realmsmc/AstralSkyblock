@@ -91,6 +91,51 @@ public class UpgradeRepository extends IndexedSyncedRepository<UpgradeKey, Islan
         return save(new IslandUpgrade(islandId, upgrade, level));
     }
 
+    /**
+     * Buys exactly one level: raises {@code upgrade} from {@code expectedLevel} to
+     * {@code expectedLevel + 1}, and only if the stored level still is {@code expectedLevel}.
+     *
+     * <p>The condition lives in the {@code UPDATE} itself, so two servers processing a purchase for
+     * the same island at the same time cannot both succeed — the loser sees {@code false} and its
+     * caller refunds. An in-process guard could not do this: the two clicks are in different JVMs.
+     *
+     * @return whether this call is the one that advanced the level
+     */
+    public CompletableFuture<Boolean> advanceLevel(UUID islandId, String upgrade, int expectedLevel) {
+        @Language("SQL") String ensureRow = """
+                INSERT IGNORE INTO island_upgrades (island_id, upgrade, level)
+                VALUES (?, ?, 0)
+                """;
+        @Language("SQL") String advance = """
+                UPDATE island_upgrades SET level = level + 1
+                WHERE island_id = ? AND upgrade = ? AND level = ?
+                """;
+
+        return this.plugin.database()
+                .transactionSupply(connection -> {
+                    // The row is override-only, so a first purchase has nothing to update yet.
+                    try (PreparedStatement statement = connection.prepareStatement(ensureRow)) {
+                        statement.setObject(1, islandId);
+                        statement.setString(2, upgrade);
+                        statement.executeUpdate();
+                    }
+                    try (PreparedStatement statement = connection.prepareStatement(advance)) {
+                        statement.setObject(1, islandId);
+                        statement.setString(2, upgrade);
+                        statement.setInt(3, expectedLevel);
+                        return statement.executeUpdate() == 1;
+                    }
+                })
+                .thenApply(advanced -> {
+                    if (Boolean.TRUE.equals(advanced)) {
+                        IslandUpgrade value = new IslandUpgrade(islandId, upgrade, expectedLevel + 1);
+                        cacheLocally(value);
+                        publishUpdate(new UpgradeKey(islandId, upgrade), value);
+                    }
+                    return advanced;
+                });
+    }
+
     // =====================================================================================
     //  SyncedRepository contract
     // =====================================================================================

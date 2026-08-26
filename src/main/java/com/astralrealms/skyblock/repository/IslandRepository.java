@@ -435,8 +435,17 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
                     return ids;
                 })
                 .thenCompose(ids -> {
+                    // Cache first: startup warms every island into L1, so the common refresh costs
+                    // nothing beyond the query above. Only an island evicted since then is loaded,
+                    // and a failed load drops that one row rather than voiding the whole board.
                     List<CompletableFuture<Island>> islands = ids.stream()
-                            .map(this::findById)
+                            .map(id -> findCachedById(id)
+                                    .map(CompletableFuture::completedFuture)
+                                    .orElseGet(() -> findById(id).exceptionally(throwable -> {
+                                        this.plugin.getSLF4JLogger().warn("Skipped island {} in the leaderboard: {}",
+                                                id, throwable.getMessage());
+                                        return null;
+                                    })))
                             .toList();
                     return CompletableFuture.allOf(islands.toArray(CompletableFuture[]::new))
                             .thenApply(ignored -> islands.stream()

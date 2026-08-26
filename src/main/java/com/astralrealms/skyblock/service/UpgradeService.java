@@ -95,8 +95,24 @@ public class UpgradeService {
     }
 
     /**
+     * Buys one level of an upgrade, but only if the island is still at {@code expectedLevel} —
+     * the check is a conditional {@code UPDATE}, so a simultaneous purchase on another server
+     * cannot also succeed. Refreshes the island's upgrade snapshot when it wins.
+     *
+     * @return whether this call advanced the level
+     */
+    public CompletableFuture<Boolean> advance(UUID islandId, UpgradeType type, int expectedLevel) {
+        return this.repository.advanceLevel(islandId, type.name(), expectedLevel)
+                .thenCompose(advanced -> Boolean.TRUE.equals(advanced)
+                        ? this.plugin.islands().refreshUpgrades(islandId).thenApply(ignored -> true)
+                        : CompletableFuture.completedFuture(false));
+    }
+
+    /**
      * Persists an island's new level for an upgrade, rebuilds the local island's upgrade snapshot,
      * and broadcasts the change so other servers refresh theirs. Returns the stored level.
+     *
+     * <p>Unconditional — for administrative use. Purchases go through {@link #advance} instead.
      */
     public CompletableFuture<Integer> setLevel(UUID islandId, UpgradeType type, int level) {
         return this.repository.setLevel(islandId, type.name(), level)
@@ -156,6 +172,8 @@ public class UpgradeService {
         }
         placeholders.registerPlaceholder(level);
 
+        // Cheap local fast-path against a double click; the authoritative guard is the conditional
+        // level update in advance(), which also covers two servers racing each other.
         if (!this.purchasing.add(island.uniqueId())) {
             ASMessages.UPGRADE_IN_PROGRESS.message(player, placeholders);
             return CompletableFuture.completedFuture(null);
@@ -196,13 +214,24 @@ public class UpgradeService {
     private CompletableFuture<Void> apply(Island island, Player player, UpgradeType type, int nextLevel,
                                           IslandUpgrade.Level level, PlaceholderContainer placeholders,
                                           EconomyService economy, String currency) {
-        return setLevel(island.uniqueId(), type, nextLevel)
-                .thenAccept(saved -> Bukkit.getScheduler().runTask(this.plugin, () -> {
-                    applyEffects(island, type);
-                    if (level.unlockActions() != null)
-                        runUnlockActions(level, player);
-                    ASMessages.UPGRADE_PURCHASED.message(player, placeholders);
-                }))
+        // The purchase was priced against the level the island held, which is what the conditional
+        // update must still find for this call to be the one that advances it.
+        return advance(island.uniqueId(), type, nextLevel - 1)
+                .thenCompose(advanced -> {
+                    if (!Boolean.TRUE.equals(advanced))
+                        // Somebody bought this level first — on this server or another one. Give the
+                        // money back rather than charging twice for a single level.
+                        return refund(economy, player.getUniqueId(), currency, level.price())
+                                .thenRun(() -> ASMessages.UPGRADE_LEVEL_CHANGED.message(player, placeholders));
+
+                    Bukkit.getScheduler().runTask(this.plugin, () -> {
+                        applyEffects(island, type);
+                        if (level.unlockActions() != null)
+                            runUnlockActions(level, player);
+                        ASMessages.UPGRADE_PURCHASED.message(player, placeholders);
+                    });
+                    return CompletableFuture.<Void>completedFuture(null);
+                })
                 .exceptionallyCompose(throwable -> refund(economy, player.getUniqueId(), currency, level.price())
                         .thenCompose(ignored -> CompletableFuture.failedFuture(throwable)));
     }
