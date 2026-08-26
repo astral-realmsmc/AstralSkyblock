@@ -2,6 +2,10 @@
 maximum-islands: 100
 islands-group: "islands"
 
+# Unload an island world after it has had no players for this many seconds.
+# 0 uses the 5 minute default; a negative value disables idle unloading.
+world-idle-unload-seconds: 300
+
 # Generators
 generators:
   enabled: true

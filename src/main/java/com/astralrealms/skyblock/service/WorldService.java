@@ -2,15 +2,19 @@ package com.astralrealms.skyblock.service;
 
 import java.io.IOException;
 import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 import org.bukkit.Bukkit;
 import org.bukkit.World;
+import org.bukkit.scheduler.BukkitTask;
 import org.jetbrains.annotations.Unmodifiable;
 
 import com.astralrealms.core.paper.AstralPaperAPI;
@@ -19,8 +23,10 @@ import com.astralrealms.skyblock.configuration.ASPLoaderConfiguration;
 import com.astralrealms.skyblock.event.island.world.IslandWorldLoadedEvent;
 import com.astralrealms.skyblock.event.island.world.IslandWorldUnloadedEvent;
 import com.astralrealms.skyblock.listener.IslandSettingsListener;
+import com.astralrealms.skyblock.messaging.packet.island.IslandDeletePacket;
 import com.astralrealms.skyblock.model.IslandBlueprint;
 import com.astralrealms.skyblock.model.island.Island;
+import com.astralrealms.skyblock.utils.ASConstants;
 import com.infernalsuite.asp.api.AdvancedSlimePaperAPI;
 import com.infernalsuite.asp.api.exceptions.CorruptedWorldException;
 import com.infernalsuite.asp.api.exceptions.NewerFormatException;
@@ -34,24 +40,42 @@ import com.infernalsuite.asp.loaders.mysql.MysqlLoader;
 
 public class WorldService {
 
+    /** How long the shutdown host-server flush is allowed to block waiting on Redis. */
+    private static final long SHUTDOWN_FLUSH_TIMEOUT_SECONDS = 5;
+    /** Idle-unload sweep cadence, in ticks (30s at 20 TPS). */
+    private static final long IDLE_SWEEP_INTERVAL_TICKS = 20L * 30;
+
     private final AstralSkyblock plugin;
     private final AdvancedSlimePaperAPI asp = AdvancedSlimePaperAPI.instance();
     private final Map<UUID, SlimeWorldInstance> loadedWorlds = new ConcurrentHashMap<>();
     private final Map<String, UUID> worldNameToIslandId = new ConcurrentHashMap<>();
 
+    // Coalesces concurrent load() calls for the same island so a world is never loaded twice.
+    private final Map<UUID, CompletableFuture<SlimeWorldInstance>> loading = new ConcurrentHashMap<>();
+    // First tick (millis) a loaded world was observed empty; cleared as soon as a player is present.
+    private final Map<UUID, Long> emptySince = new ConcurrentHashMap<>();
+
     private final FileLoader sourceLoader;
     private MysqlLoader worldLoader;
+    private BukkitTask idleSweepTask;
 
     public WorldService(AstralSkyblock plugin) {
         this.plugin = plugin;
         this.sourceLoader = new FileLoader(plugin.getDataPath().resolve("sourceWorlds").toFile());
     }
 
+    /**
+     * Initialises the MySQL ASP loader and (on island servers) starts the idle-unload sweep. Idempotent:
+     * a second call — e.g. {@code /skyblock reload} re-running {@code loadConfiguration()} — is a no-op so
+     * that reloading configuration never tears down the live loader or orphans loaded worlds against it.
+     */
     public void load() {
-        this.plugin.getSLF4JLogger().info("Initializing mysql asp loader...");
+        if (this.worldLoader != null) {
+            this.plugin.getSLF4JLogger().debug("MySQL ASP loader already initialized; skipping re-init.");
+            return;
+        }
 
-        // Close previous dataSource
-        this.unload();
+        this.plugin.getSLF4JLogger().info("Initializing mysql asp loader...");
 
         // Init loader
         try {
@@ -70,33 +94,59 @@ public class WorldService {
         }
 
         this.plugin.getSLF4JLogger().info("MySQL ASP loader initialized successfully.");
+
+        // Idle-unload sweep (island servers only — only they host island worlds)
+        if (this.plugin.configuration().isIslandServer())
+            this.idleSweepTask = Bukkit.getScheduler().runTaskTimer(
+                    this.plugin, this::sweepIdleWorlds, IDLE_SWEEP_INTERVAL_TICKS, IDLE_SWEEP_INTERVAL_TICKS);
     }
 
     public void unload() {
-        // Save all worlds sync
+        // Stop the idle sweep first so it can't race the teardown.
+        if (this.idleSweepTask != null) {
+            this.idleSweepTask.cancel();
+            this.idleSweepTask = null;
+        }
+
+        // Save every loaded world and clear its host-server mapping. deleteHostServer is async (Redis), so
+        // collect the futures and block briefly — otherwise the process can exit before they flush, leaving
+        // stale island->server entries that route players to a dead server.
+        List<CompletableFuture<Void>> hostCleanups = new ArrayList<>();
         for (SlimeWorldInstance instance : loadedWorlds.values()) {
-            // Save world
             try {
                 asp.saveWorld(instance);
             } catch (IOException e) {
                 this.plugin.getSLF4JLogger().error("Failed to save world: {}", instance.getName(), e);
             }
 
-            // Delete host server
             UUID uniqueId = UUID.fromString(instance.getName());
-            this.plugin.servers()
+            hostCleanups.add(this.plugin.servers()
                     .deleteHostServer(uniqueId)
                     .exceptionally(throwable -> {
                         plugin.getSLF4JLogger().error("Failed to delete host server for island with UUID: {}", uniqueId, throwable);
                         return null;
-                    });
+                    }));
 
-            this.plugin.getSLF4JLogger().info("World {} saved and unloaded successfully.", instance.getName());
+            this.plugin.getSLF4JLogger().info("World {} saved successfully.", instance.getName());
         }
 
+        try {
+            CompletableFuture.allOf(hostCleanups.toArray(CompletableFuture[]::new))
+                    .get(SHUTDOWN_FLUSH_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            this.plugin.getSLF4JLogger().warn("Timed out flushing host-server cleanup on shutdown", e);
+        }
+
+        this.loadedWorlds.clear();
+        this.worldNameToIslandId.clear();
+        this.emptySince.clear();
+        this.loading.clear();
+
         // Close loader
-        if (this.worldLoader != null)
+        if (this.worldLoader != null) {
             this.worldLoader.close();
+            this.worldLoader = null;
+        }
     }
 
     public CompletableFuture<SlimeWorldInstance> create(UUID uniqueId, IslandBlueprint blueprint) {
@@ -110,10 +160,35 @@ public class WorldService {
                     }
 
                     return instance;
+                })
+                .exceptionallyCompose(throwable -> {
+                    // Best-effort teardown of whatever got created so a failed creation never leaves an
+                    // orphaned slime world (or a half-loaded Bukkit world) behind.
+                    this.plugin.getSLF4JLogger().error("Creation failed for island {}; cleaning up partial world", uniqueId, throwable);
+                    return this.delete(uniqueId)
+                            .exceptionally(cleanupError -> {
+                                this.plugin.getSLF4JLogger().error("Failed to clean up partial world for island {}", uniqueId, cleanupError);
+                                return null;
+                            })
+                            .thenCompose(ignored -> CompletableFuture.failedFuture(unwrap(throwable)));
                 });
     }
 
     public CompletableFuture<SlimeWorldInstance> load(Island island) {
+        UUID id = island.uniqueId();
+
+        // Already loaded — hand back the live instance instead of loading it a second time.
+        SlimeWorldInstance existing = this.loadedWorlds.get(id);
+        if (existing != null)
+            return CompletableFuture.completedFuture(existing);
+
+        // Coalesce concurrent loads (e.g. two visitors, or a visit racing a cross-server load request)
+        // onto a single in-flight future so asp.loadWorld runs exactly once per island.
+        CompletableFuture<SlimeWorldInstance> inFlight = new CompletableFuture<>();
+        CompletableFuture<SlimeWorldInstance> prior = this.loading.putIfAbsent(id, inFlight);
+        if (prior != null)
+            return prior;
+
         CompletableFuture<SlimeWorld> read = new CompletableFuture<>();
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
@@ -123,21 +198,36 @@ public class WorldService {
                         (int) island.spawnZ(),
                         island.spawnYaw()
                 );
-                read.complete(asp.readWorld(this.worldLoader, island.uniqueId().toString(), false, propertyMap));
+                read.complete(asp.readWorld(this.worldLoader, id.toString(), false, propertyMap));
             } catch (UnknownWorldException | IOException | CorruptedWorldException | NewerFormatException e) {
                 read.completeExceptionally(e);
             }
         });
-        return read.thenCompose(world -> this.loadWorld(island.uniqueId(), world));
+
+        read.thenCompose(world -> this.loadWorld(id, world))
+                .whenComplete((instance, throwable) -> {
+                    this.loading.remove(id);
+                    if (throwable != null)
+                        inFlight.completeExceptionally(throwable);
+                    else
+                        inFlight.complete(instance);
+                });
+        return inFlight;
     }
 
     private CompletableFuture<SlimeWorldInstance> loadWorld(UUID id, SlimeWorld world) {
         CompletableFuture<SlimeWorldInstance> future = new CompletableFuture<>();
         Bukkit.getScheduler().runTask(plugin, () -> {
+            SlimeWorldInstance instance;
             try {
                 // Load the world instance
-                SlimeWorldInstance instance = asp.loadWorld(world, true);
+                instance = asp.loadWorld(world, true);
+            } catch (Exception ex) {
+                future.completeExceptionally(ex);
+                return;
+            }
 
+            try {
                 // Register the loaded world instance
                 this.loadedWorlds.put(id, instance);
                 this.worldNameToIslandId.put(instance.getName(), id);
@@ -162,6 +252,15 @@ public class WorldService {
 
                 future.complete(instance);
             } catch (Exception ex) {
+                // Roll back the partially-registered world so a post-load failure can't leak a world that
+                // stays resident in Bukkit and the maps while the caller sees a failure.
+                this.loadedWorlds.remove(id);
+                this.worldNameToIslandId.remove(instance.getName());
+                try {
+                    Bukkit.unloadWorld(instance.getBukkitWorld(), false);
+                } catch (Exception unloadError) {
+                    this.plugin.getSLF4JLogger().error("Failed to roll back partially loaded world for island {}", id, unloadError);
+                }
                 future.completeExceptionally(ex);
             }
         });
@@ -231,16 +330,30 @@ public class WorldService {
     }
 
     public CompletableFuture<Void> unload(UUID uniqueId) {
+        return this.unload(uniqueId, true);
+    }
+
+    /**
+     * Unloads an island world from this server. When {@code save} is {@code false} the world is dropped
+     * without persisting — used by the delete path so a world can't be re-written back to MySQL after its
+     * row has been removed.
+     */
+    public CompletableFuture<Void> unload(UUID uniqueId, boolean save) {
         CompletableFuture<Void> future = new CompletableFuture<>();
         Bukkit.getScheduler().runTask(plugin, () -> {
+            this.emptySince.remove(uniqueId);
+
             World bukkitWorld = Bukkit.getWorld(uniqueId.toString());
             if (bukkitWorld == null) {
+                // Not loaded on this server; drop any stale registrations just in case.
+                this.loadedWorlds.remove(uniqueId);
+                this.worldNameToIslandId.remove(uniqueId.toString());
                 future.complete(null);
                 return;
             }
 
             // Unload world
-            boolean success = Bukkit.unloadWorld(bukkitWorld, true);
+            boolean success = Bukkit.unloadWorld(bukkitWorld, save);
             if (!success) {
                 future.completeExceptionally(new IllegalStateException("Bukkit refused to unload world for island with UUID: " + uniqueId));
                 return;
@@ -273,14 +386,63 @@ public class WorldService {
     }
 
     public CompletableFuture<Void> delete(UUID uniqueId) {
-        return this.unload(uniqueId)
+        // Tell whichever server currently hosts this world to drop it without saving. We are echo-suppressed
+        // from our own broadcast, so the local host (if any) is handled by the unload(false) below.
+        this.plugin.messaging()
+                .send(ASConstants.ISLAND_MANAGEMENT_CHANNEL, new IslandDeletePacket(uniqueId))
+                .exceptionally(throwable -> {
+                    this.plugin.getSLF4JLogger().error("Failed to broadcast island delete for {}", uniqueId, throwable);
+                    return null;
+                });
+
+        return this.unload(uniqueId, false)
+                .thenCompose(ignored -> this.plugin.servers().deleteHostServer(uniqueId))
                 .thenRunAsync(() -> {
                     try {
                         this.worldLoader.deleteWorld(uniqueId.toString());
+                    } catch (UnknownWorldException e) {
+                        // Nothing persisted (e.g. a creation that failed before the clone) — treat as deleted.
+                        this.plugin.getSLF4JLogger().debug("World for island {} was not present in storage on delete", uniqueId);
                     } catch (Exception e) {
                         throw new CompletionException("Failed to delete world for island with UUID: " + uniqueId, e);
                     }
                 });
+    }
+
+    /**
+     * Runs on the main thread every {@link #IDLE_SWEEP_INTERVAL_TICKS} ticks: unloads any island world that
+     * has had no players for at least the configured grace period, freeing memory and the server's island
+     * slot. A world that regains a player before the grace elapses is spared and its timer reset.
+     */
+    private void sweepIdleWorlds() {
+        int idleSeconds = this.plugin.configuration().worldIdleUnloadSeconds();
+        if (idleSeconds < 0)
+            return; // idle unloading disabled
+
+        long now = System.currentTimeMillis();
+        long graceMillis = idleSeconds * 1000L;
+
+        for (Map.Entry<UUID, SlimeWorldInstance> entry : this.loadedWorlds.entrySet()) {
+            UUID id = entry.getKey();
+            World world = entry.getValue().getBukkitWorld();
+            if (world == null || !world.getPlayers().isEmpty()) {
+                this.emptySince.remove(id);
+                continue;
+            }
+
+            Long since = this.emptySince.putIfAbsent(id, now);
+            if (since == null)
+                continue; // first sweep seeing it empty — start the clock
+
+            if (now - since >= graceMillis) {
+                this.emptySince.remove(id);
+                this.plugin.getSLF4JLogger().info("Unloading idle island world {} (empty for {}s)", id, (now - since) / 1000);
+                this.unload(id).exceptionally(throwable -> {
+                    this.plugin.getSLF4JLogger().error("Failed to unload idle island world {}", id, throwable);
+                    return null;
+                });
+            }
+        }
     }
 
     public Optional<Island> findByWorld(World world) {
@@ -299,5 +461,11 @@ public class WorldService {
     @Unmodifiable
     public Map<UUID, SlimeWorldInstance> getLoadedWorlds() {
         return Map.copyOf(loadedWorlds);
+    }
+
+    private static Throwable unwrap(Throwable throwable) {
+        return throwable instanceof CompletionException && throwable.getCause() != null
+                ? throwable.getCause()
+                : throwable;
     }
 }

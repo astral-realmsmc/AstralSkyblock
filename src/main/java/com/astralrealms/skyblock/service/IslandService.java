@@ -18,6 +18,7 @@ import com.astralrealms.skyblock.configuration.ASMessages;
 import com.astralrealms.skyblock.event.island.IslandCreateEvent;
 import com.astralrealms.skyblock.event.island.IslandDeletedEvent;
 import com.astralrealms.skyblock.listener.IslandSettingsListener;
+import com.astralrealms.skyblock.messaging.packet.island.IslandDeletePacket;
 import com.astralrealms.skyblock.messaging.packet.island.IslandLoadRequestPacket;
 import com.astralrealms.skyblock.messaging.packet.island.IslandLoadResponsePacket;
 import com.astralrealms.skyblock.model.IslandBlueprint;
@@ -81,6 +82,16 @@ public class IslandService {
                             plugin.messaging().replyTo(new IslandLoadResponsePacket(false), envelope);
                             return null;
                         });
+            } else if (packet instanceof IslandDeletePacket delete) {
+                // Another server deleted this island. If we host its world, drop it WITHOUT saving so it
+                // isn't re-persisted after its storage row is removed. Broadcast, so no reply is expected.
+                if (plugin.worlds().getLoadedWorlds().containsKey(delete.islandId()))
+                    plugin.worlds()
+                            .unload(delete.islandId(), false)
+                            .exceptionally(throwable -> {
+                                plugin.getSLF4JLogger().error("Failed to unload deleted island {} on host server", delete.islandId(), throwable);
+                                return null;
+                            });
             }
             return null;
         });
@@ -149,7 +160,7 @@ public class IslandService {
                             island.uniqueId().toString(),
                             hostServer
                     ));
-                }).orTimeout(1, TimeUnit.SECONDS);
+                }).orTimeout(15, TimeUnit.SECONDS);
     }
 
     public void create(Player player, String name, IslandBlueprint blueprint) {
@@ -181,12 +192,20 @@ public class IslandService {
                     this.repository.create(island, this.plugin.roles().defaultRoleSeeds(island.uniqueId()), player.getUniqueId())
                             .thenCompose(saved -> this.plugin.worlds().create(saved.uniqueId(), blueprint))
                             .whenComplete((worldInstance, throwable) -> {
-                                if (throwable != null) {
-                                    this.plugin.getSLF4JLogger().error("Failed to create island for player {}", player.getName(), throwable);
-                                    ASMessages.UNEXPECTED_ERROR.message(player);
-                                    return;
-                                } else if (worldInstance == null) {
-                                    this.plugin.getSLF4JLogger().error("Failed to create island for player {}: world is null", player.getName());
+                                if (throwable != null || worldInstance == null) {
+                                    if (throwable != null)
+                                        this.plugin.getSLF4JLogger().error("Failed to create island for player {}", player.getName(), throwable);
+                                    else
+                                        this.plugin.getSLF4JLogger().error("Failed to create island for player {}: world is null", player.getName());
+
+                                    // The island row (and its roles/owner) was already committed; roll it back so a
+                                    // failed world creation doesn't leave an island with no world behind.
+                                    this.repository.delete(island.uniqueId())
+                                            .exceptionally(rollbackError -> {
+                                                this.plugin.getSLF4JLogger().error("Failed to roll back island row for {} after creation failure", island.uniqueId(), rollbackError);
+                                                return null;
+                                            });
+
                                     ASMessages.UNEXPECTED_ERROR.message(player);
                                     return;
                                 }
