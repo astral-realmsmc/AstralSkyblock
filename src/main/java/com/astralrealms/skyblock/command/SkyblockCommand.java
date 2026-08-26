@@ -1,5 +1,6 @@
 package com.astralrealms.skyblock.command;
 
+import java.util.List;
 import java.util.Map;
 
 import org.bukkit.command.CommandSender;
@@ -7,6 +8,7 @@ import org.bukkit.entity.Player;
 import org.jetbrains.annotations.Nullable;
 
 import com.astralrealms.core.paper.AstralPaperAPI;
+import com.astralrealms.core.provider.ItemProvider;
 import com.astralrealms.core.service.impl.TeleportationService;
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.configuration.ASMessages;
@@ -30,7 +32,15 @@ public class SkyblockCommand extends BaseCommand {
                 .findPlayerIsland(player.getUniqueId())
                 .orElse(null);
         if (island == null) {
-            // TODO: Open creation menu
+            // No island yet: offer the blueprints rather than saying nothing.
+            this.plugin.menus()
+                    .computeAndOpen(player, "island-creation",
+                            Map.of("blueprints", ItemProvider.of(List.copyOf(this.plugin.blueprints().all()))))
+                    .exceptionally(throwable -> {
+                        this.plugin.getSLF4JLogger().error("Failed to open island creation menu for {}", player.getName(), throwable);
+                        ASMessages.UNEXPECTED_ERROR.message(player);
+                        return null;
+                    });
             return;
         }
 

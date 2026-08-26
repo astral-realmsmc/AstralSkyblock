@@ -15,6 +15,7 @@ import com.astralrealms.skyblock.model.role.IslandPermission;
 import com.astralrealms.skyblock.model.role.IslandRole;
 import com.astralrealms.skyblock.model.role.RoleSeed;
 import com.astralrealms.skyblock.repository.RoleRepository;
+import com.astralrealms.skyblock.utils.PlayerText;
 
 public class RoleService {
 
@@ -111,6 +112,111 @@ public class RoleService {
                     ASMessages.ROLE_PERMISSION_UPDATE_SUCCESS.message(player, placeholders);
                 });
 
+    }
+
+    /**
+     * Creates a new member role on an island. The creator must hold {@link IslandPermission#SET_ROLE}
+     * and, unless they own the island, may only create roles below their own weight — otherwise a
+     * member could mint a role that outranks the one they hold.
+     *
+     * <p>The name is bounded and MiniMessage-escaped: it is rendered in menus other members open.
+     */
+    public CompletableFuture<Void> create(Island island, Player player, String name, int weight) {
+        PlaceholderContainer placeholders = AstralPaperAPI.createPlaceholderContainer(player)
+                .registerPlaceholder(island)
+                .registerDirect("role_name", name);
+
+        if (!island.hasPermission(player, IslandPermission.SET_ROLE)) {
+            ASMessages.NO_PERMISSION.message(player);
+            return CompletableFuture.completedFuture(null);
+        }
+        String sanitised = PlayerText.sanitise(name);
+        if (sanitised == null || !PlayerText.withinLimit(name, PlayerText.ROLE_NAME_LIMIT)) {
+            ASMessages.ROLE_INVALID_NAME.message(player, placeholders.registerDirect("maximum", PlayerText.ROLE_NAME_LIMIT));
+            return CompletableFuture.completedFuture(null);
+        }
+        if (!canUseWeight(island, player, weight)) {
+            ASMessages.ROLE_WEIGHT_TOO_HIGH.message(player, placeholders);
+            return CompletableFuture.completedFuture(null);
+        }
+
+        return this.repository.create(island.uniqueId(), sanitised, weight)
+                .thenCompose(role -> this.plugin.islands()
+                        .refreshRelationships(island.uniqueId())
+                        .thenApply(ignored -> role))
+                .handle((role, exception) -> {
+                    if (exception != null) {
+                        ASMessages.UNEXPECTED_ERROR.message(player, placeholders);
+                        this.plugin.getSLF4JLogger().error("Failed to create a role on island {}", island.uniqueId(), exception);
+                        return null;
+                    }
+
+                    ASMessages.ROLE_CREATED.message(player, placeholders.registerPlaceholder(role));
+                    return null;
+                });
+    }
+
+    /**
+     * Renames a role and changes its weight. The editor must hold {@link IslandPermission#SET_ROLE}
+     * and outrank the role, and may not lift it to or above their own weight.
+     */
+    public CompletableFuture<Void> update(Island island, Player player, IslandRole role, String name, int weight) {
+        PlaceholderContainer placeholders = AstralPaperAPI.createPlaceholderContainer(player)
+                .registerPlaceholder(island)
+                .registerPlaceholder(role)
+                .registerDirect("role_name", name);
+
+        if (!island.hasPermission(player, IslandPermission.SET_ROLE)) {
+            ASMessages.NO_PERMISSION.message(player);
+            return CompletableFuture.completedFuture(null);
+        }
+        if (!island.canEditRole(player, role)) {
+            ASMessages.ROLE_PERMISSION_HIGHER.message(player, placeholders);
+            return CompletableFuture.completedFuture(null);
+        }
+        if (role.kind() != IslandRole.Type.MEMBER) {
+            // VISITOR and COOP are structural: the island resolves permissions through them by kind.
+            ASMessages.ROLE_NOT_EDITABLE.message(player, placeholders);
+            return CompletableFuture.completedFuture(null);
+        }
+        String sanitised = PlayerText.sanitise(name);
+        if (sanitised == null || !PlayerText.withinLimit(name, PlayerText.ROLE_NAME_LIMIT)) {
+            ASMessages.ROLE_INVALID_NAME.message(player, placeholders.registerDirect("maximum", PlayerText.ROLE_NAME_LIMIT));
+            return CompletableFuture.completedFuture(null);
+        }
+        if (!canUseWeight(island, player, weight)) {
+            ASMessages.ROLE_WEIGHT_TOO_HIGH.message(player, placeholders);
+            return CompletableFuture.completedFuture(null);
+        }
+
+        return this.repository.rename(role.id(), sanitised)
+                .thenCompose(ignored -> this.repository.setWeight(role.id(), weight))
+                .thenCompose(ignored -> this.plugin.islands().refreshRelationships(island.uniqueId()))
+                .handle((ignored, exception) -> {
+                    if (exception != null) {
+                        ASMessages.UNEXPECTED_ERROR.message(player, placeholders);
+                        this.plugin.getSLF4JLogger().error("Failed to update role {} on island {}", role.id(), island.uniqueId(), exception);
+                        return null;
+                    }
+
+                    ASMessages.ROLE_UPDATED.message(player, placeholders);
+                    return null;
+                });
+    }
+
+    /**
+     * Whether {@code player} may hand out a role of this weight: positive (0 is the visitor floor),
+     * and below their own unless they own the island.
+     */
+    private boolean canUseWeight(Island island, Player player, int weight) {
+        if (weight <= 0)
+            return false;
+        if (player.hasPermission("skyblock.admin"))
+            return true;
+
+        return island.findMember(player.getUniqueId())
+                .map(member -> member.isOwner() || member.role() == null || weight < member.role().weight())
+                .orElse(false);
     }
 
     public CompletableFuture<IslandRole> save(IslandRole role) {

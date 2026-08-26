@@ -28,6 +28,8 @@ public class PlayerText {
     public static final int WARP_DESCRIPTION_LIMIT = 256;
     /** Raw character limit of a ban reason ({@code island_bans.reason}, 255). */
     public static final int BAN_REASON_LIMIT = 120;
+    /** Raw character limit of an island role name ({@code island_roles.name}, 32). */
+    public static final int ROLE_NAME_LIMIT = 16;
 
     /** Whether {@code input} is short enough to be stored. A null or blank value always is. */
     public static boolean withinLimit(@Nullable String input, int limit) {

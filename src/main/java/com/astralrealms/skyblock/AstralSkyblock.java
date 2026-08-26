@@ -12,12 +12,18 @@ import com.astralrealms.core.storage.DatabaseService;
 import com.astralrealms.skyblock.action.island.ban.BanMemberAction;
 import com.astralrealms.skyblock.action.island.ban.UnbanPlayerAction;
 import com.astralrealms.skyblock.action.island.coop.CoopPlayerAction;
+import com.astralrealms.skyblock.action.island.create.CreateIslandAction;
+import com.astralrealms.skyblock.action.island.create.DisbandIslandAction;
 import com.astralrealms.skyblock.action.island.coop.UncoopPlayerAction;
 import com.astralrealms.skyblock.action.island.member.DemoteMemberAction;
 import com.astralrealms.skyblock.action.island.member.InviteMemberAction;
+import com.astralrealms.skyblock.action.island.member.LeaveIslandAction;
 import com.astralrealms.skyblock.action.island.member.KickMemberAction;
 import com.astralrealms.skyblock.action.island.member.PromoteMemberAction;
 import com.astralrealms.skyblock.action.island.member.TransferOwnershipAction;
+import com.astralrealms.skyblock.action.island.role.CreateRoleAction;
+import com.astralrealms.skyblock.action.island.role.EditRoleAction;
+import com.astralrealms.skyblock.action.island.role.SetMemberRoleAction;
 import com.astralrealms.skyblock.action.island.role.ToggleRolePermissionAction;
 import com.astralrealms.skyblock.action.island.role.UpdateRolePermissionsAction;
 import com.astralrealms.skyblock.action.island.settings.ToggleIslandSettingAction;
@@ -96,6 +102,14 @@ public final class AstralSkyblock extends AstralPaperPlugin {
         instance = this;
 
         // Actions
+        // -- Island lifecycle
+        this.registerAction("create-island", CreateIslandAction.class);
+        this.registerAction("disband-island", DisbandIslandAction.class);
+        this.registerAction("leave-island", LeaveIslandAction.class);
+        // -- Roles
+        this.registerAction("create-role", CreateRoleAction.class);
+        this.registerAction("edit-role", EditRoleAction.class);
+        this.registerAction("set-member-role", SetMemberRoleAction.class);
         // -- Roles Permissions
         this.registerAction("toggle-role-permission", ToggleRolePermissionAction.class);
         this.registerAction("update-role-permissions", UpdateRolePermissionsAction.class);

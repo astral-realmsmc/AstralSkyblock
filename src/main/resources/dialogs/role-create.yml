@@ -1,0 +1,31 @@
+id: "island-role-create"
+title: "<bold><primary_color>Nouveau rôle"
+close-with-escape: true
+
+body:
+  intro:
+    content: "<gray>Le <white>poids</white> détermine le rang du rôle : plus il est élevé, plus le rôle est important. Vous ne pouvez pas créer un rôle au-dessus du vôtre."
+    width: 320
+
+inputs:
+  name:
+    type: TEXT
+    id: name
+    label: "<gray>Nom du rôle"
+    max-length: 16
+  weight:
+    type: SLIDER
+    id: weight
+    label: "<gray>Poids"
+    start: 1.0
+    end: 20.0
+    step: 1.0
+    initial: 3.0
+
+yes-button:
+  label: "<green>Créer"
+  tooltip: "<gray>Crée le rôle sur votre île"
+  actions:
+    - "[create-role] %parameters_island% %input_name% $round(%input_weight%)"
+no-button:
+  label: "<gray>Annuler"

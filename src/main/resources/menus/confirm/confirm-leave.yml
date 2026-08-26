@@ -11,7 +11,7 @@ items:
     item-flags:
       - HIDE_ATTRIBUTES
     actions:
-      - "[leave-island] %parameters_island_id%"
+      - "[leave-island] %parameters_island%"
       - "[close]"
 
   cancel:

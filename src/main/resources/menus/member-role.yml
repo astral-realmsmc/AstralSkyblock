@@ -21,7 +21,7 @@ items:
     taints:
       - "role"
     actions:
-      - "[set-member-role] %parameters_island_id% %parameters_member_playerId% %parameter_role_id%"
+      - "[set-member-role] %parameters_island% %parameters_member_playerId% %parameter_role%"
       - "[open-menu] island-member-manage:island=%parameters_island%:member=%parameters_member%"
 
   back:

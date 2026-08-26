@@ -1,0 +1,30 @@
+id: "island-role-edit"
+title: "<bold><primary_color>Modifier un rôle"
+close-with-escape: true
+
+body:
+  intro:
+    content: "<gray>Rôle actuel : <white>%parameters_role_name%</white> (poids <white>%parameters_role_weight%</white>)."
+    width: 320
+
+inputs:
+  name:
+    type: TEXT
+    id: name
+    label: "<gray>Nom du rôle"
+    max-length: 16
+    initial: "%parameters_role_name%"
+  weight:
+    type: SLIDER
+    id: weight
+    label: "<gray>Poids"
+    start: 1.0
+    end: 20.0
+    step: 1.0
+
+yes-button:
+  label: "<green>Enregistrer"
+  actions:
+    - "[edit-role] %parameters_island% %parameters_role% %input_name% $round(%input_weight%)"
+no-button:
+  label: "<gray>Annuler"

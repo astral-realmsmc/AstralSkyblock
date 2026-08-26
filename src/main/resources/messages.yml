@@ -8,6 +8,13 @@ island-deleted: "%island_name% has been successfully deleted."
 # Roles
 role-permission-higher: "You cannot assign a role higher than your own."
 
+role-created: "Role %role_name% has been created."
+role-updated: "Role %role_name% has been updated."
+role-invalid-name: "A role name must not be empty and may be at most %maximum% characters."
+role-weight-too-high: "You cannot create or edit a role at or above your own rank."
+role-not-editable: "That role is built in and cannot be edited."
+role-not-assignable: "That role cannot be assigned to a member."
+
 # Roles permissions
 role-permission-update-success: "You have updated permissions for %role_name% in island %island_name%."
 role-permission-update-failure: "Failed to update permissions for %role_name%. Please try again."
@@ -42,6 +49,9 @@ member-promote-higher: "You cannot promote a member to a role equal to or higher
 member-demoted-sender: "%target_name% has been demoted to %role_name%."
 member-demoted-target: "You have been demoted to %role_name% in %island_name%."
 member-already-lowest-role: "%target_name% is already at the lowest role."
+member-already-in-role: "%target_name% already holds %role_name%."
+member-role-updated-sender: "%target_name% is now %role_name%."
+member-role-updated-target: "You are now %role_name% in %island_name%."
 not-island-owner: "Only the island owner can do this."
 ownership-transferred-sender: "Island ownership has been transferred to %target_name%."
 ownership-transferred-target: "You are now the owner of %island_name%."

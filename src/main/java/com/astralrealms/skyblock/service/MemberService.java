@@ -331,6 +331,77 @@ public class MemberService {
     }
 
     /**
+     * Assigns a specific role to a member, rather than stepping up or down the ladder. The sender
+     * must hold {@link IslandPermission#SET_ROLE}, must outrank the member's current role, and may
+     * not hand out a role at or above their own — an owner is exempt from the last two.
+     */
+    public CompletableFuture<Void> setRole(Island island, Player sender, UUID targetUuid, IslandRole role) {
+        PlaceholderContainer placeholders = AstralPaperAPI.createPlaceholderContainer(sender)
+                .registerPlaceholder(island)
+                .registerPlaceholder(role)
+                .registerDirect("target", new MinecraftPlayerPlaceholder(targetUuid));
+
+        if (!island.hasPermission(sender, IslandPermission.SET_ROLE)) {
+            ASMessages.NO_PERMISSION.message(sender);
+            return CompletableFuture.completedFuture(null);
+        }
+        if (!role.islandId().equals(island.uniqueId()) || role.kind() != IslandRole.Type.MEMBER) {
+            // VISITOR and COOP are resolved from the island's state, not held by a member row.
+            ASMessages.ROLE_NOT_ASSIGNABLE.message(sender, placeholders);
+            return CompletableFuture.completedFuture(null);
+        }
+
+        IslandMember target = island.findMember(targetUuid).orElse(null);
+        if (target == null) {
+            ASMessages.MEMBER_NOT_FOUND.message(sender, placeholders);
+            return CompletableFuture.completedFuture(null);
+        }
+        if (target.isOwner()) {
+            ASMessages.MEMBER_HIGHER_ROLE.message(sender, placeholders);
+            return CompletableFuture.completedFuture(null);
+        }
+        if (target.role() != null && target.role().id().equals(role.id())) {
+            ASMessages.MEMBER_ALREADY_IN_ROLE.message(sender, placeholders);
+            return CompletableFuture.completedFuture(null);
+        }
+
+        IslandMember senderMember = island.findMember(sender.getUniqueId()).orElse(null);
+        boolean privileged = sender.hasPermission("skyblock.admin")
+                             || (senderMember != null && senderMember.isOwner());
+        if (!privileged) {
+            // Must outrank the member being changed...
+            if (senderMember == null || senderMember.role() == null || target.role() == null
+                || senderMember.role().weight() <= target.role().weight()) {
+                ASMessages.MEMBER_HIGHER_ROLE.message(sender, placeholders);
+                return CompletableFuture.completedFuture(null);
+            }
+            // ...and may not grant a role at or above their own.
+            if (role.weight() >= senderMember.role().weight()) {
+                ASMessages.MEMBER_PROMOTE_HIGHER.message(sender, placeholders);
+                return CompletableFuture.completedFuture(null);
+            }
+        }
+
+        return repository.setRole(island.uniqueId(), targetUuid, role.id())
+                .handle((ignored, exception) -> {
+                    if (exception != null) {
+                        ASMessages.UNEXPECTED_ERROR.message(sender, placeholders);
+                        plugin.getSLF4JLogger().error("Failed to set the role of {} on island {}", targetUuid, island.uniqueId(), exception);
+                        return null;
+                    }
+
+                    // Notify sender
+                    ASMessages.MEMBER_ROLE_UPDATED_SENDER.message(sender, placeholders);
+
+                    // Notify the member
+                    AstralPaperAPI.getService(ChatService.class)
+                            .orElseThrow()
+                            .sendMessage(targetUuid, ASMessages.MEMBER_ROLE_UPDATED_TARGET.component(placeholders));
+                    return null;
+                });
+    }
+
+    /**
      * Transfers island ownership to an existing member. Only the current owner may invoke this.
      * The ex-owner is demoted to the highest non-owner role; the new owner is promoted to the
      * owner slot transactionally. Messages the caller on any failed check and notifies the new
