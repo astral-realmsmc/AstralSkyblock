@@ -22,6 +22,7 @@ import com.astralrealms.skyblock.model.island.Island;
 import com.astralrealms.skyblock.model.island.IslandWarp;
 import com.astralrealms.skyblock.model.role.IslandPermission;
 import com.astralrealms.skyblock.repository.WarpRepository;
+import com.astralrealms.skyblock.utils.PlayerText;
 
 /**
  * Island warps: additional named teleport points on top of the island's inline spawn.
@@ -152,7 +153,9 @@ public class WarpService {
      */
     public CompletableFuture<Void> setDisplayName(Island island, Player player, String name, String displayName) {
         return edit(island, player, name, ASMessages.WARP_NAME_UPDATED, (warp, placeholders) -> {
-            warp.displayName(displayName == null || displayName.isBlank() ? null : displayName);
+            if (tooLong(player, placeholders, displayName, PlayerText.WARP_DISPLAY_NAME_LIMIT))
+                return false;
+            warp.displayName(PlayerText.sanitise(displayName));
             return true;
         });
     }
@@ -163,7 +166,9 @@ public class WarpService {
      */
     public CompletableFuture<Void> setDescription(Island island, Player player, String name, String description) {
         return edit(island, player, name, ASMessages.WARP_DESCRIPTION_UPDATED, (warp, placeholders) -> {
-            warp.description(description == null || description.isBlank() ? null : description);
+            if (tooLong(player, placeholders, description, PlayerText.WARP_DESCRIPTION_LIMIT))
+                return false;
+            warp.description(PlayerText.sanitise(description));
             return true;
         });
     }
@@ -305,6 +310,18 @@ public class WarpService {
                     success.message(player, placeholders);
                     return null;
                 });
+    }
+
+    /**
+     * Messages the player and reports {@code true} when their text exceeds what the column holds.
+     * Sanitising escapes MiniMessage tags and can roughly double the length, which the raw limits in
+     * {@link PlayerText} already account for.
+     */
+    private boolean tooLong(Player player, PlaceholderContainer placeholders, String input, int limit) {
+        if (PlayerText.withinLimit(input, limit))
+            return false;
+        ASMessages.TEXT_TOO_LONG.message(player, placeholders.registerDirect("maximum", limit));
+        return true;
     }
 
     /** Whether the player stands in the island's own world — warps may not point elsewhere. */

@@ -14,10 +14,12 @@ import java.util.concurrent.TimeUnit;
 
 import org.bukkit.Bukkit;
 import org.bukkit.World;
+import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitTask;
 import org.jetbrains.annotations.Unmodifiable;
 
 import com.astralrealms.core.paper.AstralPaperAPI;
+import com.astralrealms.core.service.impl.TeleportationService;
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.configuration.ASPLoaderConfiguration;
 import com.astralrealms.skyblock.event.island.world.IslandWorldLoadedEvent;
@@ -352,6 +354,11 @@ public class WorldService {
                 return;
             }
 
+            // Bukkit refuses to unload a world that still holds players, which is the normal case for
+            // a disband (typed while standing on the island). Move them out first, then send them on
+            // to the fallback group — the local hop is what actually frees the world.
+            evacuate(bukkitWorld);
+
             // Unload world
             boolean success = Bukkit.unloadWorld(bukkitWorld, save);
             if (!success) {
@@ -396,6 +403,14 @@ public class WorldService {
                 });
 
         return this.unload(uniqueId, false)
+                // A refused unload must not abort the deletion: the row is already gone, so leaving the
+                // slime world in storage would orphan it forever. Log and carry on to the storage delete.
+                .handle((ignored, throwable) -> {
+                    if (throwable != null)
+                        this.plugin.getSLF4JLogger().error("Failed to unload world for island {} before deleting it; "
+                                                           + "deleting it from storage anyway", uniqueId, throwable);
+                    return null;
+                })
                 .thenCompose(ignored -> this.plugin.servers().deleteHostServer(uniqueId))
                 .thenRunAsync(() -> {
                     try {
@@ -407,6 +422,37 @@ public class WorldService {
                         throw new CompletionException("Failed to delete world for island with UUID: " + uniqueId, e);
                     }
                 });
+    }
+
+    /**
+     * Moves every player out of {@code world} so it can be unloaded: a local teleport to this
+     * server's main world spawn (immediate, which is what Bukkit needs), followed by a best-effort
+     * transfer to the configured fallback group. Must run on the main thread.
+     */
+    private void evacuate(World world) {
+        List<Player> players = List.copyOf(world.getPlayers());
+        if (players.isEmpty())
+            return;
+
+        World fallback = Bukkit.getWorlds().stream()
+                .filter(candidate -> !candidate.equals(world))
+                .findFirst()
+                .orElse(null);
+        this.plugin.getSLF4JLogger().info("Evacuating {} player(s) from island world {}", players.size(), world.getName());
+
+        for (Player player : players) {
+            if (fallback != null)
+                player.teleport(fallback.getSpawnLocation());
+
+            AstralPaperAPI.getService(TeleportationService.class)
+                    .orElseThrow()
+                    .sendToGroup(player.getUniqueId(), this.plugin.configuration().fallbackGroup())
+                    .exceptionally(throwable -> {
+                        this.plugin.getSLF4JLogger().error("Failed to send {} to the fallback group after evacuating {}",
+                                player.getName(), world.getName(), throwable);
+                        return null;
+                    });
+        }
     }
 
     /**

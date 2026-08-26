@@ -97,6 +97,7 @@ public enum ASMessages implements MessageEnum {
     SETTINGS_UPDATE_SUCCESS,
     SETTINGS_UPDATE_FAILURE,
     // Misc
+    TEXT_TOO_LONG,
     UNEXPECTED_ERROR,
     NO_PERMISSION,
     NO_ISLAND

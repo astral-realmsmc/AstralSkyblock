@@ -1,5 +1,6 @@
 package com.astralrealms.skyblock.listener;
 
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -16,6 +17,9 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class PlayerConnectionListener implements Listener {
 
+    /** Grace period before the rejoin check, long enough for an incoming network teleport to land. */
+    private static final long RESTORE_DELAY_TICKS = 40L;
+
     private final AstralSkyblock plugin;
 
     @EventHandler
@@ -28,9 +32,14 @@ public class PlayerConnectionListener implements Listener {
      * loaded here — it was idle-unloaded, or it is now hosted on another server — in which case
      * Bukkit dropped them into this server's default world on login.
      *
-     * <p>Players who land in a loaded island world (their own or somebody else's) are left where
-     * they are, as are players with no island at all. Only island servers do this: elsewhere,
-     * standing outside an island world is the normal state.
+     * <p>The check is deferred by {@link #RESTORE_DELAY_TICKS}: a player arriving from another
+     * server lands in the default world for a moment before the network teleport that brought them
+     * here resolves, and restoring them in that window would hijack the destination they actually
+     * asked for (a warp, or somebody else's island). By the time the check runs, such a player has
+     * either been placed in an island world or is flagged as teleported on join, and is left alone.
+     *
+     * <p>Players with no island are also left alone; only island servers do this at all, since
+     * standing outside an island world is the normal state everywhere else.
      */
     @EventHandler(priority = EventPriority.MONITOR)
     public void onRejoin(PlayerJoinEvent event) {
@@ -38,6 +47,18 @@ public class PlayerConnectionListener implements Listener {
             return;
 
         Player player = event.getPlayer();
+        Bukkit.getScheduler().runTaskLater(this.plugin, () -> restore(player), RESTORE_DELAY_TICKS);
+    }
+
+    private void restore(Player player) {
+        if (!player.isOnline())
+            return;
+
+        TeleportationService teleportation = AstralPaperAPI.getService(TeleportationService.class)
+                .orElseThrow();
+        if (teleportation.wasTeleportedOnJoin(player.getUniqueId()))
+            return; // the network teleport that brought them here owns where they end up
+
         if (this.plugin.worlds().findByWorld(player.getWorld()).isPresent())
             return; // already in an island world that is loaded here
 
@@ -56,9 +77,7 @@ public class PlayerConnectionListener implements Listener {
                         return;
                     }
 
-                    AstralPaperAPI.getService(TeleportationService.class)
-                            .orElseThrow()
-                            .teleport(player.getUniqueId(), location)
+                    teleportation.teleport(player.getUniqueId(), location)
                             .exceptionally(error -> {
                                 this.plugin.getSLF4JLogger().error("Failed to teleport {} back to island {} on join",
                                         player.getName(), island.uniqueId(), error);

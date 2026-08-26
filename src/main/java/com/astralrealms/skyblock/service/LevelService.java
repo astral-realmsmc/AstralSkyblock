@@ -241,22 +241,34 @@ public class LevelService {
                 });
     }
 
-    /** Rescans every island world hosted on this server, one after another. */
+    /**
+     * Rescans every island world hosted on this server, strictly one after another: each scan
+     * already spends {@code chunks-per-batch} chunk loads and snapshots per tick, so starting one
+     * per hosted world at once would multiply that by the number of islands on the server.
+     */
     private void rescanHostedIslands() {
-        for (UUID islandId : List.copyOf(this.plugin.worlds().getLoadedWorlds().keySet())) {
-            Island island = this.plugin.islands()
-                    .repository()
-                    .findCachedById(islandId)
-                    .orElse(null);
-            if (island == null)
-                continue;
+        rescanNext(List.copyOf(this.plugin.worlds().getLoadedWorlds().keySet()), 0);
+    }
 
-            calculate(island).exceptionally(throwable -> {
-                if (!(unwrap(throwable) instanceof ScanInProgressException))
-                    this.plugin.getSLF4JLogger().warn("Failed to rescan island {}: {}", islandId, unwrap(throwable).getMessage());
-                return null;
-            });
+    private void rescanNext(List<UUID> islandIds, int index) {
+        if (index >= islandIds.size())
+            return;
+
+        UUID islandId = islandIds.get(index);
+        Island island = this.plugin.islands()
+                .repository()
+                .findCachedById(islandId)
+                .orElse(null);
+        if (island == null) {
+            rescanNext(islandIds, index + 1);
+            return;
         }
+
+        calculate(island).whenComplete((value, throwable) -> {
+            if (throwable != null && !(unwrap(throwable) instanceof ScanInProgressException))
+                this.plugin.getSLF4JLogger().warn("Failed to rescan island {}: {}", islandId, unwrap(throwable).getMessage());
+            rescanNext(islandIds, index + 1);
+        });
     }
 
     // =========================================================================

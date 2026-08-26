@@ -167,26 +167,17 @@ public class UpgradeService {
                 .thenCompose(affordable -> {
                     if (!Boolean.TRUE.equals(affordable)) {
                         ASMessages.UPGRADE_INSUFFICIENT_FUNDS.message(player, placeholders);
-                        return CompletableFuture.completedFuture(false);
-                    }
-                    return withdraw(economy, player.getUniqueId(), currency, level.price());
-                })
-                .thenCompose(charged -> {
-                    if (!Boolean.TRUE.equals(charged)) {
-                        ASMessages.UPGRADE_INSUFFICIENT_FUNDS.message(player, placeholders);
                         return CompletableFuture.completedFuture(null);
                     }
-                    return setLevel(island.uniqueId(), type, nextLevel)
-                            .thenAccept(saved -> Bukkit.getScheduler().runTask(this.plugin, () -> {
-                                applyEffects(island, type);
-                                if (level.unlockActions() != null)
-                                    runUnlockActions(level, player);
-                                ASMessages.UPGRADE_PURCHASED.message(player, placeholders);
-                            }))
-                            // The player has already been charged, so a failed write must be refunded
-                            // rather than silently swallowed.
-                            .exceptionallyCompose(throwable -> refund(economy, player.getUniqueId(), currency, level.price())
-                                    .thenCompose(ignored -> CompletableFuture.failedFuture(throwable)));
+
+                    return withdraw(economy, player.getUniqueId(), currency, level.price())
+                            .thenCompose(charged -> {
+                                if (!Boolean.TRUE.equals(charged)) {
+                                    ASMessages.UPGRADE_INSUFFICIENT_FUNDS.message(player, placeholders);
+                                    return CompletableFuture.completedFuture(null);
+                                }
+                                return apply(island, player, type, nextLevel, level, placeholders, economy, currency);
+                            });
                 })
                 .whenComplete((ignored, throwable) -> {
                     this.purchasing.remove(island.uniqueId());
@@ -195,6 +186,25 @@ public class UpgradeService {
                         this.plugin.getSLF4JLogger().error("Failed to purchase upgrade {} for island {}", type, island.uniqueId(), throwable);
                     }
                 });
+    }
+
+    /**
+     * Persists the purchased level and applies it: effects, unlock actions and the confirmation
+     * message, all on the main thread. The player is already charged at this point, so a failed
+     * write is refunded before the failure propagates.
+     */
+    private CompletableFuture<Void> apply(Island island, Player player, UpgradeType type, int nextLevel,
+                                          IslandUpgrade.Level level, PlaceholderContainer placeholders,
+                                          EconomyService economy, String currency) {
+        return setLevel(island.uniqueId(), type, nextLevel)
+                .thenAccept(saved -> Bukkit.getScheduler().runTask(this.plugin, () -> {
+                    applyEffects(island, type);
+                    if (level.unlockActions() != null)
+                        runUnlockActions(level, player);
+                    ASMessages.UPGRADE_PURCHASED.message(player, placeholders);
+                }))
+                .exceptionallyCompose(throwable -> refund(economy, player.getUniqueId(), currency, level.price())
+                        .thenCompose(ignored -> CompletableFuture.failedFuture(throwable)));
     }
 
     private CompletableFuture<Boolean> hasBalance(EconomyService economy, UUID playerUuid, String currency, double price) {
@@ -252,14 +262,24 @@ public class UpgradeService {
         return value(type, island.upgradeLevel(type), fallback);
     }
 
-    /** The configured effect magnitude of a specific level, falling back to level 0 then {@code fallback}. */
+    /**
+     * The configured effect magnitude of a specific level. When that exact level has no entry — a
+     * trimmed blueprint, or a level set past the configured maximum — the highest configured level
+     * at or below it is used, so an island keeps the effect it has paid for instead of silently
+     * dropping to level 0 (which would, for instance, snap a large border back to its starting size).
+     */
     public double value(UpgradeType type, int level, double fallback) {
         IslandUpgrade blueprint = this.blueprints.get(type);
         if (blueprint == null)
             return fallback;
+
         IslandUpgrade.Level configured = blueprint.levels().get(level);
         if (configured == null)
-            configured = blueprint.levels().get(0);
+            configured = blueprint.levels().entrySet().stream()
+                    .filter(entry -> entry.getKey() <= level)
+                    .max(Map.Entry.comparingByKey())
+                    .map(Map.Entry::getValue)
+                    .orElse(null);
         return configured == null ? fallback : configured.value();
     }
 

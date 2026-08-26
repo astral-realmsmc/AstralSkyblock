@@ -8,6 +8,7 @@ import org.bukkit.entity.Player;
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.configuration.ASMessages;
 import com.astralrealms.skyblock.model.island.Island;
+import com.astralrealms.skyblock.model.upgrade.IslandUpgrade;
 import com.astralrealms.skyblock.model.upgrade.UpgradeType;
 
 import co.aikar.commands.BaseCommand;
@@ -60,6 +61,18 @@ public class UpgradeCommand extends BaseCommand {
     public void onUpgradeSet(CommandSender sender, Island island, UpgradeType type, int level) {
         if (level < 0) {
             sender.sendMessage(Component.text("Level must be zero or greater."));
+            return;
+        }
+
+        // A level past the blueprint has no configured effect, so the island would silently fall
+        // back to the highest one that does — set what actually exists instead.
+        IslandUpgrade blueprint = this.plugin.upgrades().findByType(type).orElse(null);
+        if (blueprint == null) {
+            sender.sendMessage(Component.text("No blueprint is configured for " + type.name() + "."));
+            return;
+        }
+        if (level > blueprint.maxLevel()) {
+            sender.sendMessage(Component.text(type.name() + " only goes up to level " + blueprint.maxLevel() + "."));
             return;
         }
 

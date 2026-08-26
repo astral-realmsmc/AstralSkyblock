@@ -24,6 +24,7 @@ import com.astralrealms.skyblock.model.member.IslandMember;
 import com.astralrealms.skyblock.model.role.IslandPermission;
 import com.astralrealms.skyblock.repository.BanRepository;
 import com.astralrealms.skyblock.utils.ASConstants;
+import com.astralrealms.skyblock.utils.PlayerText;
 
 /**
  * Island bans: who may not set foot on an island.
@@ -86,12 +87,17 @@ public class BanService {
             return CompletableFuture.completedFuture(null);
         }
 
+        if (!PlayerText.withinLimit(reason, PlayerText.BAN_REASON_LIMIT)) {
+            ASMessages.TEXT_TOO_LONG.message(executor, placeholders.registerDirect("maximum", PlayerText.BAN_REASON_LIMIT));
+            return CompletableFuture.completedFuture(null);
+        }
+
         boolean wasMember = target != null;
         // The ban is written first: if severing their membership afterwards fails, the player is at
         // least barred from coming back. The reverse order could kick them without banning them.
         return repository.ban(new IslandBan(
                         island.uniqueId(), targetUuid, executor.getUniqueId(),
-                        reason == null || reason.isBlank() ? null : reason,
+                        PlayerText.sanitise(reason),
                         System.currentTimeMillis()))
                 .thenCompose(ban -> severTies(island, targetUuid, wasMember).thenApply(ignored -> ban))
                 .thenCompose(ban -> this.plugin.islands()
@@ -233,8 +239,12 @@ public class BanService {
             return true;
 
         IslandMember executorMember = island.findMember(executor.getUniqueId()).orElse(null);
-        if (executorMember == null || executorMember.isOwner())
-            return true; // the owner (or an outsider with the permission) outranks a plain member
+        if (executorMember == null)
+            // Not a member at all — a coop who inherited BAN_MEMBER from the COOP role. They may ban
+            // outsiders, but they hold no rank, so they cannot ban the island's own members.
+            return false;
+        if (executorMember.isOwner())
+            return true;
         return executorMember.role() == null || target.role() == null
                || executorMember.role().weight() > target.role().weight();
     }

@@ -101,6 +101,7 @@ settings-update-success: "Settings for %island_name% have been successfully upda
 settings-update-failure: "Failed to update settings for %island_name%. Please try again."
 
 # Misc
+text-too-long: "That text is too long (maximum %maximum% characters)."
 unexpected-error: "An unexpected error occurred. Please try again later."
 no-permission: "You do not have permission to perform this action."
 no-island: "You do not have an island. Please create one first."
