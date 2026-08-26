@@ -49,6 +49,8 @@ public class WorldService {
     private static final long IDLE_SWEEP_INTERVAL_TICKS = 20L * 30;
     /** Minimum gap between two fallback-group transfer requests for the same player. */
     private static final long TRANSFER_REQUEST_COOLDOWN_MILLIS = 60_000;
+    /** The same gap where the transfer is the only way to free the world: shorter, but not absent. */
+    private static final long URGENT_TRANSFER_REQUEST_COOLDOWN_MILLIS = 15_000;
 
     private final AstralSkyblock plugin;
     private final AdvancedSlimePaperAPI asp = AdvancedSlimePaperAPI.instance();
@@ -513,10 +515,14 @@ public class WorldService {
             // but a cross-server transfer is not: ask for one per player at most once a minute, so
             // somebody who joins the world mid-retry still gets one and nobody gets spammed. With no
             // local destination the transfer is the only thing that can free the world, so it is
-            // never throttled there.
+            // asked for more often — but still throttled, or a failing fallback group would mean a
+            // fresh transfer request per player on every sweep, forever.
             long now = System.currentTimeMillis();
+            long cooldown = destination == null
+                    ? URGENT_TRANSFER_REQUEST_COOLDOWN_MILLIS
+                    : TRANSFER_REQUEST_COOLDOWN_MILLIS;
             Long requested = this.lastTransferRequest.get(player.getUniqueId());
-            if (destination != null && requested != null && now - requested < TRANSFER_REQUEST_COOLDOWN_MILLIS)
+            if (requested != null && now - requested < cooldown)
                 continue;
             this.lastTransferRequest.put(player.getUniqueId(), now);
 
@@ -525,8 +531,9 @@ public class WorldService {
                     .sendToGroup(player.getUniqueId(), this.plugin.configuration().fallbackGroup())
                     .exceptionally(throwable -> {
                         // The request never happened, so it must not hold the cooldown: the next
-                        // sweep should be free to ask again.
-                        this.lastTransferRequest.remove(player.getUniqueId());
+                        // sweep should be free to ask again. Only this request's own timestamp is
+                        // withdrawn — a slow failure must not clear a newer request's.
+                        this.lastTransferRequest.remove(player.getUniqueId(), now);
                         this.plugin.getSLF4JLogger().error("Failed to send {} to the fallback group after evacuating {}",
                                 player.getName(), world.getName(), throwable);
                         return null;
