@@ -35,6 +35,8 @@ public class LevelService {
 
     /** Hard ceiling on the scanned radius, so a misconfigured border cannot scan the whole world. */
     private static final int MAX_CHUNK_RADIUS = 64;
+    /** Rescan intervals a pass may span before the timer assumes it is stuck and takes the latch back. */
+    private static final int STUCK_PASS_INTERVALS = 4;
 
     private final AstralSkyblock plugin;
     // Islands with a scan in flight, so a second /is calc cannot start a parallel scan.
@@ -44,6 +46,7 @@ public class LevelService {
     private volatile List<Island> top = List.of();
     // Whether a rescan pass is walking the hosted islands, so the timer cannot start a second one.
     private final AtomicBoolean rescanning = new AtomicBoolean();
+    private volatile long rescanStartedAt;
 
     public LevelService(AstralSkyblock plugin) {
         this.plugin = plugin;
@@ -150,11 +153,19 @@ public class LevelService {
                         result.completeExceptionally(throwable);
                         return;
                     }
-                    scan.value += batchValue;
-                    // Spawners carry their entity type in a block state the snapshot cannot see, so
-                    // the few positions found are resolved here, on the main thread.
-                    scan.value += resolveSpawners(scan);
-                    processBatch(scan, result);
+
+                    // Anything thrown here (a world unloaded between batches, say) would otherwise be
+                    // swallowed by the scheduler and leave `result` — and every latch waiting on it —
+                    // hanging forever, so the scan is failed explicitly instead.
+                    try {
+                        scan.value += batchValue;
+                        // Spawners carry their entity type in a block state the snapshot cannot see,
+                        // so the few positions found are resolved here, on the main thread.
+                        scan.value += resolveSpawners(scan);
+                        processBatch(scan, result);
+                    } catch (Exception exception) {
+                        result.completeExceptionally(exception);
+                    }
                 }));
     }
 
@@ -255,9 +266,19 @@ public class LevelService {
      */
     private void rescanHostedIslands() {
         if (!this.rescanning.compareAndSet(false, true)) {
-            this.plugin.getSLF4JLogger().debug("Skipping the island rescan: the previous pass is still running.");
-            return;
+            // A pass that has outlived several intervals is not running any more, it is stuck: its
+            // continuation was lost (a disable mid-pass, say). Take the latch back rather than
+            // leaving the server without rescans until it restarts.
+            long running = System.currentTimeMillis() - this.rescanStartedAt;
+            long stuckAfter = this.plugin.configuration().level().rescanIntervalSeconds() * 1000L * STUCK_PASS_INTERVALS;
+            if (running < stuckAfter) {
+                this.plugin.getSLF4JLogger().debug("Skipping the island rescan: the previous pass is still running.");
+                return;
+            }
+            this.plugin.getSLF4JLogger().warn("The island rescan started {}s ago never finished; starting a new pass.", running / 1000);
         }
+
+        this.rescanStartedAt = System.currentTimeMillis();
         rescanNext(List.copyOf(this.plugin.worlds().getLoadedWorlds().keySet()), 0);
     }
 
@@ -278,11 +299,18 @@ public class LevelService {
                 continue;
 
             int next = cursor + 1;
-            calculate(island).whenComplete((value, throwable) -> {
-                if (throwable != null && !(unwrap(throwable) instanceof ScanInProgressException))
-                    this.plugin.getSLF4JLogger().warn("Failed to rescan island {}: {}", islandId, unwrap(throwable).getMessage());
-                Bukkit.getScheduler().runTask(this.plugin, () -> rescanNext(islandIds, next));
-            });
+            try {
+                calculate(island).whenComplete((value, throwable) -> {
+                    if (throwable != null && !(unwrap(throwable) instanceof ScanInProgressException))
+                        this.plugin.getSLF4JLogger().warn("Failed to rescan island {}: {}", islandId, unwrap(throwable).getMessage());
+                    Bukkit.getScheduler().runTask(this.plugin, () -> rescanNext(islandIds, next));
+                });
+            } catch (Exception exception) {
+                // calculate() schedules main-thread work, which throws outright once the plugin is
+                // disabling. Release the latch instead of ending the pass while still holding it.
+                this.plugin.getSLF4JLogger().warn("Island rescan pass aborted at {}: {}", islandId, exception.getMessage());
+                this.rescanning.set(false);
+            }
             return;
         }
 

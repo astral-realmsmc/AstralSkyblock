@@ -244,7 +244,7 @@ public class UpgradeService {
                                     return null;
                                 })
                                 .thenCompose(ignored -> refund(economy, player.getUniqueId(), currency, level.price()))
-                                .thenRun(() -> ASMessages.UPGRADE_LEVEL_CHANGED.message(player, placeholders));
+                                .thenRun(() -> notify(player, ASMessages.UPGRADE_LEVEL_CHANGED, placeholders));
 
                     Bukkit.getScheduler().runTask(this.plugin, () -> {
                         applyEffects(island, type);
@@ -256,6 +256,19 @@ public class UpgradeService {
                 })
                 .exceptionallyCompose(throwable -> refund(economy, player.getUniqueId(), currency, level.price())
                         .thenCompose(ignored -> CompletableFuture.failedFuture(throwable)));
+    }
+
+    /**
+     * Sends a message without letting a failure escape into the purchase chain. Anything thrown
+     * after the refund — a placeholder that cannot resolve, a player who left — would otherwise
+     * reach the compensating {@code exceptionallyCompose} and refund the same charge twice.
+     */
+    private void notify(Player player, ASMessages message, PlaceholderContainer placeholders) {
+        try {
+            message.message(player, placeholders);
+        } catch (Exception exception) {
+            this.plugin.getSLF4JLogger().warn("Failed to send {} to {}", message.name(), player.getName(), exception);
+        }
     }
 
     private CompletableFuture<Boolean> hasBalance(EconomyService economy, UUID playerUuid, String currency, double price) {

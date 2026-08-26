@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -56,6 +57,9 @@ public class WorldService {
     private final Map<UUID, CompletableFuture<SlimeWorldInstance>> loading = new ConcurrentHashMap<>();
     // First tick (millis) a loaded world was observed empty; cleared as soon as a player is present.
     private final Map<UUID, Long> emptySince = new ConcurrentHashMap<>();
+    // Islands whose row is gone. Their world must never be written back — not by an unload, not by
+    // the idle sweep, not by the shutdown flush — however long it takes to get it unloaded.
+    private final Set<UUID> deleted = ConcurrentHashMap.newKeySet();
 
     private final FileLoader sourceLoader;
     private MysqlLoader worldLoader;
@@ -115,13 +119,20 @@ public class WorldService {
         // stale island->server entries that route players to a dead server.
         List<CompletableFuture<Void>> hostCleanups = new ArrayList<>();
         for (SlimeWorldInstance instance : loadedWorlds.values()) {
-            try {
-                asp.saveWorld(instance);
-            } catch (IOException e) {
-                this.plugin.getSLF4JLogger().error("Failed to save world: {}", instance.getName(), e);
+            UUID uniqueId = UUID.fromString(instance.getName());
+
+            // A world whose island was deleted is skipped: saving it here would write back the row
+            // the delete just removed, which is the resurrection the delete path exists to prevent.
+            if (this.deleted.contains(uniqueId)) {
+                this.plugin.getSLF4JLogger().info("Skipping the shutdown save of deleted island {}", uniqueId);
+            } else {
+                try {
+                    asp.saveWorld(instance);
+                } catch (IOException e) {
+                    this.plugin.getSLF4JLogger().error("Failed to save world: {}", instance.getName(), e);
+                }
             }
 
-            UUID uniqueId = UUID.fromString(instance.getName());
             hostCleanups.add(this.plugin.servers()
                     .deleteHostServer(uniqueId)
                     .exceptionally(throwable -> {
@@ -129,7 +140,7 @@ public class WorldService {
                         return null;
                     }));
 
-            this.plugin.getSLF4JLogger().info("World {} saved successfully.", instance.getName());
+            this.plugin.getSLF4JLogger().info("World {} flushed successfully.", instance.getName());
         }
 
         try {
@@ -143,6 +154,7 @@ public class WorldService {
         this.worldNameToIslandId.clear();
         this.emptySince.clear();
         this.loading.clear();
+        this.deleted.clear();
 
         // Close loader
         if (this.worldLoader != null) {
@@ -350,9 +362,14 @@ public class WorldService {
                 // Not loaded on this server; drop any stale registrations just in case.
                 this.loadedWorlds.remove(uniqueId);
                 this.worldNameToIslandId.remove(uniqueId.toString());
+                this.deleted.remove(uniqueId);
                 future.complete(null);
                 return;
             }
+
+            // A deleted island can never be saved, whatever the caller asked for: the storage row is
+            // already gone, and writing it back would resurrect the island.
+            boolean effectiveSave = save && !this.deleted.contains(uniqueId);
 
             // Bukkit refuses to unload a world that still holds players, which is the normal case for
             // a disband (typed while standing on the island). Move them out first, then send them on
@@ -360,7 +377,7 @@ public class WorldService {
             evacuate(bukkitWorld);
 
             // Unload world
-            boolean success = Bukkit.unloadWorld(bukkitWorld, save);
+            boolean success = Bukkit.unloadWorld(bukkitWorld, effectiveSave);
             if (!success) {
                 future.completeExceptionally(new IllegalStateException("Bukkit refused to unload world for island with UUID: " + uniqueId));
                 return;
@@ -369,6 +386,7 @@ public class WorldService {
             // Remove from loaded worlds and world name mapping
             this.loadedWorlds.remove(uniqueId);
             this.worldNameToIslandId.remove(uniqueId.toString());
+            this.deleted.remove(uniqueId);
             this.plugin.servers()
                     .deleteHostServer(uniqueId)
                     .exceptionally(throwable -> {
@@ -393,6 +411,9 @@ public class WorldService {
     }
 
     public CompletableFuture<Void> delete(UUID uniqueId) {
+        // From here on this island's world is write-protected everywhere in this service.
+        this.deleted.add(uniqueId);
+
         // Tell whichever server currently hosts this world to drop it without saving. We are echo-suppressed
         // from our own broadcast, so the local host (if any) is handled by the unload(false) below.
         this.plugin.messaging()
@@ -406,13 +427,12 @@ public class WorldService {
                 // A refused unload must not abort the deletion: the row is already gone, so leaving the
                 // slime world in storage would orphan it forever. Log and carry on to the storage delete.
                 .handle((ignored, throwable) -> {
-                    if (throwable != null) {
+                    if (throwable != null)
+                        // The world stays registered on purpose: the idle sweep retries it, and the
+                        // deleted set guarantees that neither that retry nor the shutdown flush can
+                        // save it in the meantime.
                         this.plugin.getSLF4JLogger().error("Failed to unload world for island {} before deleting it; "
                                                            + "deleting it from storage anyway", uniqueId, throwable);
-                        // Its registrations must go regardless: left in place, the idle sweep would
-                        // later unload the world *with saving* and write the deleted island back.
-                        forget(uniqueId);
-                    }
                     return null;
                 })
                 .thenCompose(ignored -> this.plugin.servers().deleteHostServer(uniqueId))
@@ -429,18 +449,6 @@ public class WorldService {
     }
 
     /**
-     * Drops an island's local registrations without touching the world itself. Used when a deleted
-     * island's world could not be unloaded: the island no longer exists, so nothing here may keep
-     * treating it as a world worth saving.
-     */
-    private void forget(UUID uniqueId) {
-        this.loadedWorlds.remove(uniqueId);
-        this.worldNameToIslandId.remove(uniqueId.toString());
-        this.emptySince.remove(uniqueId);
-        this.loading.remove(uniqueId);
-    }
-
-    /**
      * Moves every player out of {@code world} so it can be unloaded: a local teleport to this
      * server's main world spawn (immediate, which is what Bukkit needs), followed by a best-effort
      * transfer to the configured fallback group. Must run on the main thread.
@@ -450,11 +458,18 @@ public class WorldService {
         if (players.isEmpty())
             return;
 
-        // The main world, explicitly — "the first world that is not this one" could be another
-        // island, dropping evacuees onto someone else's island past its ban and visit checks.
-        World fallback = Bukkit.getWorlds().isEmpty() ? null : Bukkit.getWorlds().getFirst();
-        if (fallback != null && (fallback.equals(world) || this.worldNameToIslandId.containsKey(fallback.getName())))
-            fallback = null; // nowhere safe locally; the group transfer below still moves them
+        // The main world by preference, then any other non-island world. Never another island: that
+        // would drop evacuees onto somebody else's island past its ban and visit checks.
+        World fallback = Bukkit.getWorlds().stream()
+                .filter(candidate -> !candidate.equals(world))
+                .filter(candidate -> !this.worldNameToIslandId.containsKey(candidate.getName()))
+                .findFirst()
+                .orElse(null);
+        if (fallback == null)
+            // No local destination: the transfer below still moves them, but not within this tick,
+            // so this unload will be refused and retried by the sweep.
+            this.plugin.getSLF4JLogger().warn("No non-island world to evacuate {} players from {} into",
+                    players.size(), world.getName());
         this.plugin.getSLF4JLogger().info("Evacuating {} player(s) from island world {}", players.size(), world.getName());
 
         World destination = fallback;
@@ -479,6 +494,18 @@ public class WorldService {
      * slot. A world that regains a player before the grace elapses is spared and its timer reset.
      */
     private void sweepIdleWorlds() {
+        // A deleted island whose unload was refused earlier (players still inside) is retried on
+        // every sweep, regardless of the idle settings — it is not idleness that must free it.
+        for (UUID id : List.copyOf(this.deleted)) {
+            if (!this.loadedWorlds.containsKey(id))
+                continue;
+            this.plugin.getSLF4JLogger().info("Retrying the unload of deleted island world {}", id);
+            this.unload(id, false).exceptionally(throwable -> {
+                this.plugin.getSLF4JLogger().error("Failed to unload deleted island world {}", id, throwable);
+                return null;
+            });
+        }
+
         int idleSeconds = this.plugin.configuration().worldIdleUnloadSeconds();
         if (idleSeconds < 0)
             return; // idle unloading disabled
@@ -488,6 +515,9 @@ public class WorldService {
 
         for (Map.Entry<UUID, SlimeWorldInstance> entry : this.loadedWorlds.entrySet()) {
             UUID id = entry.getKey();
+            if (this.deleted.contains(id))
+                continue; // handled above
+
             World world = entry.getValue().getBukkitWorld();
             if (world == null || !world.getPlayers().isEmpty()) {
                 this.emptySince.remove(id);
