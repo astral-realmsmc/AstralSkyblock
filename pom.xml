@@ -94,7 +94,7 @@
         <dependency>
             <groupId>com.astralrealms.polaris</groupId>
             <artifactId>polaris-api</artifactId>
-            <version>26.1.2</version>
+            <version>26.2</version>
             <scope>provided</scope>
         </dependency>
         <!-- infernalsuite/asp-api -->
@@ -122,7 +122,7 @@
         <dependency>
             <groupId>com.astralrealms</groupId>
             <artifactId>core-paper</artifactId>
-            <version>1.4.2-SNAPSHOT</version>
+            <version>1.4.4-SNAPSHOT</version>
             <scope>provided</scope>
         </dependency>
         <!-- acf -->
