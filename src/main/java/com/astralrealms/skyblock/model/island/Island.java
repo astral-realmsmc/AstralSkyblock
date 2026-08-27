@@ -20,7 +20,6 @@ import com.astralrealms.skyblock.model.role.IslandRole;
 import com.astralrealms.skyblock.model.upgrade.UpgradeType;
 import com.astralrealms.skyblock.placeholder.settings.IslandSettingsItemProvider;
 import com.astralrealms.skyblock.placeholder.upgrade.IslandUpgradeItemProvider;
-import com.astralrealms.skyblock.placeholder.upgrade.IslandUpgradeItemProvider;
 
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -34,7 +33,10 @@ public class Island implements Unique, ComplexPlaceholder {
     @Id
     @Column("id")
     private UUID uniqueId;
+    @Setter
     private String name;
+    /** Whether visitors are barred from the island's world. Enforced by {@code IslandListener}. */
+    @Setter
     private boolean locked;
     /** Cached rank metric — {@link #value} divided by the configured points per level. */
     @Setter
@@ -103,6 +105,12 @@ public class Island implements Unique, ComplexPlaceholder {
                 .orElse(false);
     }
 
+    /**
+     * Whether the player may do {@code permission} on this island. Resolution follows the schema's
+     * contract: the owner (and a staff member holding {@code skyblock.admin}) bypasses every check,
+     * a member resolves through their own role, a coop through the island's COOP role, and everyone
+     * else — a visitor — through its VISITOR role.
+     */
     public boolean hasPermission(Player player, IslandPermission permission) {
         if (player.hasPermission("skyblock.admin")
             || (this.owner != null && this.owner.playerUuid().equals(player.getUniqueId())))
@@ -112,15 +120,23 @@ public class Island implements Unique, ComplexPlaceholder {
         if (member.isPresent())
             return member.get().isOwner() || (member.get().role() != null && member.get().role().hasPermission(permission));
 
-        if (findCoop(player.getUniqueId()).isPresent()) {
-            return roles().stream()
-                    .filter(r -> r.kind() == IslandRole.Type.COOP)
-                    .findFirst()
-                    .map(r -> r.hasPermission(permission))
-                    .orElse(false);
-        }
+        IslandRole.Type kind = findCoop(player.getUniqueId()).isPresent()
+                ? IslandRole.Type.COOP
+                : IslandRole.Type.VISITOR;
+        return systemRole(kind)
+                .map(role -> role.hasPermission(permission))
+                .orElse(false);
+    }
 
-        return false;
+    /**
+     * The island's single role of a system kind ({@code VISITOR}/{@code COOP}). The schema keeps
+     * exactly one of each per island; an island whose roles have not been hydrated yet has none,
+     * and then every non-member is denied.
+     */
+    public Optional<IslandRole> systemRole(IslandRole.Type kind) {
+        return roles().stream()
+                .filter(role -> role.kind() == kind)
+                .findFirst();
     }
 
     public Optional<IslandMember> findMember(UUID uniqueId) {
@@ -259,6 +275,11 @@ public class Island implements Unique, ComplexPlaceholder {
                     yield null;
                 yield this.hasPermission(player, IslandPermission.valueOf(context.collapseRemaining()));
             }
+            // Resolved against the viewer, like hasPermission: menus use it to hide the actions the
+            // owner cannot take (leaving) and the ones only they can (disbanding).
+            case "isOwner" -> context.context() instanceof Player player
+                              && this.owner != null
+                              && this.owner.playerUuid().equals(player.getUniqueId());
             case "settings" -> new IslandSettingsItemProvider(this);
             case "bans" -> ItemProvider.of(bans());
             case "warps" -> {

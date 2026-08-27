@@ -357,6 +357,49 @@ public class UpgradeService {
         return (int) value(island, UpgradeType.COOP_LIMIT, this.plugin.configuration().defaultCoopLimit());
     }
 
+    /** The hopper cap of an island — its {@link UpgradeType#HOPPERS_LIMIT} value. */
+    public int hopperLimit(Island island) {
+        return (int) value(island, UpgradeType.HOPPERS_LIMIT, this.plugin.configuration().defaultHopperLimit());
+    }
+
+    /** The minecart cap of an island — its {@link UpgradeType#MINECART_LIMITS} value. */
+    public int minecartLimit(Island island) {
+        return (int) value(island, UpgradeType.MINECART_LIMITS, this.plugin.configuration().defaultMinecartLimit());
+    }
+
+    /**
+     * How much faster than vanilla this island's crops advance a growth stage — its
+     * {@link UpgradeType#CROP_GROWTH_SPEED} value, never below {@code 1}.
+     */
+    public double cropGrowthMultiplier(Island island) {
+        return multiplier(island, UpgradeType.CROP_GROWTH_SPEED, this.plugin.configuration().defaultCropGrowthMultiplier());
+    }
+
+    /**
+     * How much faster than vanilla this island's spawners re-arm — its
+     * {@link UpgradeType#SPAWNERS_RATE} value, never below {@code 1}.
+     */
+    public double spawnerRateMultiplier(Island island) {
+        return multiplier(island, UpgradeType.SPAWNERS_RATE, this.plugin.configuration().defaultSpawnerRateMultiplier());
+    }
+
+    /**
+     * How many times the vanilla amount mobs drop when they die on this island — its
+     * {@link UpgradeType#MOB_DROPS} value, never below {@code 1}.
+     */
+    public double mobDropsMultiplier(Island island) {
+        return multiplier(island, UpgradeType.MOB_DROPS, this.plugin.configuration().defaultMobDropsMultiplier());
+    }
+
+    /**
+     * A multiplier-shaped upgrade value, floored at {@code 1}. A blueprint that configures a level
+     * below 1 would make the island worse than vanilla the moment it was bought, which is never what
+     * an upgrade is for — such a level is treated as no bonus rather than honoured.
+     */
+    private double multiplier(Island island, UpgradeType type, double fallback) {
+        return Math.max(1, value(island, type, fallback));
+    }
+
     /**
      * The generator an island currently uses: the blueprint named by the {@code key} of its
      * {@link UpgradeType#GENERATOR} level, falling back to the configured default generator.

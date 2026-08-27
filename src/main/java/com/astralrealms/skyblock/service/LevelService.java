@@ -38,6 +38,12 @@ public class LevelService {
     private static final int MAX_CHUNK_RADIUS = 64;
     /** Rescan intervals a pass may span before the timer assumes it is stuck and takes the latch back. */
     private static final int STUCK_PASS_INTERVALS = 4;
+    /**
+     * Ungenerated chunks a single batch may walk past before it yields. Skipping costs only a
+     * chunk-exists check, but a wide border over empty terrain would otherwise walk thousands of
+     * them in one tick looking for a chunk worth snapshotting.
+     */
+    private static final int MAX_SKIPS_PER_BATCH = 256;
 
     private final AstralSkyblock plugin;
     // Islands with a scan in flight, so a second /is calc cannot start a parallel scan.
@@ -121,17 +127,32 @@ public class LevelService {
         }
 
         if (scan.cursor >= scan.chunks.size()) {
+            // The walk just saw every block inside the border, which makes this the one moment the
+            // hopper count is known to be exact. Seed it before handing the value back.
+            this.plugin.blockLimits().seed(scan.islandId, scan.hoppers);
             result.complete(scan.value);
             return;
         }
 
+        // A batch is `chunks-per-batch` chunks that actually hold something. Chunks that were never
+        // generated are skipped here without a disk read, and do not consume a slot — most of an
+        // island's border box is void, so counting them as batch members would stretch a scan over
+        // far more ticks than it needs.
         int batchSize = this.plugin.configuration().level().chunksPerBatch();
-        int end = Math.min(scan.cursor + batchSize, scan.chunks.size());
+        int examined = 0;
         List<CompletableFuture<ChunkSnapshot>> snapshots = new ArrayList<>();
-        for (int index = scan.cursor; index < end; index++) {
-            long coordinate = scan.chunks.get(index);
+        while (scan.cursor < scan.chunks.size()
+               && snapshots.size() < batchSize
+               && examined < batchSize + MAX_SKIPS_PER_BATCH) {
+            long coordinate = scan.chunks.get(scan.cursor++);
+            examined++;
             int chunkX = (int) (coordinate >> 32);
             int chunkZ = (int) coordinate;
+            // Never generated: nothing to score. `gen = false` below would hand back null for it
+            // anyway, but only after an async round trip this check avoids entirely.
+            if (!scan.world.isChunkGenerated(chunkX, chunkZ))
+                continue;
+
             // gen = false: an island's unexplored chunks hold nothing and must not be generated.
             // Paper completes this future on the main thread, which is where a snapshot must be taken.
             snapshots.add(scan.world.getChunkAtAsync(chunkX, chunkZ, false)
@@ -143,19 +164,18 @@ public class LevelService {
                         return null;
                     }));
         }
-        scan.cursor = end;
 
         CompletableFuture.allOf(snapshots.toArray(CompletableFuture[]::new))
                 .thenApplyAsync(ignored -> {
-                    long batchValue = 0;
-                    List<int[]> spawners = new ArrayList<>();
+                    Tally tally = new Tally();
                     for (CompletableFuture<ChunkSnapshot> future : snapshots) {
                         ChunkSnapshot chunkSnapshot = future.join();
                         if (chunkSnapshot != null)
-                            batchValue += sum(chunkSnapshot, scan.world, spawners);
+                            sum(chunkSnapshot, scan.world, tally);
                     }
-                    scan.spawners.addAll(spawners);
-                    return batchValue;
+                    scan.spawners.addAll(tally.spawners);
+                    scan.hoppers += tally.hoppers;
+                    return tally.value;
                 })
                 .whenComplete((batchValue, throwable) -> resume(result, () -> {
                     if (throwable != null) {
@@ -196,15 +216,21 @@ public class LevelService {
     }
 
     /**
-     * Sums the plain material values of a chunk, recording the positions of any spawners for the
-     * caller to resolve on the main thread. Empty sections are skipped outright.
+     * Adds a chunk's contribution to {@code tally}: the plain material values of its blocks, the
+     * positions of any spawners for the caller to resolve on the main thread, and how many hoppers
+     * it holds (which is what {@link BlockLimitService} seeds its cap counting from — the walk is
+     * already here, so counting them costs one comparison per block). Empty chunks and empty
+     * sections are skipped outright.
      */
-    private long sum(ChunkSnapshot chunkSnapshot, World world, List<int[]> spawners) {
-        Map<Material, Integer> values = this.plugin.blockValuesConfiguration().materialValues();
+    private void sum(ChunkSnapshot chunkSnapshot, World world, Tally tally) {
         int minHeight = world.getMinHeight();
         int maxHeight = world.getMaxHeight();
+        // A generated but wholly empty chunk — the common case around an island — is worth nothing,
+        // and answering that from the section table costs a handful of checks instead of 98k.
+        if (isEmpty(chunkSnapshot, minHeight, maxHeight))
+            return;
 
-        long total = 0;
+        Map<Material, Integer> values = this.plugin.blockValuesConfiguration().materialValues();
         for (int y = minHeight; y < maxHeight; y++) {
             if (chunkSnapshot.isSectionEmpty((y - minHeight) >> 4)) {
                 y += 15 - ((y - minHeight) & 15); // jump to the end of the empty section
@@ -216,18 +242,28 @@ public class LevelService {
                     Material material = chunkSnapshot.getBlockType(x, y, z);
                     if (material == Material.AIR)
                         continue;
+                    if (material == Material.HOPPER)
+                        tally.hoppers++;
                     if (material == Material.SPAWNER) {
-                        spawners.add(new int[]{(chunkSnapshot.getX() << 4) + x, y, (chunkSnapshot.getZ() << 4) + z});
+                        tally.spawners.add(new int[]{(chunkSnapshot.getX() << 4) + x, y, (chunkSnapshot.getZ() << 4) + z});
                         continue;
                     }
 
                     Integer value = values.get(material);
                     if (value != null)
-                        total += value;
+                        tally.value += value;
                 }
             }
         }
-        return total;
+    }
+
+    /** Whether every section of the chunk is empty, i.e. the chunk holds nothing but air. */
+    private static boolean isEmpty(ChunkSnapshot chunkSnapshot, int minHeight, int maxHeight) {
+        int sections = ((maxHeight - minHeight) + 15) >> 4;
+        for (int section = 0; section < sections; section++)
+            if (!chunkSnapshot.isSectionEmpty(section))
+                return false;
+        return true;
     }
 
     /** Resolves and clears the spawner positions collected by the last batch. */
@@ -408,12 +444,24 @@ public class LevelService {
         private final List<int[]> spawners = new ArrayList<>();
         private int cursor;
         private long value;
+        /** Hoppers seen so far, seeding {@link BlockLimitService} when the scan completes. */
+        private int hoppers;
 
         private Scan(UUID islandId, World world, List<Long> chunks) {
             this.islandId = islandId;
             this.world = world;
             this.chunks = chunks;
         }
+    }
+
+    /**
+     * What one batch of chunks contributed, collected off the main thread and merged into the scan
+     * once the batch is done.
+     */
+    private static final class Tally {
+        private final List<int[]> spawners = new ArrayList<>();
+        private long value;
+        private int hoppers;
     }
 
     /** The island's world is not loaded on this server, so its blocks cannot be read here. */

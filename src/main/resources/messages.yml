@@ -5,6 +5,36 @@ island-created: "%island_name% has been successfully created!"
 # Deletion
 island-deleted: "%island_name% has been successfully deleted."
 
+# Identity
+island-renamed: "Your island is now named %name%."
+island-name-invalid: "An island name must not be empty and may be at most %maximum% characters."
+
+# Access
+island-closed: "%island_name% is now closed to visitors."
+island-opened: "%island_name% is now open to visitors."
+island-already-closed: "%island_name% is already closed to visitors."
+island-already-open: "%island_name% is already open to visitors."
+island-is-closed: "%island_name% is closed to visitors."
+
+# Home
+island-home-set: "The island spawn has been moved to where you are standing."
+not-on-island: "You must be standing on the island to do that."
+
+# Expel
+player-expelled-sender: "%target_name% has been expelled from %island_name%."
+player-expelled-target: "You have been expelled from %island_name%."
+cannot-expel-self: "You cannot expel yourself."
+cannot-expel-insider: "%target_name% belongs to this island — kick or uncoop them instead."
+cannot-expel-bypass: "%target_name% cannot be expelled from this island."
+player-not-on-island: "%target_name% is not on %island_name%."
+
+# Biome
+biome-unknown: "%biome% is not a valid biome."
+biome-updating: "Changing the biome of %island_name% to %biome%..."
+biome-updated: "%island_name% is now %biome%. Rejoin if some chunks still show the old biome."
+biome-in-progress: "The biome of %island_name% is already being changed."
+biome-not-hosted: "%island_name% must be loaded to change its biome — visit it and try again."
+
 # Roles
 role-permission-higher: "You cannot assign a role higher than your own."
 
@@ -79,7 +109,7 @@ warp-moved: "Warp %warp_name% now points to your position."
 warp-not-found: "%island_name% has no warp named %warp_name%."
 warp-already-exists: "%island_name% already has a warp named %warp_name%."
 warp-invalid-name: "Warp names may only contain letters, digits, dashes and underscores (32 characters max)."
-warp-limit-reached: "%island_name% already has its maximum of %warp_limit% warps."
+warp-limit-reached: "%island_name% already has its maximum of %warp_limit% warp(s)."
 warp-not-on-island: "You must be standing on the island to do that."
 warp-private: "Warp %warp_name% is private."
 warp-no-item-in-hand: "Hold the item you want to use as the warp icon."
@@ -106,6 +136,8 @@ level-in-progress: "%island_name% is already being recalculated."
 # Limits
 member-limit-reached: "%island_name% has reached its member limit (%limit%)."
 coop-limit-reached: "%island_name% has reached its co-op limit (%limit%)."
+hopper-limit-reached: "%island_name% has reached its hopper limit (%limit%). Upgrade it with /is upgrades."
+minecart-limit-reached: "%island_name% has reached its minecart limit (%limit%). Upgrade it with /is upgrades."
 
 # Settings
 settings-update-success: "Settings for %island_name% have been successfully updated."

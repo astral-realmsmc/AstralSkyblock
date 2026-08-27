@@ -199,8 +199,8 @@ public class WarpService {
 
     /**
      * Teleports a player to one of an island's warps, loading the island world (here or on another
-     * island server) when nothing hosts it yet. Refuses when the player is banned from the island or
-     * the warp is private and the player is an outsider.
+     * island server) when nothing hosts it yet. Refuses when the player is banned from the island,
+     * when the island is closed to them, or when the warp is private and the player is an outsider.
      */
     public CompletableFuture<Void> teleport(Island island, Player player, String name) {
         PlaceholderContainer placeholders = placeholders(player, island).registerDirect("warp_name", name);
@@ -214,6 +214,12 @@ public class WarpService {
 
         if (this.plugin.bans().isBanned(island.uniqueId(), player.getUniqueId())) {
             ASMessages.BANNED_FROM_ISLAND.message(player, placeholders);
+            return CompletableFuture.completedFuture(null);
+        }
+        // Caught by IslandListener on arrival too, but refusing here spares the network the cost of
+        // loading an island world the player is only going to be bounced out of.
+        if (island.locked() && !this.plugin.islands().mayEnterClosed(island, player)) {
+            ASMessages.ISLAND_IS_CLOSED.message(player, placeholders);
             return CompletableFuture.completedFuture(null);
         }
         if (warp.isPrivate() && !island.isInsider(player)) {

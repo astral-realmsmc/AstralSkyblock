@@ -80,10 +80,18 @@ public class MemberService {
      * triggers a relationship refresh, fires {@link IslandMemberJoinEvent}, and broadcasts a
      * {@link MemberJoinPacket} so other servers can fire the event locally for player notifications.
      *
-     * <p>No validation is performed here — the caller (InvitationService) is responsible for
-     * checking the member limit and ensuring the player is not already a member.
+     * <p>The island's member cap is enforced here rather than left to the caller: a caller that
+     * checked it did so against its own cached snapshot, which another server may have filled since.
+     * Ensuring the player is not already a member is still the caller's job — the schema's
+     * {@code uq_member_player} index is the backstop for that.
+     *
+     * @return a future failed with {@link IslandFullException} when the island is at its member cap
      */
     public CompletableFuture<IslandMember> addMember(Island island, UUID playerUuid, UUID invitedBy) {
+        int limit = plugin.upgrades().memberLimit(island);
+        if (island.members().size() >= limit)
+            return CompletableFuture.failedFuture(new IslandFullException(island.uniqueId(), limit, true));
+
         IslandRole defaultRole = island.roles().stream()
                 .filter(IslandRole::isDefault)
                 .findFirst()

@@ -1,0 +1,30 @@
+# How much faster than vanilla the island's crops advance a growth stage. `value` is the multiplier:
+# 1 is vanilla, 2 is twice as fast. A fractional multiplier is applied as a chance, so 1.5 means
+# every growth tick has a 50% chance of advancing one extra stage.
+#
+# Only crops that track an age (wheat, carrots, potatoes, beetroot, nether wart, ...) are affected;
+# bamboo, kelp and cactus grow by spreading rather than by ageing.
+type: CROP_GROWTH_SPEED
+levels:
+  0:
+    level: 0
+    price: 0
+    value: 1
+  1:
+    level: 1
+    price: 12000
+    currency: "default"
+    currency-display: "coins"
+    value: 1.25
+  2:
+    level: 2
+    price: 40000
+    currency: "default"
+    currency-display: "coins"
+    value: 1.5
+  3:
+    level: 3
+    price: 110000
+    currency: "default"
+    currency-display: "coins"
+    value: 2
