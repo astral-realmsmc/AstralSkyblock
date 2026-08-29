@@ -1,0 +1,26 @@
+# How much faster than vanilla the island's monster spawners re-arm. `value` is the multiplier:
+# 2 halves the delay between batches. The delay is never shortened below one tick.
+type: SPAWNERS_RATE
+levels:
+  0:
+    level: 0
+    price: 0
+    value: 1
+  1:
+    level: 1
+    price: 20000
+    currency: "default"
+    currency-display: "coins"
+    value: 1.25
+  2:
+    level: 2
+    price: 60000
+    currency: "default"
+    currency-display: "coins"
+    value: 1.5
+  3:
+    level: 3
+    price: 150000
+    currency: "default"
+    currency-display: "coins"
+    value: 2

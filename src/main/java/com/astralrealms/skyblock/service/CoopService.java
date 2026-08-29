@@ -53,12 +53,18 @@ public class CoopService {
      * snapshot, fires {@link IslandCoopAddEvent}, and broadcasts a {@link CoopAddPacket} so other
      * servers can keep their local state in sync.
      *
-     * <p>No validation is performed here — the caller (InvitationService) is responsible for
-     * checking the coop limit and ensuring the player is not already a member or coop.
+     * <p>The island's coop cap is enforced here rather than left to the caller: a caller that
+     * checked it did so against its own cached snapshot, which another server may have filled since.
+     * Ensuring the player is not already a member or coop is still the caller's job.
      *
-     * @return the persisted {@link IslandCoop} entry
+     * @return the persisted {@link IslandCoop} entry, or a future failed with
+     *         {@link IslandFullException} when the island is at its coop cap
      */
     public CompletableFuture<IslandCoop> add(Island island, UUID addedBy, UUID playerUuid) {
+        int limit = plugin.upgrades().coopLimit(island);
+        if (island.coops().size() >= limit)
+            return CompletableFuture.failedFuture(new IslandFullException(island.uniqueId(), limit, false));
+
         IslandCoop coop = new IslandCoop(island.uniqueId(), playerUuid, addedBy, System.currentTimeMillis());
         return repository.add(coop).thenApply(saved -> {
             island.coops().add(saved);

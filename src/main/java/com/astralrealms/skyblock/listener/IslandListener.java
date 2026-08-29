@@ -12,6 +12,7 @@ import com.astralrealms.core.paper.AstralPaperAPI;
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.configuration.ASMessages;
 import com.astralrealms.skyblock.event.island.world.IslandWorldLoadedEvent;
+import com.astralrealms.skyblock.event.island.world.IslandWorldUnloadedEvent;
 import com.astralrealms.skyblock.model.island.Island;
 
 import lombok.RequiredArgsConstructor;
@@ -45,7 +46,16 @@ public class IslandListener implements Listener {
     }
 
     /**
-     * Stops a banned player from teleporting into the island they are banned from — this covers
+     * Drops the block counts of an island whose world has left this server: they describe blocks we
+     * can no longer see, and the scan that runs when it next loads here seeds them again.
+     */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onIslandWorldUnloaded(IslandWorldUnloadedEvent event) {
+        this.plugin.blockLimits().forget(event.island().uniqueId());
+    }
+
+    /**
+     * Stops a banned player, and a visitor to a closed island, from teleporting in — this covers
      * warps, {@code /is go} and any other plugin's teleport into the world.
      */
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
@@ -57,17 +67,21 @@ public class IslandListener implements Listener {
         Island island = this.plugin.worlds()
                 .findByWorld(target)
                 .orElse(null);
-        if (island == null || !island.isBanned(event.getPlayer().getUniqueId()))
+        if (island == null)
+            return;
+
+        Player player = event.getPlayer();
+        ASMessages denial = denialFor(island, player);
+        if (denial == null)
             return;
 
         event.setCancelled(true);
-        ASMessages.BANNED_FROM_ISLAND.message(
-                event.getPlayer(),
-                AstralPaperAPI.createPlaceholderContainer(event.getPlayer()).registerPlaceholder(island));
+        denial.message(player, AstralPaperAPI.createPlaceholderContainer(player).registerPlaceholder(island));
     }
 
     /**
-     * Evicts a player who logs back in inside an island they were banned from while offline.
+     * Evicts a player who logs back in inside an island that has since barred them — they were
+     * banned, or the island was closed, while they were offline.
      */
     @EventHandler(priority = EventPriority.MONITOR)
     public void onJoin(PlayerJoinEvent event) {
@@ -75,12 +89,26 @@ public class IslandListener implements Listener {
         Island island = this.plugin.worlds()
                 .findByWorld(player.getWorld())
                 .orElse(null);
-        if (island == null || !island.isBanned(player.getUniqueId()))
+        if (island == null)
             return;
 
-        ASMessages.BANNED_FROM_ISLAND.message(
-                player,
-                AstralPaperAPI.createPlaceholderContainer(player).registerPlaceholder(island));
+        ASMessages denial = denialFor(island, player);
+        if (denial == null)
+            return;
+
+        denial.message(player, AstralPaperAPI.createPlaceholderContainer(player).registerPlaceholder(island));
         this.plugin.bans().evict(island.uniqueId(), player.getUniqueId());
+    }
+
+    /**
+     * Why this player may not be in this island's world, or {@code null} when they may. A ban is
+     * checked first: it is the stronger of the two, and outlives the island being reopened.
+     */
+    private ASMessages denialFor(Island island, Player player) {
+        if (island.isBanned(player.getUniqueId()))
+            return ASMessages.BANNED_FROM_ISLAND;
+        if (island.locked() && !this.plugin.islands().mayEnterClosed(island, player))
+            return ASMessages.ISLAND_IS_CLOSED;
+        return null;
     }
 }

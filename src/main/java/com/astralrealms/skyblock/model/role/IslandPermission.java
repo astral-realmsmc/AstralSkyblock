@@ -21,7 +21,6 @@ public enum IslandPermission implements ConfigurationEnum<ItemStackWrapper> {
     COOP_MEMBER,
     DELETE_WARP,
     DEMOTE_MEMBERS,
-    DEPOSIT_MONEY,
     DISBAND_ISLAND,
     DROP_ITEMS,
     DYE_SHEEP,
@@ -34,7 +33,6 @@ public enum IslandPermission implements ConfigurationEnum<ItemStackWrapper> {
     FLY,
     IGNITE_CREEPER,
     INVITE_MEMBER,
-    ISLAND_CHEST,
     KICK_MEMBER,
     LEASH,
     MINECART_ENTER,
@@ -44,7 +42,6 @@ public enum IslandPermission implements ConfigurationEnum<ItemStackWrapper> {
     PICKUP_DROPS,
     PROMOTE_MEMBERS,
     RANKUP,
-    RATINGS_SHOW,
     SADDLE_ENTITY,
     SCULK_SENSOR,
     SET_BIOME,
@@ -57,8 +54,7 @@ public enum IslandPermission implements ConfigurationEnum<ItemStackWrapper> {
     UNCOOP_MEMBER,
     VALUABLE_BREAK,
     VILLAGER_TRADING,
-    WIND_CHARGE,
-    WITHDRAW_MONEY;
+    WIND_CHARGE;
 
     @Setter
     @Getter

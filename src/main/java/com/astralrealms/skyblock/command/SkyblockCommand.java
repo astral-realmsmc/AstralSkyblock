@@ -2,11 +2,13 @@ package com.astralrealms.skyblock.command;
 
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.Nullable;
 
+import com.astralrealms.core.model.player.MinecraftPlayer;
 import com.astralrealms.core.paper.AstralPaperAPI;
 import com.astralrealms.core.provider.ItemProvider;
 import com.astralrealms.core.service.impl.TeleportationService;
@@ -88,6 +90,62 @@ public class SkyblockCommand extends BaseCommand {
                             .orElseThrow(() -> new IllegalStateException("TeleportationService not found"));
                     teleportationService.teleport(player.getUniqueId(), result);
                 });
+    }
+
+    @Subcommand("rename|setname")
+    @Description("Renames your island")
+    @Syntax("<name>")
+    public void onRename(Player player, String name) {
+        withIsland(player, island -> this.plugin.islands().rename(player, island, name));
+    }
+
+    @Subcommand("sethome")
+    @Description("Moves your island spawn to where you are standing")
+    public void onSetHome(Player player) {
+        withIsland(player, island -> this.plugin.islands().setHome(player, island));
+    }
+
+    @Subcommand("close|lock")
+    @Description("Closes your island to visitors")
+    public void onClose(Player player) {
+        withIsland(player, island -> this.plugin.islands().setLocked(player, island, true));
+    }
+
+    @Subcommand("open|unlock")
+    @Description("Opens your island to visitors")
+    public void onOpen(Player player) {
+        withIsland(player, island -> this.plugin.islands().setLocked(player, island, false));
+    }
+
+    @Subcommand("expel")
+    @Description("Sends a visitor off your island")
+    @Syntax("<player>")
+    @CommandCompletion("@players")
+    public void onExpel(Player player, MinecraftPlayer target) {
+        withIsland(player, island -> this.plugin.islands().expel(player, island, target.uniqueId()));
+    }
+
+    @Subcommand("biome")
+    @Description("Changes the biome of your island")
+    @Syntax("<biome>")
+    @CommandCompletion("@biomes")
+    public void onBiome(Player player, String biome) {
+        withIsland(player, island -> this.plugin.biomes().setBiome(player, island, biome));
+    }
+
+    /**
+     * Runs {@code action} against the caller's island, or tells them they have none. The services
+     * behind these subcommands all do their own permission check, so this only resolves the island.
+     */
+    private void withIsland(Player player, Consumer<Island> action) {
+        Island island = this.plugin.members()
+                .findPlayerIsland(player.getUniqueId())
+                .orElse(null);
+        if (island == null) {
+            ASMessages.NO_ISLAND.message(player);
+            return;
+        }
+        action.accept(island);
     }
 
     @Subcommand("reload")

@@ -1,23 +1,27 @@
 package com.astralrealms.skyblock.service;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.Unmodifiable;
 
 import com.astralrealms.core.model.location.NetworkLocation;
 import com.astralrealms.core.paper.AstralPaperAPI;
+import com.astralrealms.core.paper.placeholder.MinecraftPlayerPlaceholder;
 import com.astralrealms.core.placeholder.container.PlaceholderContainer;
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.configuration.ASMessages;
 import com.astralrealms.skyblock.event.island.IslandCreateEvent;
 import com.astralrealms.skyblock.event.island.IslandDeletedEvent;
 import com.astralrealms.skyblock.listener.IslandSettingsListener;
+import com.astralrealms.skyblock.messaging.packet.island.IslandClosedPacket;
 import com.astralrealms.skyblock.messaging.packet.island.IslandDeletePacket;
 import com.astralrealms.skyblock.messaging.packet.island.IslandLoadRequestPacket;
 import com.astralrealms.skyblock.messaging.packet.island.IslandLoadResponsePacket;
@@ -27,6 +31,7 @@ import com.astralrealms.skyblock.model.island.IslandSettings;
 import com.astralrealms.skyblock.model.role.IslandPermission;
 import com.astralrealms.skyblock.repository.IslandRepository;
 import com.astralrealms.skyblock.utils.ASConstants;
+import com.astralrealms.skyblock.utils.PlayerText;
 
 import lombok.Getter;
 
@@ -82,6 +87,10 @@ public class IslandService {
                             plugin.messaging().replyTo(new IslandLoadResponsePacket(false), envelope);
                             return null;
                         });
+            } else if (packet instanceof IslandClosedPacket closed) {
+                // The island was closed on another server; send its visitors away if we host it.
+                // Broadcast, so no reply is expected.
+                Bukkit.getScheduler().runTask(plugin, () -> expelVisitors(closed.islandId()));
             } else if (packet instanceof IslandDeletePacket delete) {
                 // Another server deleted this island. Mark it here unconditionally — not only when we
                 // currently host it: a load may be in flight, and it would otherwise register a world
@@ -174,7 +183,7 @@ public class IslandService {
                     Island island = new Island(
                             UUID.randomUUID(),
                             finalName,
-                            true,
+                            false, // open to visitors until the owner closes it with /is close
                             0,
                             0,
                             blueprint.spawnLocation().x(),
@@ -294,6 +303,234 @@ public class IslandService {
                     // Trigger event
                     new IslandDeletedEvent(player, island).callEvent();
                 });
+    }
+
+    // =========================================================================
+    //  Identity
+    // =========================================================================
+
+    /**
+     * Renames an island. Requires {@link IslandPermission#CHANGE_NAME} and a name that is not
+     * already taken — {@code islands.name} is unique network-wide, so the check is a database read
+     * rather than a cache lookup.
+     */
+    public void rename(Player player, Island island, String name) {
+        if (!island.hasPermission(player, IslandPermission.CHANGE_NAME)) {
+            ASMessages.NO_PERMISSION.message(player);
+            return;
+        }
+
+        PlaceholderContainer placeholders = AstralPaperAPI.createPlaceholderContainer(player)
+                .registerPlaceholder(island);
+
+        String sanitised = PlayerText.sanitise(name);
+        if (sanitised == null || !PlayerText.withinLimit(name, PlayerText.ISLAND_NAME_LIMIT)) {
+            ASMessages.ISLAND_NAME_INVALID.message(player, placeholders.registerDirect("maximum", PlayerText.ISLAND_NAME_LIMIT));
+            return;
+        }
+        placeholders.registerDirect("name", sanitised);
+
+        if (sanitised.equalsIgnoreCase(island.name())) {
+            ASMessages.NAME_ALREADY_TAKEN.message(player, placeholders);
+            return;
+        }
+
+        this.repository.existsByName(sanitised)
+                .thenCompose(exists -> {
+                    if (exists) {
+                        ASMessages.NAME_ALREADY_TAKEN.message(player, placeholders);
+                        return CompletableFuture.completedFuture(null);
+                    }
+
+                    String previous = island.name();
+                    island.name(sanitised);
+                    return this.repository.save(island)
+                            .<Void>handle((saved, throwable) -> {
+                                if (throwable != null) {
+                                    // The unique index can still reject the name between the check and
+                                    // the write; put the island back the way it was either way.
+                                    island.name(previous);
+                                    this.plugin.getSLF4JLogger().error("Failed to rename island {} to {}", island.uniqueId(), sanitised, throwable);
+                                    ASMessages.UNEXPECTED_ERROR.message(player, placeholders);
+                                    return null;
+                                }
+                                ASMessages.ISLAND_RENAMED.message(player, placeholders);
+                                return null;
+                            });
+                })
+                .exceptionally(throwable -> {
+                    this.plugin.getSLF4JLogger().error("Failed to check whether the island name {} is taken", sanitised, throwable);
+                    ASMessages.UNEXPECTED_ERROR.message(player, placeholders);
+                    return null;
+                });
+    }
+
+    /**
+     * Moves the island spawn to where the player is standing. Requires
+     * {@link IslandPermission#SET_HOME} and a position inside the island's own world.
+     */
+    public void setHome(Player player, Island island) {
+        if (!island.hasPermission(player, IslandPermission.SET_HOME)) {
+            ASMessages.NO_PERMISSION.message(player);
+            return;
+        }
+
+        PlaceholderContainer placeholders = AstralPaperAPI.createPlaceholderContainer(player)
+                .registerPlaceholder(island);
+        if (!player.getWorld().getName().equals(island.uniqueId().toString())) {
+            ASMessages.NOT_ON_ISLAND.message(player, placeholders);
+            return;
+        }
+
+        double previousX = island.spawnX();
+        double previousY = island.spawnY();
+        double previousZ = island.spawnZ();
+        float previousYaw = island.spawnYaw();
+        float previousPitch = island.spawnPitch();
+
+        island.location(player.getLocation());
+        this.repository.save(island)
+                .whenComplete((saved, throwable) -> {
+                    if (throwable != null) {
+                        island.location(new Location(player.getWorld(), previousX, previousY, previousZ, previousYaw, previousPitch));
+                        this.plugin.getSLF4JLogger().error("Failed to move the spawn of island {}", island.uniqueId(), throwable);
+                        ASMessages.UNEXPECTED_ERROR.message(player, placeholders);
+                        return;
+                    }
+                    ASMessages.ISLAND_HOME_SET.message(player, placeholders);
+                });
+    }
+
+    // =========================================================================
+    //  Access
+    // =========================================================================
+
+    /**
+     * Opens or closes an island to visitors. Closing requires {@link IslandPermission#CLOSE_ISLAND}
+     * and opening {@link IslandPermission#OPEN_ISLAND}; the flag itself is enforced on entry by
+     * {@link com.astralrealms.skyblock.listener.IslandListener}.
+     */
+    public void setLocked(Player player, Island island, boolean locked) {
+        IslandPermission required = locked ? IslandPermission.CLOSE_ISLAND : IslandPermission.OPEN_ISLAND;
+        if (!island.hasPermission(player, required)) {
+            ASMessages.NO_PERMISSION.message(player);
+            return;
+        }
+
+        PlaceholderContainer placeholders = AstralPaperAPI.createPlaceholderContainer(player)
+                .registerPlaceholder(island);
+        if (island.locked() == locked) {
+            (locked ? ASMessages.ISLAND_ALREADY_CLOSED : ASMessages.ISLAND_ALREADY_OPEN).message(player, placeholders);
+            return;
+        }
+
+        island.locked(locked);
+        this.repository.save(island)
+                .whenComplete((saved, throwable) -> {
+                    if (throwable != null) {
+                        island.locked(!locked); // the write never landed; keep memory and the row in step
+                        this.plugin.getSLF4JLogger().error("Failed to {} island {}", locked ? "close" : "open", island.uniqueId(), throwable);
+                        ASMessages.UNEXPECTED_ERROR.message(player, placeholders);
+                        return;
+                    }
+
+                    (locked ? ASMessages.ISLAND_CLOSED : ASMessages.ISLAND_OPENED).message(player, placeholders);
+
+                    // Closing only bars visitors who have yet to arrive; the ones already standing on
+                    // the island are sent away by whichever server hosts its world.
+                    if (locked)
+                        closeToVisitors(island.uniqueId());
+                });
+    }
+
+    /**
+     * Sends every visitor off a closed island: locally when its world is hosted here, and by
+     * broadcast otherwise, since the player who closed it need not be on the hosting server.
+     */
+    private void closeToVisitors(UUID islandId) {
+        if (this.plugin.worlds().findByIslandId(islandId).isPresent()) {
+            Bukkit.getScheduler().runTask(this.plugin, () -> expelVisitors(islandId));
+            return;
+        }
+
+        this.plugin.messaging()
+                .send(ASConstants.ISLAND_MANAGEMENT_CHANNEL, new IslandClosedPacket(islandId))
+                .exceptionally(throwable -> {
+                    this.plugin.getSLF4JLogger().error("Failed to broadcast the closing of island {}", islandId, throwable);
+                    return null;
+                });
+    }
+
+    /**
+     * Evicts everyone standing in the island's world who is neither an insider nor allowed to walk
+     * past a closed gate. Main thread only, and a no-op when the world is not hosted here.
+     */
+    public void expelVisitors(UUID islandId) {
+        Island island = this.repository.findCachedById(islandId).orElse(null);
+        if (island == null)
+            return;
+
+        this.plugin.worlds()
+                .findByIslandId(islandId)
+                .ifPresent(instance -> {
+                    for (Player player : List.copyOf(instance.getBukkitWorld().getPlayers())) {
+                        if (mayEnterClosed(island, player))
+                            continue;
+
+                        ASMessages.ISLAND_IS_CLOSED.message(
+                                player,
+                                AstralPaperAPI.createPlaceholderContainer(player).registerPlaceholder(island));
+                        this.plugin.bans().evict(islandId, player.getUniqueId());
+                    }
+                });
+    }
+
+    /** Whether a closed island still lets this player in: its own people, and holders of the bypass. */
+    public boolean mayEnterClosed(Island island, Player player) {
+        return island.isInsider(player) || island.hasPermission(player, IslandPermission.CLOSE_BYPASS);
+    }
+
+    /**
+     * Expels a visitor from an island world. Requires {@link IslandPermission#EXPEL_PLAYERS}; the
+     * island's own people are kicked or uncooped rather than expelled, and a holder of
+     * {@link IslandPermission#EXPEL_BYPASS} cannot be expelled at all.
+     *
+     * <p>Only a player standing in the island's world on this server can be expelled, which is the
+     * only case the command is for — the executor is on the island, and so is their target.
+     */
+    public void expel(Player executor, Island island, UUID targetUuid) {
+        PlaceholderContainer placeholders = AstralPaperAPI.createPlaceholderContainer(executor)
+                .registerPlaceholder(island)
+                .registerDirect("target", new MinecraftPlayerPlaceholder(targetUuid));
+
+        if (!island.hasPermission(executor, IslandPermission.EXPEL_PLAYERS)) {
+            ASMessages.NO_PERMISSION.message(executor);
+            return;
+        }
+        if (executor.getUniqueId().equals(targetUuid)) {
+            ASMessages.CANNOT_EXPEL_SELF.message(executor, placeholders);
+            return;
+        }
+
+        Player target = Bukkit.getPlayer(targetUuid);
+        if (target == null || !target.getWorld().getName().equals(island.uniqueId().toString())) {
+            ASMessages.PLAYER_NOT_ON_ISLAND.message(executor, placeholders);
+            return;
+        }
+        // Checked before insider status so that the owner and staff — who hold every permission —
+        // are reported as protected rather than as ordinary members.
+        if (island.hasPermission(target, IslandPermission.EXPEL_BYPASS)) {
+            ASMessages.CANNOT_EXPEL_BYPASS.message(executor, placeholders);
+            return;
+        }
+        if (island.isInsider(target)) {
+            ASMessages.CANNOT_EXPEL_INSIDER.message(executor, placeholders);
+            return;
+        }
+
+        this.plugin.bans().evict(island.uniqueId(), targetUuid);
+        ASMessages.PLAYER_EXPELLED_SENDER.message(executor, placeholders);
+        ASMessages.PLAYER_EXPELLED_TARGET.message(target, placeholders);
     }
 
     /**

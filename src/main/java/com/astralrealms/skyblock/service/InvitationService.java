@@ -163,6 +163,16 @@ public class InvitationService {
                                         .registerDirect("sender", new MinecraftPlayerPlaceholder(invitation.senderId()));
 
                                 if (ex != null) {
+                                    // The island filled up between the check above and the write —
+                                    // another server got there first. That is an ordinary outcome,
+                                    // not a failure to report as one.
+                                    IslandFullException full = asIslandFull(ex);
+                                    if (full != null) {
+                                        (full.member() ? ASMessages.MEMBER_LIMIT_REACHED : ASMessages.COOP_LIMIT_REACHED)
+                                                .message(player, placeholders.registerDirect("limit", full.limit()));
+                                        return;
+                                    }
+
                                     ASMessages.UNEXPECTED_ERROR.message(player, placeholders);
                                     plugin.getSLF4JLogger().error("Failed to accept invitation for island {}: {}", island.uniqueId(), ex.getMessage(), ex);
                                     return;
@@ -259,9 +269,19 @@ public class InvitationService {
                 });
     }
 
+    /** Unwraps the completion wrapper a failed future arrives in, if it holds a full-island refusal. */
+    private static IslandFullException asIslandFull(Throwable throwable) {
+        if (throwable instanceof IslandFullException full)
+            return full;
+        return throwable.getCause() instanceof IslandFullException cause ? cause : null;
+    }
+
     /**
      * Whether the island has no room left for another member (or coop) under its upgrade-driven cap.
      * Registers the applicable limit as the {@code limit} placeholder for the caller's message.
+     *
+     * <p>An early, friendly check only: the cap is enforced for real by {@link MemberService} and
+     * {@link CoopService} at the moment the row is written.
      */
     private boolean isFull(Island island, InvitationType type, PlaceholderContainer placeholders) {
         int limit = type == InvitationType.MEMBER

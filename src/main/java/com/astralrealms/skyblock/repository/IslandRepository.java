@@ -33,6 +33,9 @@ import com.github.benmanes.caffeine.cache.*;
 public class IslandRepository extends UUIDSyncedRepository<Island> {
 
     private final Map<String, UUID> nameIslandMap = new ConcurrentHashMap<>();
+    // Reverse of nameIslandMap, so a rename can drop the island's previous name in O(1) rather than
+    // walking an index that holds an entry per island on the network.
+    private final Map<UUID, String> islandNameMap = new ConcurrentHashMap<>();
     private final CoopRepository coopRepository;
 
     public IslandRepository(AstralSkyblock plugin) {
@@ -50,10 +53,13 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
         return Caffeine.newBuilder()
                 .maximumSize(250_000)
                 .evictionListener((RemovalListener<UUID, Island>) (key, value, _) -> {
+                    if (key != null) {
+                        String indexed = islandNameMap.remove(key);
+                        if (indexed != null)
+                            nameIslandMap.remove(indexed, key);
+                    }
                     if (value != null && value.name() != null)
                         nameIslandMap.remove(value.name(), key);
-                    else if (key != null)
-                        nameIslandMap.values().remove(key);
                 })
                 .buildAsync(cacheLoader);
     }
@@ -61,22 +67,31 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
     @Override
     protected void cacheLocally(Island value) {
         super.cacheLocally(value);
+
+        // A rename reaches this server as an update packet that refreshes the island in place, so the
+        // previous name has to be retired here or it would keep resolving to this island forever.
+        String previousName = value.name() == null
+                ? this.islandNameMap.remove(value.uniqueId())
+                : this.islandNameMap.put(value.uniqueId(), value.name());
+        if (previousName != null && !previousName.equals(value.name()))
+            this.nameIslandMap.remove(previousName, value.uniqueId());
+
         if (value.name() != null)
             this.nameIslandMap.put(value.name(), value.uniqueId());
     }
 
     /**
      * Keeps the name index in step with L1 evictions: when an island is dropped from the local cache
-     * (delete, or a remote invalidation), its name entry is removed too. A rename leaves the previous
-     * name pointing here until the next invalidation, so it is matched and cleared by value as a fallback.
+     * (delete, or a remote invalidation), its name entry is removed too.
      */
     @Override
     public @Nullable Island invalidateLocally(UUID key) {
         Island value = super.invalidateLocally(key);
+        String indexed = this.islandNameMap.remove(key);
+        if (indexed != null)
+            this.nameIslandMap.remove(indexed, key);
         if (value != null && value.name() != null)
             this.nameIslandMap.remove(value.name(), key);
-        else
-            this.nameIslandMap.values().remove(key);
         return value;
     }
 

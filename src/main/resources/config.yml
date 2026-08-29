@@ -9,14 +9,21 @@ world-idle-unload-seconds: 300
 # Server group players are sent to when they are evicted from an island (e.g. on a ban).
 fallback-group: "hub"
 
-# Maximum number of warps an island may define. 0 uses the default of 5.
-maximum-warps: 5
+# Maximum number of warps an island may define. 0 uses the default of 1.
+maximum-warps: 1
 
-# Baseline values used when the matching upgrade has no blueprint configured.
+# Baseline values used when the matching upgrade has no blueprint configured — an island always
+# has a member cap, a border and so on, whether or not the upgrade behind it exists.
 defaults:
   member-limit: 5
   coop-limit: 5
   world-border-size: 100
+  hopper-limit: 32
+  minecart-limit: 16
+  # Multipliers. 1.0 is vanilla behaviour; these are what an island gets before any upgrade.
+  crop-growth-multiplier: 1.0
+  spawner-rate-multiplier: 1.0
+  mob-drops-multiplier: 1.0
 
 # Island scoring. An island's value is the sum of its blocks' worth (block-values.yml);
 # its level is that value divided by points-per-level.

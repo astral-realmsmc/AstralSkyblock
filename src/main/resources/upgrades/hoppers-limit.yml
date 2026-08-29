@@ -1,0 +1,29 @@
+# Maximum number of hoppers that may stand inside the island's border. `value` is the cap itself;
+# level 0 is the starting cap every island gets for free.
+#
+# The count is seeded by the island's level scan and kept current as hoppers are placed and broken,
+# so it costs nothing to check on placement.
+type: HOPPERS_LIMIT
+levels:
+  0:
+    level: 0
+    price: 0
+    value: 32
+  1:
+    level: 1
+    price: 10000
+    currency: "default"
+    currency-display: "coins"
+    value: 64
+  2:
+    level: 2
+    price: 35000
+    currency: "default"
+    currency-display: "coins"
+    value: 128
+  3:
+    level: 3
+    price: 90000
+    currency: "default"
+    currency-display: "coins"
+    value: 256

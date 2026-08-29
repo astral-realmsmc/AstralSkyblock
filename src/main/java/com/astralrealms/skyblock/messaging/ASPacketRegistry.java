@@ -3,6 +3,7 @@ package com.astralrealms.skyblock.messaging;
 import com.astralrealms.core.packet.PacketRegistry;
 import com.astralrealms.skyblock.messaging.packet.island.CoopAddPacket;
 import com.astralrealms.skyblock.messaging.packet.island.CoopRemovePacket;
+import com.astralrealms.skyblock.messaging.packet.island.IslandClosedPacket;
 import com.astralrealms.skyblock.messaging.packet.island.IslandDeletePacket;
 import com.astralrealms.skyblock.messaging.packet.island.IslandEvictPacket;
 import com.astralrealms.skyblock.messaging.packet.island.IslandLoadRequestPacket;
@@ -44,5 +45,6 @@ public class ASPacketRegistry extends PacketRegistry {
         this.registerPacket(0x105, CoopRemovePacket::new);
         this.registerPacket(0x106, IslandDeletePacket::new);
         this.registerPacket(0x107, IslandEvictPacket::new);
+        this.registerPacket(0x108, IslandClosedPacket::new);
     }
 }

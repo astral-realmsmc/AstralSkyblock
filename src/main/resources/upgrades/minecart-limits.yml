@@ -1,0 +1,20 @@
+# Maximum number of minecarts that may exist in the island's world. `value` is the cap itself.
+# Counted live from the world's entities, so a minecart that is destroyed frees its slot at once.
+type: MINECART_LIMITS
+levels:
+  0:
+    level: 0
+    price: 0
+    value: 16
+  1:
+    level: 1
+    price: 7500
+    currency: "default"
+    currency-display: "coins"
+    value: 32
+  2:
+    level: 2
+    price: 25000
+    currency: "default"
+    currency-display: "coins"
+    value: 64

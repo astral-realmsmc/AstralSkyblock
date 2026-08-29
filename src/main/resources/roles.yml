@@ -7,9 +7,9 @@ roles:
     icon:
       material: "stone"
       name: "Visitor"
-    # Visitors can only look around and rate the island.
-    permissions:
-      - RATINGS_SHOW
+    # Visitors get nothing by default: they may look around, and that is it. Grant
+    # entries here (or through the in-game permissions menu) to loosen that.
+    permissions: []
   co-op:
     type: COOP
     weight: 1
@@ -19,15 +19,13 @@ roles:
       material: "gold_ingot"
       name: "Co-Op"
     # Trusted helpers: build, break and interact with the world,
-    # but no island management, economy or warps.
+    # but no island management and no warps.
     permissions:
-      - RATINGS_SHOW
       - BUILD
       - BREAK
       - BRUSH
       - DROP_ITEMS
       - PICKUP_DROPS
-      - ISLAND_CHEST
       - FLY
       - ANIMAL_BREED
       - ANIMAL_SHEAR
@@ -54,16 +52,14 @@ roles:
     icon:
       material: "iron_ingot"
       name: "Member"
-    # Full islanders: everything a co-op can do, plus economy,
-    # warps, homes, invites and valuable/spawner harvesting.
+    # Full islanders: everything a co-op can do, plus warps, the island
+    # spawn, invites, expelling visitors and valuable/spawner harvesting.
     permissions:
-      - RATINGS_SHOW
       - BUILD
       - BREAK
       - BRUSH
       - DROP_ITEMS
       - PICKUP_DROPS
-      - ISLAND_CHEST
       - FLY
       - ANIMAL_BREED
       - ANIMAL_SHEAR
@@ -87,8 +83,6 @@ roles:
       - SET_HOME
       - SET_WARP
       - DELETE_WARP
-      - DEPOSIT_MONEY
-      - WITHDRAW_MONEY
       - RANKUP
       - INVITE_MEMBER
       - COOP_MEMBER
@@ -102,8 +96,9 @@ roles:
     icon:
       material: "diamond"
       name: "Admin"
-    # Island administrators: everything a member can do, plus member,
-    # role, permission and settings management. Only DISBAND_ISLAND
-    # stays reserved for the island owner.
+    # Island administrators. ALL is a wildcard: it grants every permission,
+    # DISBAND_ISLAND included. Replace it with an explicit list if you want to
+    # hold something back — the owner is structural and bypasses checks anyway,
+    # so nothing is lost by spelling this role out.
     permissions:
       - ALL

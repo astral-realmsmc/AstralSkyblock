@@ -81,12 +81,6 @@ demote-members:
   lore:
     - "<gray>Allows you to demote island members."
 
-deposit-money:
-  material: GOLD_INGOT
-  name: "<green>Deposit Money"
-  lore:
-    - "<gray>Allows you to deposit money into the island bank."
-
 disband-island:
   material: TNT
   name: "<green>Disband Island"
@@ -159,12 +153,6 @@ invite-member:
   lore:
     - "<gray>Allows you to invite players to the island."
 
-island-chest:
-  material: CHEST
-  name: "<green>Island Chest"
-  lore:
-    - "<gray>Allows you to access the island chest."
-
 kick-member:
   material: IRON_BOOTS
   name: "<green>Kick Member"
@@ -218,12 +206,6 @@ rankup:
   name: "<green>Rank Up"
   lore:
     - "<gray>Allows you to rank up the island."
-
-ratings-show:
-  material: NETHER_STAR
-  name: "<green>Show Ratings"
-  lore:
-    - "<gray>Allows you to show the island ratings."
 
 saddle-entity:
   material: SADDLE
@@ -303,8 +285,3 @@ wind-charge:
   lore:
     - "<gray>Allows you to use wind charges."
 
-withdraw-money:
-  material: GOLD_NUGGET
-  name: "<green>Withdraw Money"
-  lore:
-    - "<gray>Allows you to withdraw money from the island bank."

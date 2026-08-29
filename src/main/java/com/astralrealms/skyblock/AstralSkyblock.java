@@ -41,6 +41,7 @@ import com.astralrealms.skyblock.command.MemberCommand;
 import com.astralrealms.skyblock.command.SkyblockCommand;
 import com.astralrealms.skyblock.command.UpgradeCommand;
 import com.astralrealms.skyblock.command.WarpCommand;
+import com.astralrealms.skyblock.command.completion.BiomeCompletionHandler;
 import com.astralrealms.skyblock.command.completion.IslandBanCompletionHandler;
 import com.astralrealms.skyblock.command.completion.IslandBlueprintCompletionHandler;
 import com.astralrealms.skyblock.command.completion.IslandCompletionHandler;
@@ -91,6 +92,8 @@ public final class AstralSkyblock extends AstralPaperPlugin {
     private GeneratorService generators;
     private UpgradeService upgrades;
     private LevelService levels;
+    private BiomeService biomes;
+    private BlockLimitService blockLimits;
     private MenuContainer menus;
     private DialogContainer dialogs;
 
@@ -169,8 +172,10 @@ public final class AstralSkyblock extends AstralPaperPlugin {
         this.islands = new IslandService(this);
         this.players = new PlayerService(this);
         this.servers = new ServerService(this);
+        this.blockLimits = new BlockLimitService();
         this.levels = new LevelService(this);
         this.levels.load();
+        this.biomes = new BiomeService(this);
 
         // Commands
         // -- Completion
@@ -180,6 +185,7 @@ public final class AstralSkyblock extends AstralPaperPlugin {
         this.registerCompletion("islandWarps", new IslandWarpCompletionHandler(this));
         this.registerCompletion("islandBans", new IslandBanCompletionHandler(this));
         this.registerCompletion("islandUpgrades", new IslandUpgradeCompletionHandler(this));
+        this.registerCompletion("biomes", new BiomeCompletionHandler(this));
         // -- Context
         this.registerContext(IslandBlueprint.class, new IslandBlueprintContextResolver(this));
         this.commands().getCommandContexts().registerIssuerAwareContext(Island.class, new IslandContextResolver(this));
@@ -203,7 +209,8 @@ public final class AstralSkyblock extends AstralPaperPlugin {
         if (this.configuration.isIslandServer())
             this.registerListeners(
                     new IslandSettingsListener(this),
-                    new IslandPermissionsListener(this)
+                    new IslandPermissionsListener(this),
+                    new UpgradeEffectsListener(this)
             );
         if (this.configuration.generators().enabled())
             this.registerListener(new GeneratorListener(this));
@@ -219,6 +226,10 @@ public final class AstralSkyblock extends AstralPaperPlugin {
 
         // Worlds
         this.worlds.unload();
+
+        // Per-server block counts describe worlds that are going away with us.
+        if (this.blockLimits != null)
+            this.blockLimits.clear();
 
         // Messaging
         if (this.messaging != null)

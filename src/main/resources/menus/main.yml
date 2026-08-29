@@ -143,6 +143,37 @@ items:
       - ""
       - "<red>Vous n'avez pas la permission"
       - "<red>d'accéder à ce menu."
+  # Leave
+  leave:
+    slot: 29
+    material: "OAK_DOOR"
+    priority: 2
+    name: "<bold><primary_color>Quitter l'île"
+    lore:
+      - ""
+      - "  <text_color>Permet de <secondary_color>quitter <text_color>l'île."
+      - ""
+      - "<white>%img_icons:left-click% <information_color>Quitter l'île"
+    view-requirements:
+      - "[compare] %skyblock_player_island_isOwner% == false"
+    actions:
+      - "[open-menu] island-confirm-leave:island=%parameters_island%"
+  # Disband
+  disband:
+    slot: 33
+    material: "TNT"
+    priority: 2
+    name: "<bold><red>Supprimer l'île"
+    lore:
+      - ""
+      - "  <text_color>Permet de <red>supprimer <text_color>l'île"
+      - "  <text_color>et tout ce qu'elle contient."
+      - ""
+      - "<white>%img_icons:left-click% <information_color>Supprimer l'île"
+    view-requirements:
+      - "[compare] %skyblock_player_island_hasPermission_DISBAND_ISLAND% == true"
+    actions:
+      - "[open-menu] island-confirm-disband:island=%parameters_island%"
   # Bans
   bans:
     slot: 24

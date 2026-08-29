@@ -1,0 +1,30 @@
+# How many times the vanilla amount mobs drop when they die on the island. `value` is the
+# multiplier: 2 doubles every stack. A fractional multiplier is applied as a chance, so 1.5 gives
+# each stack a 50% chance of a second helping.
+#
+# Only the mob's own drops are multiplied — equipment it was carrying is left alone, and dropped
+# experience is untouched.
+type: MOB_DROPS
+levels:
+  0:
+    level: 0
+    price: 0
+    value: 1
+  1:
+    level: 1
+    price: 15000
+    currency: "default"
+    currency-display: "coins"
+    value: 1.25
+  2:
+    level: 2
+    price: 50000
+    currency: "default"
+    currency-display: "coins"
+    value: 1.5
+  3:
+    level: 3
+    price: 130000
+    currency: "default"
+    currency-display: "coins"
+    value: 2

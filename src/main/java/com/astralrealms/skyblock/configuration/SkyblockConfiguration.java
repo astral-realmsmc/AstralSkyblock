@@ -32,10 +32,10 @@ public record SkyblockConfiguration(int maximumIslands, String islandsGroup, int
         return this.fallbackGroup == null || this.fallbackGroup.isBlank() ? "hub" : this.fallbackGroup;
     }
 
-    /** Maximum number of warps an island may define. {@code 0}/absent falls back to 5. */
+    /** Maximum number of warps an island may define. {@code 0}/absent falls back to 1. */
     @Override
     public int maximumWarps() {
-        return this.maximumWarps <= 0 ? 5 : this.maximumWarps;
+        return this.maximumWarps <= 0 ? 1 : this.maximumWarps;
     }
 
     @Override
@@ -63,14 +63,45 @@ public record SkyblockConfiguration(int maximumIslands, String islandsGroup, int
         return defaults().worldBorderSize();
     }
 
+    /** Hopper cap of an island with no {@code HOPPERS_LIMIT} upgrade configured. */
+    public int defaultHopperLimit() {
+        return defaults().hopperLimit();
+    }
+
+    /** Minecart cap of an island with no {@code MINECART_LIMITS} upgrade configured. */
+    public int defaultMinecartLimit() {
+        return defaults().minecartLimit();
+    }
+
+    /** Crop growth multiplier of an island with no {@code CROP_GROWTH_SPEED} upgrade configured. */
+    public double defaultCropGrowthMultiplier() {
+        return defaults().cropGrowthMultiplier();
+    }
+
+    /** Spawner rate multiplier of an island with no {@code SPAWNERS_RATE} upgrade configured. */
+    public double defaultSpawnerRateMultiplier() {
+        return defaults().spawnerRateMultiplier();
+    }
+
+    /** Mob drop multiplier of an island with no {@code MOB_DROPS} upgrade configured. */
+    public double defaultMobDropsMultiplier() {
+        return defaults().mobDropsMultiplier();
+    }
+
     /**
      * Baseline values used when an upgrade has no blueprint at all — an island always has a member
      * cap and a border, whether or not the corresponding upgrade is configured.
+     *
+     * <p>The multipliers are floored at {@code 1} rather than at some positive value: an absent or
+     * zero entry means "no bonus", and a configuration that slowed crops or thinned drops below
+     * vanilla would be a misconfiguration rather than an upgrade.
      */
     @ConfigSerializable
-    public record Defaults(int memberLimit, int coopLimit, double worldBorderSize) {
+    public record Defaults(int memberLimit, int coopLimit, double worldBorderSize,
+                           int hopperLimit, int minecartLimit, double cropGrowthMultiplier,
+                           double spawnerRateMultiplier, double mobDropsMultiplier) {
 
-        private static final Defaults FALLBACK = new Defaults(0, 0, 0);
+        private static final Defaults FALLBACK = new Defaults(0, 0, 0, 0, 0, 0, 0, 0);
 
         @Override
         public int memberLimit() {
@@ -85,6 +116,31 @@ public record SkyblockConfiguration(int maximumIslands, String islandsGroup, int
         @Override
         public double worldBorderSize() {
             return this.worldBorderSize <= 0 ? 100 : this.worldBorderSize;
+        }
+
+        @Override
+        public int hopperLimit() {
+            return this.hopperLimit <= 0 ? 32 : this.hopperLimit;
+        }
+
+        @Override
+        public int minecartLimit() {
+            return this.minecartLimit <= 0 ? 16 : this.minecartLimit;
+        }
+
+        @Override
+        public double cropGrowthMultiplier() {
+            return Math.max(1, this.cropGrowthMultiplier);
+        }
+
+        @Override
+        public double spawnerRateMultiplier() {
+            return Math.max(1, this.spawnerRateMultiplier);
+        }
+
+        @Override
+        public double mobDropsMultiplier() {
+            return Math.max(1, this.mobDropsMultiplier);
         }
     }
 
