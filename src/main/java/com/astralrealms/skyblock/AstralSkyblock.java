@@ -177,6 +177,9 @@ public final class AstralSkyblock extends AstralPaperPlugin {
         this.levels.load();
         this.biomes = new BiomeService(this);
 
+        // API
+        SkyblockAPI.initialize(this);
+
         // Commands
         // -- Completion
         this.registerCompletion("islandBlueprints", new IslandBlueprintCompletionHandler(this));
