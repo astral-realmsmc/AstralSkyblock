@@ -9,6 +9,8 @@ import java.util.regex.Pattern;
 
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.block.BlockFace;
+import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 
@@ -76,6 +78,10 @@ public class WarpService {
             ASMessages.WARP_NOT_ON_ISLAND.message(player, placeholders);
             return CompletableFuture.completedFuture(null);
         }
+        if (!isSafeSpot(player)) {
+            ASMessages.WARP_UNSAFE.message(player, placeholders);
+            return CompletableFuture.completedFuture(null);
+        }
         if (island.findWarp(name).isPresent()) {
             ASMessages.WARP_ALREADY_EXISTS.message(player, placeholders);
             return CompletableFuture.completedFuture(null);
@@ -98,7 +104,23 @@ public class WarpService {
                 System.currentTimeMillis()
         );
 
-        return persist(island, player, warp, placeholders, ASMessages.WARP_CREATED);
+        // The checks above read this server's snapshot and only spare the database an obviously
+        // doomed write; the binding ones run in the insert's transaction.
+        return repository.create(warp, maximum)
+                .thenCompose(result -> this.plugin.islands().refreshWarps(island.uniqueId()).thenApply(ignored -> result))
+                .handle((result, throwable) -> {
+                    if (throwable != null) {
+                        ASMessages.UNEXPECTED_ERROR.message(player, placeholders);
+                        this.plugin.getSLF4JLogger().error("Failed to create warp {} on island {}", name, island.uniqueId(), throwable);
+                        return null;
+                    }
+                    switch (result) {
+                        case CREATED -> ASMessages.WARP_CREATED.message(player, placeholders.registerPlaceholder(warp));
+                        case NAME_TAKEN -> ASMessages.WARP_ALREADY_EXISTS.message(player, placeholders);
+                        case LIMIT_REACHED -> ASMessages.WARP_LIMIT_REACHED.message(player, placeholders.registerDirect("warp_limit", maximum));
+                    }
+                    return null;
+                });
     }
 
     /**
@@ -186,6 +208,10 @@ public class WarpService {
         return edit(island, player, name, ASMessages.WARP_MOVED, (warp, placeholders) -> {
             if (!isInIslandWorld(player, island)) {
                 ASMessages.WARP_NOT_ON_ISLAND.message(player, placeholders);
+                return false;
+            }
+            if (!isSafeSpot(player)) {
+                ASMessages.WARP_UNSAFE.message(player, placeholders);
                 return false;
             }
             warp.location(player.getLocation());
@@ -297,10 +323,13 @@ public class WarpService {
         }
 
         placeholders.registerPlaceholder(warp);
-        if (!mutation.apply(warp, placeholders))
+        // The edit goes to a copy: the cached warp is what every server keeps serving, and must
+        // not change unless the write goes through.
+        IslandWarp edited = warp.copy();
+        if (!mutation.apply(edited, placeholders))
             return CompletableFuture.completedFuture(null);
 
-        return persist(island, player, warp, placeholders, success);
+        return persist(island, player, edited, placeholders, success);
     }
 
     private CompletableFuture<Void> persist(Island island, Player player, IslandWarp warp,
@@ -328,6 +357,28 @@ public class WarpService {
             return false;
         ASMessages.TEXT_TOO_LONG.message(player, placeholders.registerDirect("maximum", limit));
         return true;
+    }
+
+    /**
+     * Whether visitors can safely land where the player stands: on solid ground (not mid-air over
+     * the void), inside the border, with room to stand and nothing that burns.
+     */
+    private boolean isSafeSpot(Player player) {
+        Location location = player.getLocation();
+        if (!location.getWorld().getWorldBorder().isInside(location))
+            return false;
+        Block feet = location.getBlock();
+        Block head = feet.getRelative(BlockFace.UP);
+        Block ground = feet.getRelative(BlockFace.DOWN);
+        return ground.getType().isSolid()
+               && !feet.getType().isSolid() && !head.getType().isSolid()
+               && !isHazard(feet.getType()) && !isHazard(head.getType()) && !isHazard(ground.getType());
+    }
+
+    private static boolean isHazard(Material material) {
+        return material == Material.LAVA || material == Material.FIRE || material == Material.SOUL_FIRE
+               || material == Material.MAGMA_BLOCK || material == Material.CAMPFIRE || material == Material.SOUL_CAMPFIRE
+               || material == Material.POWDER_SNOW || material == Material.CACTUS || material == Material.SWEET_BERRY_BUSH;
     }
 
     /** Whether the player stands in the island's own world — warps may not point elsewhere. */

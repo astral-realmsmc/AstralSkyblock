@@ -1,15 +1,22 @@
 package com.astralrealms.skyblock.listener;
 
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockState;
 import org.bukkit.block.CreatureSpawner;
 import org.bukkit.block.data.Ageable;
+import org.bukkit.entity.ArmorStand;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Minecart;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -23,6 +30,9 @@ import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.entity.EntityPlaceEvent;
 import org.bukkit.event.entity.SpawnerSpawnEvent;
+import org.bukkit.inventory.EntityEquipment;
+import org.bukkit.inventory.EquipmentSlot;
+import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
 
 import com.astralrealms.core.paper.AstralPaperAPI;
@@ -51,6 +61,8 @@ import lombok.RequiredArgsConstructor;
 public class UpgradeEffectsListener implements Listener {
 
     private final AstralSkyblock plugin;
+    // Spawners whose next delay is already being shortened this tick.
+    private final Set<Location> pendingSpawners = new HashSet<>();
 
     // =========================================================================
     //  Hopper cap
@@ -70,12 +82,19 @@ public class UpgradeEffectsListener implements Listener {
         if (island == null)
             return;
 
+        Player player = event.getPlayer();
+        if (!this.plugin.blockLimits().isCounted(island.uniqueId())) {
+            // Right after the world loads, until its scan lands: the count is unknown.
+            event.setCancelled(true);
+            ASMessages.HOPPER_COUNT_PENDING.message(player, AstralPaperAPI.createPlaceholderContainer(player).registerPlaceholder(island));
+            return;
+        }
+
         int limit = this.plugin.upgrades().hopperLimit(island);
         if (this.plugin.blockLimits().hoppers(island.uniqueId()) < limit)
             return;
 
         event.setCancelled(true);
-        Player player = event.getPlayer();
         ASMessages.HOPPER_LIMIT_REACHED.message(
                 player,
                 AstralPaperAPI.createPlaceholderContainer(player)
@@ -95,7 +114,7 @@ public class UpgradeEffectsListener implements Listener {
 
         Island island = island(event.getBlock().getWorld());
         if (island != null)
-            this.plugin.blockLimits().addHopper(island.uniqueId());
+            this.plugin.blockLimits().addHopper(island.uniqueId(), event.getBlockPlaced());
     }
 
     /** Gives a broken hopper's slot back to the island's cap. */
@@ -106,7 +125,7 @@ public class UpgradeEffectsListener implements Listener {
 
         Island island = island(event.getBlock().getWorld());
         if (island != null)
-            this.plugin.blockLimits().removeHopper(island.uniqueId());
+            this.plugin.blockLimits().removeHopper(island.uniqueId(), event.getBlock());
     }
 
     /** Gives back the slots of hoppers destroyed by an entity's explosion. */
@@ -133,7 +152,7 @@ public class UpgradeEffectsListener implements Listener {
 
         for (Block block : destroyed)
             if (block.getType() == Material.HOPPER)
-                this.plugin.blockLimits().removeHopper(island.uniqueId());
+                this.plugin.blockLimits().removeHopper(island.uniqueId(), block);
     }
 
     // =========================================================================
@@ -159,9 +178,12 @@ public class UpgradeEffectsListener implements Listener {
             return;
 
         int limit = this.plugin.upgrades().minecartLimit(island);
-        // The minecart being placed is already in the world when this fires, so it counts itself:
-        // the cap is crossed at limit + 1, not at limit.
-        if (world.getEntitiesByClass(Minecart.class).size() <= limit)
+        // Counting the others, whether or not the minecart being placed is already in the world when
+        // this fires (it is not, on Paper: assuming it was let one more through than the cap).
+        long others = world.getEntitiesByClass(Minecart.class).stream()
+                .filter(existing -> !existing.equals(minecart))
+                .count();
+        if (others < limit)
             return;
 
         event.setCancelled(true);
@@ -229,8 +251,15 @@ public class UpgradeEffectsListener implements Listener {
         if (multiplier <= 1)
             return;
 
+        // The event fires once per mob of a spawn cycle (four by default). Only the first one may
+        // schedule the shortening: each extra one would divide the already-shortened delay again,
+        // turning a x2 upgrade into x16.
         Block block = spawner.getBlock();
+        if (!this.pendingSpawners.add(block.getLocation()))
+            return;
+
         Bukkit.getScheduler().runTask(this.plugin, () -> {
+            this.pendingSpawners.remove(block.getLocation());
             if (!(block.getState() instanceof CreatureSpawner armed))
                 return; // broken between the spawn and now
             armed.setDelay((int) Math.max(1, armed.getDelay() / multiplier));
@@ -249,10 +278,12 @@ public class UpgradeEffectsListener implements Listener {
      */
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
     public void onEntityDeath(EntityDeathEvent event) {
-        if (event.getEntity() instanceof Player)
+        LivingEntity entity = event.getEntity();
+        // An armor stand's drops are the stand itself plus whatever it wears — nothing to multiply.
+        if (entity instanceof Player || entity instanceof ArmorStand)
             return;
 
-        Island island = island(event.getEntity().getWorld());
+        Island island = island(entity.getWorld());
         if (island == null)
             return;
 
@@ -260,8 +291,16 @@ public class UpgradeEffectsListener implements Listener {
         if (bonus <= 0)
             return;
 
+        // The death drops also hold everything the entity carried: a donkey's or llama's chest,
+        // saddles and armour, what an allay or fox holds, items a mob picked up. Multiplying those
+        // duplicates player items, so only stacks that are not part of its equipment or inventory
+        // are touched.
+        List<ItemStack> carried = carriedItems(entity);
+
         for (ItemStack drop : event.getDrops()) {
             if (drop == null || drop.getAmount() <= 0)
+                continue;
+            if (carried.stream().anyMatch(drop::isSimilar))
                 continue;
 
             int extra = roll(drop.getAmount() * bonus);
@@ -273,6 +312,25 @@ public class UpgradeEffectsListener implements Listener {
     // =========================================================================
     //  Helpers
     // =========================================================================
+
+    /** Every non-empty stack the entity wears, holds or stores — none of it comes from its loot table. */
+    private static List<ItemStack> carriedItems(LivingEntity entity) {
+        List<ItemStack> carried = new ArrayList<>();
+        EntityEquipment equipment = entity.getEquipment();
+        if (equipment != null) {
+            for (EquipmentSlot slot : EquipmentSlot.values()) {
+                try {
+                    carried.add(equipment.getItem(slot));
+                } catch (IllegalArgumentException ignored) {
+                    // Slot not supported by this entity type.
+                }
+            }
+        }
+        if (entity instanceof InventoryHolder holder)
+            carried.addAll(Arrays.asList(holder.getInventory().getContents()));
+        carried.removeIf(item -> item == null || item.getType().isAir());
+        return carried;
+    }
 
     /** The island whose world this is, or {@code null} when the world is not an island's. */
     private Island island(World world) {

@@ -1,4 +1,4 @@
-# Cobble/basalt generator tier. `key` names a generator blueprint from the generators/ folder —
+# Cobblestone generator tier. `key` names a generator blueprint from the generators/ folder —
 # that is what the generator listener resolves for the island. `value` is informational only.
 type: GENERATOR
 levels:
@@ -13,4 +13,4 @@ levels:
     currency: "default"
     currency-display: "coins"
     value: 2
-    key: "overworld"
+    key: "overworld-ores"

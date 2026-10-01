@@ -44,6 +44,12 @@ public class BlueprintService {
                 continue;
             }
 
+            // One malformed file must not take the whole plugin down with it.
+            if (blueprint.sourceWorld() == null || blueprint.sourceWorld().isBlank() || blueprint.spawnLocation() == null) {
+                this.plugin.getSLF4JLogger().warn("Blueprint {} is missing 'source-world' or 'spawn-location'. Skipping...", blueprint.id());
+                continue;
+            }
+
             Path schematicPath = sourceWorldsFolder.resolve(blueprint.sourceWorld());
             if (!Files.exists(schematicPath)) {
                 this.plugin.getSLF4JLogger().warn("Source world file not found for blueprint {}: {}. Skipping...", blueprint.id(), schematicPath);
@@ -53,11 +59,15 @@ public class BlueprintService {
             this.blueprints.put(blueprint.id(), blueprint);
         }
 
+        // Without a default, island creation is refused but everything else (existing islands,
+        // visits, warps) keeps working.
         this.defaultBlueprint = this.blueprints.values()
                 .stream()
                 .filter(IslandBlueprint::isDefault)
                 .findFirst()
-                .orElseThrow(() -> new IllegalStateException("No default blueprint found. Please ensure at least one blueprint is marked as default."));
+                .orElse(null);
+        if (this.defaultBlueprint == null)
+            this.plugin.getSLF4JLogger().error("No default blueprint loaded: island creation is disabled until a blueprint marked 'default: true' with a valid source world is added to {}.", dataFolder);
 
         this.plugin.getSLF4JLogger().info("Loaded {} island blueprints.", this.blueprints.size());
     }

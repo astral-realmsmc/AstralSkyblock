@@ -31,9 +31,12 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class GeneratorListener implements Listener {
 
-    /** Vanilla generator outputs that a configured generator may replace. */
-    private static final Set<Material> GENERATED = EnumSet.of(
-            Material.COBBLESTONE, Material.STONE, Material.BASALT);
+    /**
+     * Vanilla generator outputs that a configured generator may replace. Basalt is not among them:
+     * generators are overworld mixes (cobble, ores, logs), and a soul soil + blue ice basalt
+     * generator turning out oak logs made no sense.
+     */
+    private static final Set<Material> GENERATED = EnumSet.of(Material.COBBLESTONE, Material.STONE);
 
     private final AstralSkyblock plugin;
 
@@ -59,6 +62,7 @@ public class GeneratorListener implements Listener {
         // The forming block is replaced directly rather than through the event's new state, so the
         // roll survives whatever the vanilla logic intended to place.
         event.setCancelled(true);
-        event.getBlock().setBlockData(rolled, false);
+        // Physics only for gravity blocks: rolled sand or gravel should fall, not float.
+        event.getBlock().setBlockData(rolled, rolled.getMaterial().hasGravity());
     }
 }

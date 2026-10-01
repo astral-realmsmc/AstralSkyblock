@@ -34,8 +34,12 @@ import com.astralrealms.skyblock.model.upgrade.UpgradeType;
  */
 public class LevelService {
 
-    /** Hard ceiling on the scanned radius, so a misconfigured border cannot scan the whole world. */
-    private static final int MAX_CHUNK_RADIUS = 64;
+    /**
+     * Ceiling on the covered radius, in chunks, so a misconfigured border cannot walk the whole
+     * world. 160 chunks (2560 blocks) covers the largest shipped border (5000 across); a bigger one
+     * is clamped with a warning rather than silently.
+     */
+    private static final int MAX_CHUNK_RADIUS = 160;
     /** Rescan intervals a pass may span before the timer assumes it is stuck and takes the latch back. */
     private static final int STUCK_PASS_INTERVALS = 4;
     /**
@@ -97,6 +101,7 @@ public class LevelService {
         CompletableFuture<Long> result = new CompletableFuture<>();
         try {
             Scan scan = new Scan(island.uniqueId(), world, chunkCoordinates(island, world));
+            this.plugin.blockLimits().beginScan(island.uniqueId());
             Bukkit.getScheduler().runTask(this.plugin, () -> processBatch(scan, result));
         } catch (Exception exception) {
             // Nothing has been chained onto `result` yet, so the slot has to be released here or the
@@ -109,6 +114,8 @@ public class LevelService {
                 .thenCompose(value -> persist(island, value).thenApply(ignored -> value))
                 .whenComplete((value, throwable) -> {
                     this.scanning.remove(island.uniqueId());
+                    if (throwable != null)
+                        this.plugin.blockLimits().endScan(island.uniqueId());
                     if (throwable == null)
                         this.lastScan.put(island.uniqueId(), System.currentTimeMillis());
                 });
@@ -156,7 +163,13 @@ public class LevelService {
             // gen = false: an island's unexplored chunks hold nothing and must not be generated.
             // Paper completes this future on the main thread, which is where a snapshot must be taken.
             snapshots.add(scan.world.getChunkAtAsync(chunkX, chunkZ, false)
-                    .thenApply(chunk -> chunk == null ? null : snapshot(chunk))
+                    .thenApply(chunk -> {
+                        if (chunk == null)
+                            return null;
+                        // From here on, hopper changes in this chunk are the scan's blind spot.
+                        this.plugin.blockLimits().chunkCaptured(scan.islandId, chunkX, chunkZ);
+                        return snapshot(chunk);
+                    })
                     .exceptionally(throwable -> {
                         // One unreadable chunk must not void the whole scan.
                         this.plugin.getSLF4JLogger().warn("Skipped chunk {},{} while scanning island {}",
@@ -286,15 +299,20 @@ public class LevelService {
 
     /**
      * The chunks covered by an island's border, as packed {@code (x << 32) | z} coordinates. The
-     * border is the island's {@link UpgradeType#WORLDBORDER_SIZE} value, centred on its spawn.
+     * border is the island's {@link UpgradeType#WORLDBORDER_SIZE} value, centred on its fixed centre.
      */
     private List<Long> chunkCoordinates(Island island, World world) {
         double size = this.plugin.upgrades()
                 .value(island, UpgradeType.WORLDBORDER_SIZE, this.plugin.configuration().defaultWorldBorderSize());
-        int radius = Math.min(MAX_CHUNK_RADIUS, (int) Math.ceil(size / 2 / 16) + 1);
+        int radius = (int) Math.ceil(size / 2 / 16) + 1;
+        if (radius > MAX_CHUNK_RADIUS) {
+            this.plugin.getSLF4JLogger().warn("Island {} has a {}-block border, wider than the {} blocks scanned; the rest is ignored",
+                    island.uniqueId(), (int) size, MAX_CHUNK_RADIUS * 32);
+            radius = MAX_CHUNK_RADIUS;
+        }
 
-        int centerX = (int) Math.floor(island.spawnX()) >> 4;
-        int centerZ = (int) Math.floor(island.spawnZ()) >> 4;
+        int centerX = (int) Math.floor(island.centerX()) >> 4;
+        int centerZ = (int) Math.floor(island.centerZ()) >> 4;
 
         List<Long> coordinates = new ArrayList<>();
         for (int x = centerX - radius; x <= centerX + radius; x++)
@@ -303,13 +321,21 @@ public class LevelService {
         return coordinates;
     }
 
+    /**
+     * Stores a scan's result. Only the two columns the scan owns are written, and applied to the
+     * island currently cached: the {@code island} a scan started from can be seconds old, and saving
+     * the whole object would revert anything renamed, locked or moved meanwhile.
+     */
     private CompletableFuture<Void> persist(Island island, long value) {
-        island.value(value);
-        island.level(value / Math.max(1, this.plugin.configuration().level().pointsPerLevel()));
+        long level = value / Math.max(1, this.plugin.configuration().level().pointsPerLevel());
+        if (island.value() == value && island.level() == level)
+            return CompletableFuture.completedFuture(null); // nothing changed: no write, no network-wide refresh
+
         return this.plugin.islands()
                 .repository()
-                .save(island)
-                .thenAccept(ignored -> {
+                .updateColumns(island.uniqueId(), Map.of("value", value, "level", level), cached -> {
+                    cached.value(value);
+                    cached.level(level);
                 });
     }
 

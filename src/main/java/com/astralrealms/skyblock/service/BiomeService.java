@@ -38,8 +38,12 @@ public class BiomeService {
     private static final int CHUNKS_PER_TICK = 2;
     /** Edge of a biome cell, in blocks: biomes are stored per 4×4×4 volume. */
     private static final int CELL = 4;
-    /** Hard ceiling on the repainted radius, mirroring the level scan's guard on a bad border. */
-    private static final int MAX_CHUNK_RADIUS = 64;
+    /**
+     * Ceiling on the covered radius, in chunks, so a misconfigured border cannot walk the whole
+     * world. 160 chunks (2560 blocks) covers the largest shipped border (5000 across); a bigger one
+     * is clamped with a warning rather than silently.
+     */
+    private static final int MAX_CHUNK_RADIUS = 160;
 
     private final AstralSkyblock plugin;
     // Islands with a repaint in flight, so a second /is biome cannot start a parallel pass.
@@ -83,7 +87,7 @@ public class BiomeService {
         }
 
         Biome biome = resolve(biomeName);
-        if (biome == null) {
+        if (biome == null || !this.plugin.configuration().isBiomeAllowed(biome.getKey().toString())) {
             ASMessages.BIOME_UNKNOWN.message(player, placeholders);
             return;
         }
@@ -167,10 +171,15 @@ public class BiomeService {
     private List<Long> chunkCoordinates(Island island, World world) {
         double size = this.plugin.upgrades()
                 .value(island, UpgradeType.WORLDBORDER_SIZE, this.plugin.configuration().defaultWorldBorderSize());
-        int radius = Math.min(MAX_CHUNK_RADIUS, (int) Math.ceil(size / 2 / 16) + 1);
+        int radius = (int) Math.ceil(size / 2 / 16) + 1;
+        if (radius > MAX_CHUNK_RADIUS) {
+            this.plugin.getSLF4JLogger().warn("Island {} has a {}-block border, wider than the {} blocks scanned; the rest is ignored",
+                    island.uniqueId(), (int) size, MAX_CHUNK_RADIUS * 32);
+            radius = MAX_CHUNK_RADIUS;
+        }
 
-        int centerX = (int) Math.floor(island.spawnX()) >> 4;
-        int centerZ = (int) Math.floor(island.spawnZ()) >> 4;
+        int centerX = (int) Math.floor(island.centerX()) >> 4;
+        int centerZ = (int) Math.floor(island.centerZ()) >> 4;
 
         List<Long> coordinates = new ArrayList<>();
         for (int x = centerX - radius; x <= centerX + radius; x++)

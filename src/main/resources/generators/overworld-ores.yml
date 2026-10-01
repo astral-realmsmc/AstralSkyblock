@@ -1,0 +1,16 @@
+# Generator upgrade level 1: the overworld mix, with ores.
+id: "overworld-ores"
+blocks:
+  COBBLESTONE: 50
+  STONE: 10
+  SAND: 5
+  DIRT: 8
+  GRASS_BLOCK: 8
+  OAK_LOG: 4
+  OAK_LEAVES: 4
+  COAL_ORE: 6
+  COPPER_ORE: 4
+  IRON_ORE: 3
+  REDSTONE_ORE: 2
+  LAPIS_ORE: 1
+  GOLD_ORE: 1

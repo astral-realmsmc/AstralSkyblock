@@ -70,6 +70,11 @@ public class IslandWarp implements ComplexPlaceholder {
         this.pitch = location.getPitch();
     }
 
+    /** An independent copy, to edit without touching the cached warp until the edit is stored. */
+    public IslandWarp copy() {
+        return new IslandWarp(islandId, name, x, y, z, yaw, pitch, isPrivate, icon, displayName, description, createdAt);
+    }
+
     /** The stored icon, or {@link #DEFAULT_ICON} when the warp has none. */
     public String iconOrDefault() {
         return this.icon == null || this.icon.isBlank() ? DEFAULT_ICON : this.icon;

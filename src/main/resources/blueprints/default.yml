@@ -1,6 +1,14 @@
 id: "default"
 default: true
-schematic: "default.schem"
+# Slime world file in plugins/AstralSkyblock/sourceWorlds/ that every new island is cloned from.
+source-world: "default.slime"
+# Island spawn inside the source world. Also used as the new world's spawn point.
+spawn-location:
+  x: 0.5
+  y: 100.0
+  z: 0.5
+  yaw: 0.0
+  pitch: 0.0
 icon:
   material: stone
   name: "Default Blueprint"

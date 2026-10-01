@@ -16,7 +16,7 @@ public enum UpgradeType {
     MEMBERS_LIMIT,
     /** Coop cap. Enforced by {@code CoopService} where the coop row is written. */
     COOP_LIMIT,
-    /** Cobble/basalt generator tier. The level's {@code key} names a generator blueprint. */
+    /** Cobblestone generator tier. The level's {@code key} names a generator blueprint. */
     GENERATOR,
     /** Cap on hoppers placed inside the island's border. */
     HOPPERS_LIMIT,

@@ -246,12 +246,19 @@ public class UpgradeService {
                                 .thenCompose(ignored -> refund(economy, player.getUniqueId(), currency, level.price()))
                                 .thenRun(() -> notify(player, ASMessages.UPGRADE_LEVEL_CHANGED, placeholders));
 
-                    Bukkit.getScheduler().runTask(this.plugin, () -> {
-                        applyEffects(island, type);
-                        if (level.unlockActions() != null)
-                            runUnlockActions(level, player);
-                        ASMessages.UPGRADE_PURCHASED.message(player, placeholders);
-                    });
+                    // The level is stored and paid for from here on. Scheduling can only fail while
+                    // the plugin shuts down; that must not reach the refund below, which would hand
+                    // back the price of a level the island keeps.
+                    try {
+                        Bukkit.getScheduler().runTask(this.plugin, () -> {
+                            applyEffects(island, type);
+                            if (level.unlockActions() != null)
+                                runUnlockActions(level, player);
+                            ASMessages.UPGRADE_PURCHASED.message(player, placeholders);
+                        });
+                    } catch (Exception exception) {
+                        this.plugin.getSLF4JLogger().warn("Upgrade {} bought for island {}, but its effects could not be scheduled", type, island.uniqueId(), exception);
+                    }
                     return CompletableFuture.<Void>completedFuture(null);
                 })
                 .exceptionallyCompose(throwable -> refund(economy, player.getUniqueId(), currency, level.price())
@@ -337,14 +344,20 @@ public class UpgradeService {
         if (blueprint == null)
             return fallback;
 
-        IslandUpgrade.Level configured = blueprint.levels().get(level);
-        if (configured == null)
-            configured = blueprint.levels().entrySet().stream()
-                    .filter(entry -> entry.getKey() <= level)
-                    .max(Map.Entry.comparingByKey())
-                    .map(Map.Entry::getValue)
-                    .orElse(null);
+        IslandUpgrade.Level configured = levelAtOrBelow(blueprint, level);
         return configured == null ? fallback : configured.value();
+    }
+
+    /** The exact level's entry, or else the highest configured level below it; {@code null} if none. */
+    private static IslandUpgrade.Level levelAtOrBelow(IslandUpgrade blueprint, int level) {
+        IslandUpgrade.Level configured = blueprint.levels().get(level);
+        if (configured != null)
+            return configured;
+        return blueprint.levels().entrySet().stream()
+                .filter(entry -> entry.getKey() <= level)
+                .max(Map.Entry.comparingByKey())
+                .map(Map.Entry::getValue)
+                .orElse(null);
     }
 
     /** The member cap of an island — its {@link UpgradeType#MEMBERS_LIMIT} value. */
@@ -407,7 +420,7 @@ public class UpgradeService {
     public GeneratorConfiguration generator(Island island) {
         IslandUpgrade blueprint = this.blueprints.get(UpgradeType.GENERATOR);
         if (blueprint != null) {
-            IslandUpgrade.Level level = blueprint.levels().get(island.upgradeLevel(UpgradeType.GENERATOR));
+            IslandUpgrade.Level level = levelAtOrBelow(blueprint, island.upgradeLevel(UpgradeType.GENERATOR));
             if (level != null && level.key() != null && !level.key().isBlank()) {
                 GeneratorConfiguration generator = this.plugin.generators().findById(level.key()).orElse(null);
                 if (generator != null)
@@ -448,7 +461,7 @@ public class UpgradeService {
         if (size <= 0)
             return;
 
-        world.getWorldBorder().setCenter(island.spawnX(), island.spawnZ());
+        world.getWorldBorder().setCenter(island.centerX(), island.centerZ());
         world.getWorldBorder().setSize(size);
     }
 
