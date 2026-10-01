@@ -1,0 +1,14 @@
+# Whether a warp is open to everyone or to the island's members only.
+id: "warp-visibility"
+global: false
+transformer:
+  type: "conditional"
+  groups:
+    private:
+      priority: 10
+      requirements:
+        - "[compare] %parameter_warp_isPrivate% == true"
+      function:
+        - "  <text_color>Visibilité : <secondary_color>Privée"
+  fallback:
+    - "  <text_color>Visibilité : <secondary_color>Publique"

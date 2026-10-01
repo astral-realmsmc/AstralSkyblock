@@ -1,0 +1,7 @@
+# The description of a warp in the warps menu, one lore line per line the owner wrote.
+id: "warp-description"
+global: false
+transformer:
+  type: "list"
+  provider: "%parameter_warp_descriptionLines%"
+  function: "  <text_color>%parameter_line%"

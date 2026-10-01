@@ -1,0 +1,21 @@
+# An upgrade's current level in the upgrades menu, with its next level and price until it is maxed.
+id: "upgrade-progress"
+global: false
+transformer:
+  type: "conditional"
+  groups:
+    maxed:
+      priority: 10
+      requirements:
+        - "[compare] %parameter_upgrade_isMax% == true"
+      function:
+        - "  <text_color>Niveau : <secondary_color>%parameter_upgrade_level%<text_color>/<secondary_color>%parameter_upgrade_maxLevel%"
+        - "  <text_color>Valeur : <secondary_color>%parameter_upgrade_value%"
+        - ""
+        - "<green>Niveau maximum atteint."
+  fallback:
+    - "  <text_color>Niveau : <secondary_color>%parameter_upgrade_level%<text_color>/<secondary_color>%parameter_upgrade_maxLevel%"
+    - "  <text_color>Valeur : <secondary_color>%parameter_upgrade_value% <text_color>➜ <secondary_color>%parameter_upgrade_nextValue%"
+    - "  <text_color>Prix : <secondary_color>%parameter_upgrade_price% %parameter_upgrade_currencyDisplay%"
+    - ""
+    - "<white>%img_icons:left-click% <information_color>Améliorer au niveau %parameter_upgrade_nextLevel%"
