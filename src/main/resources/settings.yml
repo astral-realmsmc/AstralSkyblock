@@ -86,7 +86,8 @@ tnt-explosion:
   material: TNT
   name: "<green>TNT Explosion"
   lore:
-    - "<gray>Allows TNT to damage the island."
+    - "<gray>Allows TNT, end crystals, beds and respawn"
+    - "<gray>anchors to damage the island."
 
 tree-growth:
   material: OAK_SAPLING

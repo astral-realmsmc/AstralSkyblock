@@ -24,6 +24,14 @@ roles:
       - BUILD
       - BREAK
       - BRUSH
+      - BUCKET
+      - CONTAINER_OPEN
+      - USE_DOORS
+      - USE_REDSTONE
+      - DECORATION
+      - ENTITY_DAMAGE
+      - ENTITY_PLACE
+      - INTERACT_BLOCK
       - DROP_ITEMS
       - PICKUP_DROPS
       - FLY
@@ -58,6 +66,14 @@ roles:
       - BUILD
       - BREAK
       - BRUSH
+      - BUCKET
+      - CONTAINER_OPEN
+      - USE_DOORS
+      - USE_REDSTONE
+      - DECORATION
+      - ENTITY_DAMAGE
+      - ENTITY_PLACE
+      - INTERACT_BLOCK
       - DROP_ITEMS
       - PICKUP_DROPS
       - FLY
@@ -96,9 +112,9 @@ roles:
     icon:
       material: "diamond"
       name: "Admin"
-    # Island administrators. ALL is a wildcard: it grants every permission,
-    # DISBAND_ISLAND included. Replace it with an explicit list if you want to
-    # hold something back — the owner is structural and bypasses checks anyway,
-    # so nothing is lost by spelling this role out.
+    # Island administrators. ALL is a wildcard: it grants every permission.
+    # Replace it with an explicit list if you want to hold something back — the
+    # owner is structural and bypasses checks anyway, so nothing is lost by
+    # spelling this role out. Disbanding the island is reserved to the owner.
     permissions:
       - ALL

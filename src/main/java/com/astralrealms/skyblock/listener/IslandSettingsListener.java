@@ -1,13 +1,25 @@
 package com.astralrealms.skyblock.listener;
 
+import java.util.Collection;
+import java.util.List;
+
 import org.bukkit.GameRule;
 import org.bukkit.Material;
+import org.bukkit.potion.PotionEffectTypeCategory;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.event.entity.PotionSplashEvent;
+import org.bukkit.event.entity.AreaEffectCloudApplyEvent;
+import org.bukkit.event.block.BlockIgniteEvent;
+import org.bukkit.entity.Tameable;
+import org.bukkit.entity.LivingEntity;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.AreaEffectCloud;
+import org.bukkit.block.data.Waterlogged;
+import org.bukkit.Tag;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Chicken;
 import org.bukkit.entity.Enderman;
-import org.bukkit.entity.Fireball;
-import org.bukkit.entity.Ghast;
 import org.bukkit.entity.Player;
 import org.bukkit.event.*;
 import org.bukkit.event.block.BlockBurnEvent;
@@ -17,6 +29,7 @@ import org.bukkit.event.block.BlockSpreadEvent;
 import org.bukkit.event.entity.EntityChangeBlockEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDropItemEvent;
+import org.bukkit.event.block.BlockExplodeEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.weather.ThunderChangeEvent;
 import org.bukkit.event.weather.WeatherChangeEvent;
@@ -43,23 +56,79 @@ public class IslandSettingsListener implements Listener {
         if (block.getType().equals(Material.LAVA))
             cancelIfDisabled(e, block.getWorld(), IslandSettings.LAVA_FLOW);
 
-        // Water flow
-        if (block.getType().equals(Material.WATER))
+        // Water flow, including out of a waterlogged block (a stair, a slab, ...)
+        if (block.getType().equals(Material.WATER)
+            || (block.getBlockData() instanceof Waterlogged waterlogged && waterlogged.isWaterlogged()))
             cancelIfDisabled(e, block.getWorld(), IslandSettings.WATER_FLOW);
     }
 
     @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
     public void onCropGrowth(BlockGrowEvent e) {
-        if (SkyblockTags.CROPS.isTagged(e.getBlock()))
+        // Sugar cane and cactus grow into the air above them, melons and pumpkins into the air next
+        // to their stem: the block at the event position is that air, so the grown block decides.
+        Material grown = e.getNewState().getType();
+        if (SkyblockTags.CROPS.isTagged(e.getBlock()) || SkyblockTags.CROPS.isTagged(grown)
+            || grown == Material.MELON || grown == Material.PUMPKIN)
             cancelIfDisabled(e, e.getBlock().getWorld(), IslandSettings.CROPS_GROWTH);
     }
 
     @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
     public void onPvp(EntityDamageByEntityEvent e) {
         World world = e.getEntity().getWorld();
-        if (e.getDamageSource().getCausingEntity() instanceof Player
-            && e.getEntity() instanceof Player)
+        if (e.getEntity() instanceof Player && attackingPlayer(e.getDamageSource().getCausingEntity()) != null)
             cancelIfDisabled(e, world, IslandSettings.PVP);
+    }
+
+    /** Harmful splash potions thrown by a player: other players take none of it without PVP. */
+    @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
+    public void onPotionSplash(PotionSplashEvent e) {
+        if (!(e.getPotion().getShooter() instanceof Player thrower) || !isHarmful(e.getPotion().getEffects())
+            || pvpAllowed(e.getEntity().getWorld()))
+            return;
+        for (LivingEntity affected : e.getAffectedEntities())
+            if (affected instanceof Player victim && !victim.equals(thrower))
+                e.setIntensity(victim, 0);
+    }
+
+    /** Harmful lingering clouds left by a player: other players are not affected without PVP. */
+    @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
+    public void onCloudApply(AreaEffectCloudApplyEvent e) {
+        AreaEffectCloud cloud = e.getEntity();
+        if (!(cloud.getSource() instanceof Player thrower)
+            || !isHarmful(cloud.getCustomEffects()) && !isHarmful(cloud.getBasePotionType() == null ? List.of() : cloud.getBasePotionType().getPotionEffects())
+            || pvpAllowed(cloud.getWorld()))
+            return;
+        e.getAffectedEntities().removeIf(affected -> affected instanceof Player victim && !victim.equals(thrower));
+    }
+
+    /** Fire started by spreading, by lava or by lightning (burning blocks are handled below). */
+    @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
+    public void onIgnite(BlockIgniteEvent e) {
+        BlockIgniteEvent.IgniteCause cause = e.getCause();
+        if (cause == BlockIgniteEvent.IgniteCause.SPREAD
+            || cause == BlockIgniteEvent.IgniteCause.LAVA
+            || cause == BlockIgniteEvent.IgniteCause.LIGHTNING)
+            cancelIfDisabled(e, e.getBlock().getWorld(), IslandSettings.FIRE_SPREAD);
+    }
+
+    /** The player behind an attack: themselves, or the owner of the pet that attacked. */
+    private static Player attackingPlayer(Entity causing) {
+        if (causing instanceof Player player)
+            return player;
+        if (causing instanceof Tameable pet && pet.getOwner() instanceof Player owner)
+            return owner;
+        return null;
+    }
+
+    private static boolean isHarmful(Collection<PotionEffect> effects) {
+        return effects.stream().anyMatch(effect -> effect.getType().getCategory() == PotionEffectTypeCategory.HARMFUL);
+    }
+
+    private boolean pvpAllowed(World world) {
+        return this.plugin.worlds()
+                .findByWorld(world)
+                .map(island -> island.isSettingEnabled(IslandSettings.PVP))
+                .orElse(true);
     }
 
     @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
@@ -84,7 +153,7 @@ public class IslandSettingsListener implements Listener {
     @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
     public void onEggLay(EntityDropItemEvent e) {
         if (e.getEntity() instanceof Chicken
-            && e.getItemDrop().getItemStack().getType() == Material.EGG)
+            && Tag.ITEMS_EGGS.isTagged(e.getItemDrop().getItemStack().getType())) // white, brown and blue
             cancelIfDisabled(e, e.getEntity().getWorld(), IslandSettings.EGG_LAY);
     }
 
@@ -99,15 +168,20 @@ public class IslandSettingsListener implements Listener {
         IslandSettings settings = switch (e.getEntityType()) {
             case CREEPER -> IslandSettings.CREEPER_EXPLOSION;
             case WITHER, WITHER_SKULL -> IslandSettings.WITHER_EXPLOSION;
-            case TNT, TNT_MINECART -> IslandSettings.TNT_EXPLOSION;
-            case FIREBALL -> e.getEntity() instanceof Fireball fireball
-                             && fireball.getShooter() instanceof Ghast
-                    ? IslandSettings.GHAST_FIREBALL
-                    : null;
+            case TNT, TNT_MINECART, END_CRYSTAL -> IslandSettings.TNT_EXPLOSION;
+            // Only ghasts fire large fireballs. A player who deflects one becomes its shooter, so the
+            // shooter cannot tell: the entity type does.
+            case FIREBALL -> IslandSettings.GHAST_FIREBALL;
             default -> null;
         };
         if (settings != null)
             cancelIfDisabled(e, e.getEntity().getWorld(), settings);
+    }
+
+    /** Beds and respawn anchors blowing up outside their dimension: player-made, like TNT. */
+    @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
+    public void onBlockExplode(BlockExplodeEvent e) {
+        cancelIfDisabled(e, e.getBlock().getWorld(), IslandSettings.TNT_EXPLOSION);
     }
 
     @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)

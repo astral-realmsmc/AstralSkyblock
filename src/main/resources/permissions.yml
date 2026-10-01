@@ -33,6 +33,13 @@ brush:
   lore:
     - "<gray>Allows you to brush suspicious blocks."
 
+bucket:
+  material: BUCKET
+  name: "<green>Buckets"
+  lore:
+    - "<gray>Allows you to empty and fill buckets"
+    - "<gray>(lava, water, milk, fish...) on the island."
+
 build:
   material: BRICKS
   name: "<green>Build"
@@ -63,11 +70,25 @@ close-island:
   lore:
     - "<gray>Allows you to close the island to visitors."
 
+container-open:
+  material: CHEST
+  name: "<green>Open Containers"
+  lore:
+    - "<gray>Allows you to open chests, barrels, furnaces,"
+    - "<gray>hoppers, shulker boxes and other containers."
+
 coop-member:
   material: LEAD
   name: "<green>Coop Member"
   lore:
     - "<gray>Allows you to coop players onto the island."
+
+decoration:
+  material: ITEM_FRAME
+  name: "<green>Decorations"
+  lore:
+    - "<gray>Allows you to use and break item frames,"
+    - "<gray>paintings and armor stands."
 
 delete-warp:
   material: RED_BED
@@ -80,12 +101,6 @@ demote-members:
   name: "<green>Demote Members"
   lore:
     - "<gray>Allows you to demote island members."
-
-disband-island:
-  material: TNT
-  name: "<green>Disband Island"
-  lore:
-    - "<gray>Allows you to disband the island."
 
 drop-items:
   material: DROPPER
@@ -104,6 +119,20 @@ ender-pearl:
   name: "<green>Ender Pearl"
   lore:
     - "<gray>Allows you to teleport with ender pearls."
+
+entity-damage:
+  material: IRON_SWORD
+  name: "<green>Hurt Entities"
+  lore:
+    - "<gray>Allows you to hurt animals, villagers, golems,"
+    - "<gray>pets and vehicles. Hostile mobs are always fair game."
+
+entity-place:
+  material: ARMOR_STAND
+  name: "<green>Place Entities"
+  lore:
+    - "<gray>Allows you to place armor stands, boats, minecarts,"
+    - "<gray>end crystals, item frames and paintings."
 
 entity-ride:
   material: SADDLE
@@ -146,6 +175,14 @@ ignite-creeper:
   name: "<green>Ignite Creeper"
   lore:
     - "<gray>Allows you to ignite creepers with flint and steel."
+
+interact-block:
+  material: CAKE
+  name: "<green>Use Blocks"
+  lore:
+    - "<gray>Allows you to use beds, respawn anchors, cakes,"
+    - "<gray>composters, flower pots, jukeboxes, campfires,"
+    - "<gray>candles, cauldrons, bookshelves, pots and hives."
 
 invite-member:
   material: PAPER
@@ -266,6 +303,19 @@ uncoop-member:
   name: "<green>Uncoop Member"
   lore:
     - "<gray>Allows you to remove cooped players from the island."
+
+use-doors:
+  material: OAK_DOOR
+  name: "<green>Use Doors"
+  lore:
+    - "<gray>Allows you to open doors, trapdoors and fence gates."
+
+use-redstone:
+  material: LEVER
+  name: "<green>Use Redstone"
+  lore:
+    - "<gray>Allows you to use levers, buttons, pressure plates,"
+    - "<gray>repeaters, comparators and other redstone components."
 
 valuable-break:
   material: EMERALD_ORE

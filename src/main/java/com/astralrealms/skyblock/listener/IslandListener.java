@@ -1,11 +1,13 @@
 package com.astralrealms.skyblock.listener;
 
+import org.bukkit.Bukkit;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 
 import com.astralrealms.core.paper.AstralPaperAPI;
@@ -76,6 +78,33 @@ public class IslandListener implements Listener {
             return;
 
         event.setCancelled(true);
+        denial.message(player, AstralPaperAPI.createPlaceholderContainer(player).registerPlaceholder(island));
+    }
+
+    /**
+     * A bed or respawn anchor inside an island must not bring back someone it has since barred: a
+     * respawn is not a teleport, so {@link #onTeleport} never sees it.
+     */
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onRespawn(PlayerRespawnEvent event) {
+        World target = event.getRespawnLocation().getWorld();
+        Island island = target == null ? null : this.plugin.worlds().findByWorld(target).orElse(null);
+        if (island == null)
+            return;
+
+        Player player = event.getPlayer();
+        ASMessages denial = denialFor(island, player);
+        if (denial == null)
+            return;
+
+        World fallback = Bukkit.getWorlds().stream()
+                .filter(world -> this.plugin.worlds().findByWorld(world).isEmpty())
+                .findFirst()
+                .orElse(null);
+        if (fallback == null)
+            return; // nowhere local to send them; they are evicted on arrival below
+
+        event.setRespawnLocation(fallback.getSpawnLocation());
         denial.message(player, AstralPaperAPI.createPlaceholderContainer(player).registerPlaceholder(island));
     }
 
