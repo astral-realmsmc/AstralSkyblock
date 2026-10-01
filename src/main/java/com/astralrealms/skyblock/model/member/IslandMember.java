@@ -10,6 +10,7 @@ import com.astralrealms.core.storage.annotation.CreatedAt;
 import com.astralrealms.core.storage.annotation.Entity;
 import com.astralrealms.core.storage.model.SQLAccessor;
 import com.astralrealms.skyblock.model.role.IslandRole;
+import com.astralrealms.skyblock.placeholder.OwnerRolePlaceholder;
 
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -50,7 +51,8 @@ public class IslandMember implements ComplexPlaceholder {
             case "playerId" -> playerUuid;
             case "player" -> new MinecraftPlayerPlaceholder(playerUuid);
             case "owner" -> isOwner;
-            case "role" -> role;
+            // The owner holds no role; menus still need something to show as its rank.
+            case "role" -> role != null || !isOwner ? role : new OwnerRolePlaceholder();
             case "roleId" -> roleId;
             case "joinedAt" -> joinedAt;
             default -> null;

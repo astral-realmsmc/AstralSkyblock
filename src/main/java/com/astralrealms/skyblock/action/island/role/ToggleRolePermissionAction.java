@@ -7,6 +7,7 @@ import com.astralrealms.core.paper.model.action.PaperAction;
 import com.astralrealms.core.paper.model.action.PaperActionContext;
 import com.astralrealms.core.placeholder.wrapper.PlaceholderWrapper;
 import com.astralrealms.core.platform.executable.exception.ExecutableRunException;
+import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.configuration.ASMessages;
 import com.astralrealms.skyblock.model.island.Island;
 import com.astralrealms.skyblock.model.role.IslandPermission;
@@ -31,7 +32,13 @@ public record ToggleRolePermissionAction(PlaceholderWrapper<Island> island, Plac
         }
 
         IslandPermission permission = context.parseWrapper(this.permission);
-        Sound sound = role.togglePermission(permission) ? Sound.ENTITY_EXPERIENCE_ORB_PICKUP : Sound.UI_BUTTON_CLICK;
+        boolean granting = !role.isGrantedFor(player.getUniqueId(), permission);
+        if (granting && !AstralSkyblock.get().roles().mayGrant(player, island, role, permission)) {
+            ASMessages.NO_PERMISSION.message(player);
+            return;
+        }
+
+        Sound sound = role.togglePermission(player.getUniqueId(), permission) ? Sound.ENTITY_EXPERIENCE_ORB_PICKUP : Sound.UI_BUTTON_CLICK;
         player.playSound(player.getLocation(), sound, 1f, 1f);
     }
 

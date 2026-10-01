@@ -190,13 +190,25 @@ public class BanService {
      * online here and broadcast otherwise, since the island may be hosted on another server.
      */
     public void evict(UUID islandId, UUID playerUuid) {
-        if (!evictLocally(islandId, playerUuid))
-            this.plugin.messaging()
-                    .send(ASConstants.BAN_SYNC_CHANNEL, new IslandEvictPacket(islandId, playerUuid))
-                    .exceptionally(throwable -> {
-                        this.plugin.getSLF4JLogger().error("Failed to broadcast eviction of {} from island {}", playerUuid, islandId, throwable);
-                        return null;
-                    });
+        // Player state is only safe to read on the main thread; callers are usually DB callbacks.
+        Bukkit.getScheduler().runTask(this.plugin, () -> {
+            if (!evictLocally(islandId, playerUuid))
+                this.plugin.messaging()
+                        .send(ASConstants.BAN_SYNC_CHANNEL, new IslandEvictPacket(islandId, playerUuid))
+                        .exceptionally(throwable -> {
+                            this.plugin.getSLF4JLogger().error("Failed to broadcast eviction of {} from island {}", playerUuid, islandId, throwable);
+                            return null;
+                        });
+        });
+    }
+
+    /**
+     * Sends a player who just lost their place on the island (kicked, left, uncooped) away from it
+     * when it is closed: they are an outsider now, and a closed island admits no outsiders.
+     */
+    public void evictIfClosed(Island island, UUID playerUuid) {
+        if (island.locked())
+            evict(island.uniqueId(), playerUuid);
     }
 
     /**
@@ -221,7 +233,7 @@ public class BanService {
     }
 
     private void handleEvictPacket(IslandEvictPacket packet) {
-        evictLocally(packet.islandId(), packet.playerUuid());
+        Bukkit.getScheduler().runTask(this.plugin, () -> evictLocally(packet.islandId(), packet.playerUuid()));
     }
 
     // =========================================================================

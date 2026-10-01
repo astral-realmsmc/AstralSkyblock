@@ -1,5 +1,7 @@
 package com.astralrealms.skyblock.placeholder.permissions;
 
+import org.bukkit.entity.Player;
+
 import com.astralrealms.core.paper.placeholder.itemstack.ItemStackPlaceholder;
 import com.astralrealms.core.placeholder.PlaceholderContext;
 import com.astralrealms.core.placeholder.impl.system.ComplexPlaceholder;
@@ -22,7 +24,9 @@ public class IslandPermissionPlaceholder implements ComplexPlaceholder {
         return switch (context.next()) {
             case "id" -> permission.name();
             case "item" -> new ItemStackPlaceholder(this.permission.value().get(context.function()));
-            case "enabled" -> role.hasPermission(permission);
+            case "enabled" -> context.context() instanceof Player viewer
+                               ? role.isGrantedFor(viewer.getUniqueId(), permission)
+                               : role.hasPermission(permission);
             case null, default -> null;
         };
     }

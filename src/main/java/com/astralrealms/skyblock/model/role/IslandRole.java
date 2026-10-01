@@ -4,6 +4,7 @@ import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 import com.astralrealms.core.placeholder.PlaceholderContext;
 import com.astralrealms.core.placeholder.impl.system.ComplexPlaceholder;
@@ -37,8 +38,10 @@ public class IslandRole implements ComplexPlaceholder {
 
     // Relationships — permission loading is deferred (see PermissionRepository follow-up).
     @Setter
-    private transient EnumSet<IslandPermission> permissions = EnumSet.noneOf(IslandPermission.class);
-    private final transient Map<IslandPermission, Boolean> dirtyPermissions = new EnumMap<>(IslandPermission.class);
+    private transient volatile EnumSet<IslandPermission> permissions = EnumSet.noneOf(IslandPermission.class);
+    // Unsaved permissions-menu edits, per editor. Enforcement never reads them: an edit only takes
+    // effect once it is saved, and two editors never see (or save) each other's.
+    private final transient Map<UUID, Map<IslandPermission, Boolean>> pendingPermissions = new ConcurrentHashMap<>();
 
     public IslandRole(Long id, UUID islandId, Type kind, String name, int weight, boolean isDefault, long createdAt) {
         this.id = id;
@@ -51,28 +54,52 @@ public class IslandRole implements ComplexPlaceholder {
     }
 
     // Permissions
-    public boolean togglePermission(IslandPermission permission) {
-        boolean hasPermission = this.hasPermission(permission);
-        boolean newValue = !hasPermission;
-        this.dirtyPermissions.put(permission, newValue);
-        return newValue;
-    }
 
+    /** Whether the role holds {@code permission}, as saved. */
     public boolean hasPermission(IslandPermission permission) {
-        return dirtyPermissions.getOrDefault(permission, permissions.contains(permission))
-               || dirtyPermissions.getOrDefault(IslandPermission.ALL, permissions.contains(IslandPermission.ALL));
+        EnumSet<IslandPermission> granted = this.permissions;
+        return granted.contains(permission) || granted.contains(IslandPermission.ALL);
     }
 
-    public Map<IslandPermission, Boolean> flushPermissions() {
-        Map<IslandPermission, Boolean> flushed = Map.copyOf(dirtyPermissions);
-        for (Map.Entry<IslandPermission, Boolean> entry : flushed.entrySet()) {
-            if (entry.getValue())
-                permissions.add(entry.getKey());
+    /** Whether {@code permission} is granted, as {@code editor} sees it in the menu: their unsaved edit, else the saved value. */
+    public boolean isGrantedFor(UUID editor, IslandPermission permission) {
+        Map<IslandPermission, Boolean> pending = this.pendingPermissions.get(editor);
+        Boolean value = pending == null ? null : pending.get(permission);
+        return value != null ? value : this.permissions.contains(permission);
+    }
+
+    /** Flips {@code permission} in {@code editor}'s unsaved edits and returns the new value. */
+    public boolean togglePermission(UUID editor, IslandPermission permission) {
+        boolean granted = !isGrantedFor(editor, permission);
+        this.pendingPermissions
+                .computeIfAbsent(editor, _ -> new ConcurrentHashMap<>())
+                .put(permission, granted);
+        return granted;
+    }
+
+    /** Removes {@code editor}'s unsaved edits and returns those that actually change the role. */
+    public Map<IslandPermission, Boolean> takePendingPermissions(UUID editor) {
+        Map<IslandPermission, Boolean> pending = this.pendingPermissions.remove(editor);
+        if (pending == null)
+            return Map.of();
+        Map<IslandPermission, Boolean> changes = new EnumMap<>(IslandPermission.class);
+        pending.forEach((permission, granted) -> {
+            if (granted != this.permissions.contains(permission))
+                changes.put(permission, granted);
+        });
+        return changes;
+    }
+
+    /** Applies changes that were just persisted. */
+    public void applyPermissions(Map<IslandPermission, Boolean> changes) {
+        EnumSet<IslandPermission> updated = EnumSet.copyOf(this.permissions);
+        changes.forEach((permission, granted) -> {
+            if (granted)
+                updated.add(permission);
             else
-                permissions.remove(entry.getKey());
-        }
-        this.dirtyPermissions.clear();
-        return flushed;
+                updated.remove(permission);
+        });
+        this.permissions = updated;
     }
 
     @Override

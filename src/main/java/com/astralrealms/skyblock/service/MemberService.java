@@ -52,6 +52,10 @@ public class MemberService {
         return this.repository.findByIsland(islandId);
     }
 
+    public MemberRepository repository() {
+        return this.repository;
+    }
+
     public Optional<Island> findPlayerIsland(UUID playerId) {
         UUID uniqueId = this.repository.findPlayerIsland(playerId)
                 .orElse(null);
@@ -60,6 +64,22 @@ public class MemberService {
         return this.plugin.islands()
                 .repository()
                 .findCachedById(uniqueId);
+    }
+
+    /**
+     * Like {@link #findPlayerIsland}, but falls back to the database when the player's island is
+     * not cached here — the startup warmup can have skipped it, and the cache can have evicted it.
+     */
+    public CompletableFuture<Optional<Island>> loadPlayerIsland(UUID playerId) {
+        Optional<Island> cached = findPlayerIsland(playerId);
+        if (cached.isPresent())
+            return CompletableFuture.completedFuture(cached);
+
+        return this.repository.findByPlayer(playerId)
+                .thenCompose(member -> member == null
+                        ? CompletableFuture.completedFuture(null)
+                        : this.plugin.islands().repository().findById(member.islandId()))
+                .thenApply(Optional::ofNullable);
     }
 
     @Unmodifiable
@@ -82,8 +102,9 @@ public class MemberService {
      *
      * <p>The island's member cap is enforced here rather than left to the caller: a caller that
      * checked it did so against its own cached snapshot, which another server may have filled since.
-     * Ensuring the player is not already a member is still the caller's job — the schema's
-     * {@code uq_member_player} index is the backstop for that.
+     * The snapshot check below only spares the database an obviously doomed write; the binding one
+     * runs in the insert's transaction. Ensuring the player is not already a member is still the
+     * caller's job — the schema's {@code uq_member_player} index is the backstop for that.
      *
      * @return a future failed with {@link IslandFullException} when the island is at its member cap
      */
@@ -96,7 +117,7 @@ public class MemberService {
                 .filter(IslandRole::isDefault)
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException("No default role on island: " + island.uniqueId()));
-        return repository.add(island.uniqueId(), playerUuid, defaultRole.id())
+        return repository.add(island.uniqueId(), playerUuid, defaultRole.id(), limit)
                 .thenApply(member -> {
                     Bukkit.getScheduler().runTask(plugin, () ->
                             Bukkit.getPluginManager().callEvent(
@@ -147,11 +168,14 @@ public class MemberService {
             return CompletableFuture.completedFuture(null);
         }
 
+        // The owner and staff may kick anyone; everyone else must be a member who outranks the
+        // target. A coop or visitor holding KICK_MEMBER through their system role ranks below every
+        // member, so they never may — the same rule bans follow.
         IslandMember kickerMember = island.findMember(kicker.getUniqueId()).orElse(null);
-        // Non-owners must outrank their target; owners (role == null) may kick anyone.
-        if (kickerMember != null && !kickerMember.isOwner()
-            && kickerMember.role() != null && target.role() != null
-            && kickerMember.role().weight() <= target.role().weight()) {
+        boolean outranks = island.isOwnerOrStaff(kicker)
+                           || (kickerMember != null && kickerMember.role() != null && target.role() != null
+                               && kickerMember.role().weight() > target.role().weight());
+        if (!outranks) {
             ASMessages.MEMBER_HIGHER_ROLE.message(kicker, placeholders);
             return CompletableFuture.completedFuture(null);
         }
@@ -159,6 +183,10 @@ public class MemberService {
         return repository.remove(island.uniqueId(), targetUuid)
                 .whenComplete((ignored, ex) -> {
                     if (ex != null) {
+                        if (MemberRepository.isMemberGone(ex)) {
+                            ASMessages.MEMBER_NOT_FOUND.message(kicker, placeholders);
+                            return;
+                        }
                         ASMessages.UNEXPECTED_ERROR.message(kicker, placeholders);
                         plugin.getSLF4JLogger().error("Failed to kick member {} from island {}: {}", targetUuid, island.uniqueId(), ex.getMessage(), ex);
                         return;
@@ -169,6 +197,7 @@ public class MemberService {
                                     island, targetUuid, IslandMemberLeaveEvent.Reason.KICKED)));
                     plugin.messaging().send(ASConstants.MEMBER_SYNC_CHANNEL, new MemberLeavePacket(
                             island.uniqueId(), targetUuid, IslandMemberLeaveEvent.Reason.KICKED));
+                    plugin.bans().evictIfClosed(island, targetUuid);
 
                     // Notify kicker
                     ASMessages.MEMBER_KICKED_SENDER.message(kicker, placeholders);
@@ -201,6 +230,10 @@ public class MemberService {
         return repository.remove(island.uniqueId(), player.getUniqueId())
                 .whenComplete((ignored, ex) -> {
                     if (ex != null) {
+                        if (MemberRepository.isMemberGone(ex)) {
+                            ASMessages.NO_ISLAND.message(player, placeholders);
+                            return;
+                        }
                         ASMessages.UNEXPECTED_ERROR.message(player, placeholders);
                         plugin.getSLF4JLogger().error("Failed to remove member {} from island {}: {}", player.getUniqueId(), island.uniqueId(), ex.getMessage(), ex);
                         return;
@@ -211,6 +244,7 @@ public class MemberService {
                                     island, player.getUniqueId(), IslandMemberLeaveEvent.Reason.VOLUNTARY)));
                     plugin.messaging().send(ASConstants.MEMBER_SYNC_CHANNEL, new MemberLeavePacket(
                             island.uniqueId(), player.getUniqueId(), IslandMemberLeaveEvent.Reason.VOLUNTARY));
+                    plugin.bans().evictIfClosed(island, player.getUniqueId());
 
                     ASMessages.ISLAND_LEFT.message(player, placeholders);
                 });
@@ -237,7 +271,9 @@ public class MemberService {
             ASMessages.MEMBER_NOT_FOUND.message(sender, placeholders);
             return CompletableFuture.completedFuture(null);
         }
-        if (target.isOwner() || senderMember == null) {
+        // Staff (and the owner) may act on any member; anyone else must be a member themselves.
+        boolean privileged = island.isOwnerOrStaff(sender);
+        if (target.isOwner() || (senderMember == null && !privileged)) {
             ASMessages.MEMBER_HIGHER_ROLE.message(sender, placeholders);
             return CompletableFuture.completedFuture(null);
         }
@@ -250,7 +286,7 @@ public class MemberService {
         }
         IslandRole next = ladder.get(idx + 1);
         // Non-owners cannot promote to a role at or above their own weight.
-        if (!senderMember.isOwner() && senderMember.role() != null
+        if (!privileged && senderMember.role() != null
             && next.weight() >= senderMember.role().weight()) {
             ASMessages.MEMBER_PROMOTE_HIGHER.message(sender, placeholders);
             return CompletableFuture.completedFuture(null);
@@ -260,6 +296,10 @@ public class MemberService {
         return repository.setRole(island.uniqueId(), targetUuid, next.id())
                 .whenComplete((ignored, ex) -> {
                     if (ex != null) {
+                        if (MemberRepository.isMemberGone(ex)) {
+                            ASMessages.MEMBER_NOT_FOUND.message(sender, placeholders);
+                            return;
+                        }
                         ASMessages.UNEXPECTED_ERROR.message(sender, placeholders);
                         plugin.getSLF4JLogger().error("Failed to promote member {} on island {}: {}", targetUuid, island.uniqueId(), ex.getMessage(), ex);
                         return;
@@ -297,13 +337,15 @@ public class MemberService {
             ASMessages.MEMBER_NOT_FOUND.message(sender, placeholders);
             return CompletableFuture.completedFuture(null);
         }
-        if (target.isOwner() || senderMember == null) {
+        // Staff (and the owner) may act on any member; anyone else must be a member themselves.
+        boolean privileged = island.isOwnerOrStaff(sender);
+        if (target.isOwner() || (senderMember == null && !privileged)) {
             ASMessages.MEMBER_HIGHER_ROLE.message(sender, placeholders);
             return CompletableFuture.completedFuture(null);
         }
 
         // Non-owners must outrank their target to demote them.
-        if (!senderMember.isOwner() && senderMember.role() != null && target.role() != null
+        if (!privileged && senderMember.role() != null && target.role() != null
             && senderMember.role().weight() <= target.role().weight()) {
             ASMessages.MEMBER_HIGHER_ROLE.message(sender, placeholders);
             return CompletableFuture.completedFuture(null);
@@ -321,6 +363,10 @@ public class MemberService {
         return repository.setRole(island.uniqueId(), targetUuid, prev.id())
                 .whenComplete((ignored, ex) -> {
                     if (ex != null) {
+                        if (MemberRepository.isMemberGone(ex)) {
+                            ASMessages.MEMBER_NOT_FOUND.message(sender, placeholders);
+                            return;
+                        }
                         ASMessages.UNEXPECTED_ERROR.message(sender, placeholders);
                         plugin.getSLF4JLogger().error("Failed to demote member {} on island {}: {}", targetUuid, island.uniqueId(), ex.getMessage(), ex);
                         return;
@@ -393,6 +439,10 @@ public class MemberService {
         return repository.setRole(island.uniqueId(), targetUuid, role.id())
                 .handle((ignored, exception) -> {
                     if (exception != null) {
+                        if (MemberRepository.isMemberGone(exception)) {
+                            ASMessages.MEMBER_NOT_FOUND.message(sender, placeholders);
+                            return null;
+                        }
                         ASMessages.UNEXPECTED_ERROR.message(sender, placeholders);
                         plugin.getSLF4JLogger().error("Failed to set the role of {} on island {}", targetUuid, island.uniqueId(), exception);
                         return null;
@@ -422,6 +472,14 @@ public class MemberService {
 
         if (island.owner() == null || !island.owner().playerUuid().equals(currentOwner.getUniqueId())) {
             ASMessages.NOT_ISLAND_OWNER.message(currentOwner);
+            return CompletableFuture.completedFuture(null);
+        }
+        // The menu hands over whatever member it rendered: it may belong to another island, be the
+        // owner themselves, or have left since. The repository re-checks under the transaction.
+        if (!newOwner.islandId().equals(island.uniqueId())
+            || newOwner.playerUuid().equals(currentOwner.getUniqueId())
+            || island.findMember(newOwner.playerUuid()).isEmpty()) {
+            ASMessages.MEMBER_NOT_FOUND.message(currentOwner, placeholders);
             return CompletableFuture.completedFuture(null);
         }
         IslandRole highestRole = island.roles().stream()

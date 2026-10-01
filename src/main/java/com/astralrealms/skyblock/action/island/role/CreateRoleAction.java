@@ -10,14 +10,15 @@ import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.model.island.Island;
 
 /**
- * Dialog action: {@code [create-role] <island> <name> <weight>}. The roles menu opens the
- * {@code island-role-create} dialog, whose confirm button lands here with the typed name and the
- * chosen weight.
+ * Dialog action: {@code [create-role] <island> <weight> <name>}. The roles menu opens the
+ * {@code island-role-create} dialog, whose confirm button lands here with the chosen weight and the
+ * typed name. The name comes last: only the last argument takes the rest of the line, so a name
+ * with spaces stays whole.
  */
 public record CreateRoleAction(
         PlaceholderWrapper<Island> island,
-        PlaceholderWrapper<String> name,
-        PlaceholderWrapper<Integer> weight
+        PlaceholderWrapper<Integer> weight,
+        PlaceholderWrapper<String> name
 ) implements PaperAction {
 
     @Override

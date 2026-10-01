@@ -11,14 +11,15 @@ import com.astralrealms.skyblock.model.island.Island;
 import com.astralrealms.skyblock.model.role.IslandRole;
 
 /**
- * Dialog action: {@code [edit-role] <island> <role> <name> <weight>}. The roles menu opens the
- * {@code island-role-edit} dialog prefilled with the role's current name and weight.
+ * Dialog action: {@code [edit-role] <island> <role> <weight> <name>}. The roles menu opens the
+ * {@code island-role-edit} dialog prefilled with the role's current name and weight. The name
+ * comes last so that one with spaces stays whole; a weight that is not a number keeps the current.
  */
 public record EditRoleAction(
         PlaceholderWrapper<Island> island,
         PlaceholderWrapper<IslandRole> role,
-        PlaceholderWrapper<String> name,
-        PlaceholderWrapper<Integer> weight
+        PlaceholderWrapper<String> weight,
+        PlaceholderWrapper<String> name
 ) implements PaperAction {
 
     @Override
@@ -27,7 +28,12 @@ public record EditRoleAction(
         Island island = context.parseWrapper(this.island);
         IslandRole role = context.parseWrapper(this.role);
         String name = context.parseWrapper(this.name);
-        Integer weight = context.parseWrapper(this.weight);
-        AstralSkyblock.get().roles().update(island, player, role, name, weight == null ? 0 : weight);
+        int weight;
+        try {
+            weight = Integer.parseInt(String.valueOf(context.parseWrapper(this.weight)).strip());
+        } catch (NumberFormatException e) {
+            weight = role.weight();
+        }
+        AstralSkyblock.get().roles().update(island, player, role, name, weight);
     }
 }

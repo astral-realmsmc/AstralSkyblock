@@ -19,12 +19,24 @@ import com.astralrealms.skyblock.utils.PlayerText;
 
 public class RoleService {
 
+    /**
+     * Permissions that let their holder hand out (or create roles carrying) any other permission.
+     * Only the owner may grant them, and never to the VISITOR or COOP role: every player on the
+     * network resolves through those.
+     */
+    private static final Set<IslandPermission> OWNER_ONLY_GRANTS =
+            EnumSet.of(IslandPermission.ALL, IslandPermission.SET_PERMISSION, IslandPermission.SET_ROLE);
+
     private final AstralSkyblock plugin;
     private final RoleRepository repository;
 
     public RoleService(AstralSkyblock plugin) {
         this.plugin = plugin;
         this.repository = new RoleRepository(plugin);
+    }
+
+    public RoleRepository repository() {
+        return this.repository;
     }
 
     /**
@@ -82,7 +94,21 @@ public class RoleService {
         return permissions;
     }
 
+    /**
+     * Whether {@code editor} may grant {@code permission} to {@code role}. Granting is limited to
+     * what the editor holds themselves — otherwise anyone allowed to edit a lower role could give it
+     * (or every visitor) powers they were never trusted with.
+     */
+    public boolean mayGrant(Player editor, Island island, IslandRole role, IslandPermission permission) {
+        if (OWNER_ONLY_GRANTS.contains(permission))
+            return role.kind() == IslandRole.Type.MEMBER && island.isOwnerOrStaff(editor);
+        return island.hasPermission(editor, permission);
+    }
+
     public void updatePermissions(Player player, Island island, IslandRole role) {
+        // Taken first: a refused save discards the edits rather than leaving them pending.
+        Map<IslandPermission, Boolean> permissions = role.takePendingPermissions(player.getUniqueId());
+
         if (!island.hasPermission(player, IslandPermission.SET_PERMISSION)) {
             ASMessages.NO_PERMISSION.message(player);
             return;
@@ -90,10 +116,16 @@ public class RoleService {
             ASMessages.ROLE_PERMISSION_HIGHER.message(player);
             return;
         }
-
-        Map<IslandPermission, Boolean> permissions = role.flushPermissions();
         if (permissions.isEmpty())
             return;
+
+        // Re-checked at save time: the editor's own permissions may have changed since the toggle.
+        boolean refused = permissions.entrySet().stream()
+                .anyMatch(entry -> entry.getValue() && !mayGrant(player, island, role, entry.getKey()));
+        if (refused) {
+            ASMessages.NO_PERMISSION.message(player);
+            return;
+        }
 
         this.repository.updateRolePermissions(island.uniqueId(), role.id(), permissions)
                 .whenComplete((result, exception) -> {
@@ -109,6 +141,9 @@ public class RoleService {
                         return;
                     }
 
+                    // Only now that it is stored. The repository re-cascades the island anyway, but
+                    // this server should not wait for that to enforce the change.
+                    role.applyPermissions(permissions);
                     ASMessages.ROLE_PERMISSION_UPDATE_SUCCESS.message(player, placeholders);
                 });
 
@@ -137,6 +172,14 @@ public class RoleService {
         }
         if (!canUseWeight(island, player, weight)) {
             ASMessages.ROLE_WEIGHT_TOO_HIGH.message(player, placeholders);
+            return CompletableFuture.completedFuture(null);
+        }
+        // Every role is loaded with the island and listed in its menus; without a cap a member with
+        // SET_ROLE could create thousands.
+        int maximum = this.plugin.configuration().maximumRoles();
+        long custom = island.roles().stream().filter(role -> role.kind() == IslandRole.Type.MEMBER).count();
+        if (custom >= maximum) {
+            ASMessages.ROLE_LIMIT_REACHED.message(player, placeholders.registerDirect("maximum", maximum));
             return CompletableFuture.completedFuture(null);
         }
 
@@ -189,8 +232,7 @@ public class RoleService {
             return CompletableFuture.completedFuture(null);
         }
 
-        return this.repository.rename(role.id(), sanitised)
-                .thenCompose(ignored -> this.repository.setWeight(role.id(), weight))
+        return this.repository.renameAndReweight(role.id(), sanitised, weight)
                 .thenCompose(ignored -> this.plugin.islands().refreshRelationships(island.uniqueId()))
                 .handle((ignored, exception) -> {
                     if (exception != null) {

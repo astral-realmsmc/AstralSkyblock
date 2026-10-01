@@ -66,7 +66,10 @@ public class CoopService {
             return CompletableFuture.failedFuture(new IslandFullException(island.uniqueId(), limit, false));
 
         IslandCoop coop = new IslandCoop(island.uniqueId(), playerUuid, addedBy, System.currentTimeMillis());
-        return repository.add(coop).thenApply(saved -> {
+        // The snapshot check above only spares the database an obviously doomed write; the binding
+        // one runs in the insert's transaction.
+        return repository.add(coop, limit).thenApply(saved -> {
+            island.coops().removeIf(existing -> existing.playerUuid().equals(playerUuid));
             island.coops().add(saved);
             Bukkit.getScheduler().runTask(plugin, () ->
                     Bukkit.getPluginManager().callEvent(new IslandCoopAddEvent(island, playerUuid, addedBy)));
@@ -108,6 +111,7 @@ public class CoopService {
                     Bukkit.getScheduler().runTask(plugin, () ->
                             Bukkit.getPluginManager().callEvent(new IslandCoopRemoveEvent(island, playerUuid)));
                     plugin.messaging().send(ASConstants.COOP_SYNC_CHANNEL, new CoopRemovePacket(island.uniqueId(), playerUuid));
+                    plugin.bans().evictIfClosed(island, playerUuid);
 
                     // Notify remover
                     ASMessages.COOP_REMOVED_SENDER.message(remover, placeholders);
@@ -173,7 +177,12 @@ public class CoopService {
         repository.addLocally(coop);
         plugin.islands().repository()
                 .findCachedById(packet.islandId())
-                .ifPresent(island -> island.coops().add(coop));
+                .ifPresent(island -> {
+                    // The island's snapshot may already hold this coop (a cascade read it from the
+                    // database before the packet arrived): replace it rather than list it twice.
+                    island.coops().removeIf(existing -> existing.playerUuid().equals(coop.playerUuid()));
+                    island.coops().add(coop);
+                });
     }
 
     /**

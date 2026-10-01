@@ -10,7 +10,7 @@ import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.model.island.Island;
 
 /**
- * Menu action: {@code [disband-island] <island>}. The DISBAND_ISLAND check lives in the service.
+ * Menu action: {@code [disband-island] <island>}. The owner check lives in the service.
  */
 public record DisbandIslandAction(PlaceholderWrapper<Island> island) implements PaperAction {
 

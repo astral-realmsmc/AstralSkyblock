@@ -16,6 +16,7 @@ import com.astralrealms.core.service.impl.ChatService;
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.configuration.ASMessages;
 import com.astralrealms.skyblock.model.island.Island;
+import com.astralrealms.skyblock.model.role.IslandPermission;
 import com.astralrealms.skyblock.model.member.InvitationType;
 import com.astralrealms.skyblock.model.member.IslandInvitation;
 import com.astralrealms.skyblock.repository.InvitationRepository;
@@ -80,26 +81,25 @@ public class InvitationService {
             return CompletableFuture.completedFuture(null);
         }
 
-        return repository.findPending(island.uniqueId(), recipient.uniqueId())
-                .thenCompose(existing -> {
-                    if (existing.isPresent()) {
-                        ASMessages.INVITATION_ALREADY_SENT.message(sender, placeholders);
-                        return CompletableFuture.completedFuture(null);
-                    }
+        IslandInvitation invitation = IslandInvitation.create(
+                island.uniqueId(),
+                sender.getUniqueId(),
+                recipient.uniqueId(),
+                type
+        );
 
-                    IslandInvitation invitation = IslandInvitation.create(
-                            island.uniqueId(),
-                            sender.getUniqueId(),
-                            recipient.uniqueId(),
-                            type
-                    );
-
-                    return repository.create(invitation)
-                            .whenComplete((ignored, ex) -> {
+        // No read-then-insert: the unique key on (island, recipient, type) is what decides whether
+        // one is already pending, so concurrent invites cannot both get through.
+        return repository.create(invitation)
+                            .<Void>handle((created, ex) -> {
                                 if (ex != null) {
                                     ASMessages.UNEXPECTED_ERROR.message(sender, placeholders);
                                     plugin.getSLF4JLogger().error("Failed to create invitation for island {}: {}", island.uniqueId(), ex.getMessage(), ex);
-                                    return;
+                                    return null;
+                                }
+                                if (!created) {
+                                    ASMessages.INVITATION_ALREADY_SENT.message(sender, placeholders);
+                                    return null;
                                 }
 
                                 // Notify sender
@@ -109,8 +109,8 @@ public class InvitationService {
                                 AstralPaperAPI.getService(ChatService.class)
                                         .orElseThrow()
                                         .sendMessage(recipient.uniqueId(), ASMessages.INVITATION_RECEIVED.component(placeholders));
+                                return null;
                             });
-                });
     }
 
     /**
@@ -146,6 +146,22 @@ public class InvitationService {
                         ASMessages.BANNED_FROM_ISLAND.message(player, checks);
                         return CompletableFuture.completedFuture(null);
                     }
+                    // An invitation is only as good as its sender's standing: one who has since been
+                    // kicked, or lost the right to invite, cannot still let people in.
+                    if (!senderMayStillInvite(island, invitation)) {
+                        ASMessages.INVITATION_NOT_FOUND.message(player);
+                        return repository.delete(invitation.uniqueId()).thenApply(ignored -> null);
+                    }
+                    if (invitation.type() == InvitationType.MEMBER
+                        && plugin.members().findPlayerIsland(player.getUniqueId()).isPresent()) {
+                        ASMessages.ALREADY_HAS_ISLAND.message(player, checks);
+                        return CompletableFuture.completedFuture(null);
+                    }
+                    if (invitation.type() == InvitationType.COOP
+                        && (island.findMember(player.getUniqueId()).isPresent() || island.findCoop(player.getUniqueId()).isPresent())) {
+                        ASMessages.PLAYER_ALREADY_COOP.message(player, checks.registerDirect("target", new MinecraftPlayerPlaceholder(player.getUniqueId())));
+                        return repository.delete(invitation.uniqueId()).thenApply(ignored -> null);
+                    }
                     if (isFull(island, invitation.type(), checks)) {
                         (invitation.type() == InvitationType.MEMBER
                                 ? ASMessages.MEMBER_LIMIT_REACHED
@@ -153,15 +169,26 @@ public class InvitationService {
                         return CompletableFuture.completedFuture(null);
                     }
 
-                    CompletableFuture<?> action = invitation.type() == InvitationType.MEMBER
-                            ? members.addMember(island, player.getUniqueId(), invitation.senderId())
-                            : coops.add(island, invitation.senderId(), player.getUniqueId());
-                    return action.thenCompose(ignored -> repository.delete(invitation.uniqueId()))
-                            .whenComplete((ignored, ex) -> {
+                    // Claimed (deleted) before acting on it: of two accepts racing — a double click,
+                    // two servers — only the one that removes the row goes on to join.
+                    CompletableFuture<?> action = repository.claim(invitation.uniqueId())
+                            .thenCompose(claimed -> {
+                                if (!claimed)
+                                    return CompletableFuture.<Object>failedFuture(new InvitationGoneException());
+                                if (invitation.type() == InvitationType.MEMBER)
+                                    return members.addMember(island, player.getUniqueId(), invitation.senderId()).thenApply(Object.class::cast);
+                                return coops.add(island, invitation.senderId(), player.getUniqueId()).thenApply(Object.class::cast);
+                            });
+                    return action
+                            .<Void>handle((ignored, ex) -> {
                                 PlaceholderContainer placeholders = AstralPaperAPI.createPlaceholderContainer(player)
                                         .registerPlaceholder(island)
                                         .registerDirect("sender", new MinecraftPlayerPlaceholder(invitation.senderId()));
 
+                                if (ex != null && (ex instanceof InvitationGoneException || ex.getCause() instanceof InvitationGoneException)) {
+                                    ASMessages.INVITATION_NOT_FOUND.message(player);
+                                    return null;
+                                }
                                 if (ex != null) {
                                     // The island filled up between the check above and the write —
                                     // another server got there first. That is an ordinary outcome,
@@ -170,12 +197,12 @@ public class InvitationService {
                                     if (full != null) {
                                         (full.member() ? ASMessages.MEMBER_LIMIT_REACHED : ASMessages.COOP_LIMIT_REACHED)
                                                 .message(player, placeholders.registerDirect("limit", full.limit()));
-                                        return;
+                                        return null;
                                     }
 
                                     ASMessages.UNEXPECTED_ERROR.message(player, placeholders);
                                     plugin.getSLF4JLogger().error("Failed to accept invitation for island {}: {}", island.uniqueId(), ex.getMessage(), ex);
-                                    return;
+                                    return null;
                                 }
 
                                 // Notify recipient
@@ -185,7 +212,15 @@ public class InvitationService {
                                 AstralPaperAPI.getService(ChatService.class)
                                         .orElseThrow()
                                         .sendMessage(invitation.senderId(), ASMessages.INVITATION_ACCEPTED_SENDER.component(placeholders));
+                                return null;
                             });
+                })
+                // Only failures the step above never saw land here: the pending-invitation lookup
+                // itself, or a check that threw before the write was chained.
+                .exceptionally(throwable -> {
+                    ASMessages.UNEXPECTED_ERROR.message(player);
+                    plugin.getSLF4JLogger().error("Failed to accept an invitation for {}", player.getName(), throwable);
+                    return null;
                 });
     }
 
@@ -211,7 +246,7 @@ public class InvitationService {
                     }
 
                     return repository.delete(opt.get().uniqueId())
-                            .whenComplete((ignored, ex) -> {
+                            .<Void>handle((ignored, ex) -> {
                                 PlaceholderContainer placeholders = AstralPaperAPI.createPlaceholderContainer(player)
                                         .registerPlaceholder(island)
                                         .registerDirect("sender", new MinecraftPlayerPlaceholder(opt.get().senderId()));
@@ -219,7 +254,7 @@ public class InvitationService {
                                 if (ex != null) {
                                     ASMessages.UNEXPECTED_ERROR.message(player, placeholders);
                                     plugin.getSLF4JLogger().error("Failed to decline invitation for island {}: {}", islandId, ex.getMessage(), ex);
-                                    return;
+                                    return null;
                                 }
 
                                 // Notify recipient
@@ -229,7 +264,15 @@ public class InvitationService {
                                 AstralPaperAPI.getService(ChatService.class)
                                         .orElseThrow()
                                         .sendMessage(opt.get().senderId(), ASMessages.INVITATION_DECLINED_SENDER.component(placeholders));
+                                return null;
                             });
+                })
+                // Only failures the step above never saw land here: the pending-invitation lookup
+                // itself, or a check that threw before the write was chained.
+                .exceptionally(throwable -> {
+                    ASMessages.UNEXPECTED_ERROR.message(player);
+                    plugin.getSLF4JLogger().error("Failed to decline an invitation for {}", player.getName(), throwable);
+                    return null;
                 });
     }
 
@@ -241,13 +284,15 @@ public class InvitationService {
     public CompletableFuture<Void> cancel(Island island, Player sender, MinecraftPlayer target) {
         return repository.findPending(island.uniqueId(), target.uniqueId())
                 .thenCompose(opt -> {
-                    if (opt.isEmpty() || !opt.get().senderId().equals(sender.getUniqueId())) {
+                    // Not only the sender: one who left or was kicked can no longer cancel, and the
+                    // island's owner and inviters must be able to withdraw what was sent in its name.
+                    if (opt.isEmpty() || !mayCancel(island, sender, opt.get())) {
                         ASMessages.INVITATION_NOT_FOUND.message(sender);
                         return CompletableFuture.completedFuture(null);
                     }
 
                     return repository.delete(opt.get().uniqueId())
-                            .whenComplete((ignored, ex) -> {
+                            .<Void>handle((ignored, ex) -> {
                                 PlaceholderContainer placeholders = AstralPaperAPI.createPlaceholderContainer(sender)
                                         .registerPlaceholder(island)
                                         .registerDirect("target", new MinecraftPlayerPlaceholder(target));
@@ -255,7 +300,7 @@ public class InvitationService {
                                 if (ex != null) {
                                     ASMessages.UNEXPECTED_ERROR.message(sender, placeholders);
                                     plugin.getSLF4JLogger().error("Failed to cancel invitation for island {}: {}", island.uniqueId(), ex.getMessage(), ex);
-                                    return;
+                                    return null;
                                 }
 
                                 // Notify sender
@@ -265,8 +310,38 @@ public class InvitationService {
                                 AstralPaperAPI.getService(ChatService.class)
                                         .orElseThrow()
                                         .sendMessage(target.uniqueId(), ASMessages.INVITATION_CANCELLED_RECIPIENT.component(placeholders));
+                                return null;
                             });
+                })
+                // Only failures the step above never saw land here: the pending-invitation lookup
+                // itself, or a check that threw before the write was chained.
+                .exceptionally(throwable -> {
+                    ASMessages.UNEXPECTED_ERROR.message(sender);
+                    plugin.getSLF4JLogger().error("Failed to cancel an invitation for {}", sender.getName(), throwable);
+                    return null;
                 });
+    }
+
+    /** Another accept claimed the invitation first. */
+    private static final class InvitationGoneException extends IllegalStateException {
+    }
+
+    private static boolean mayCancel(Island island, Player player, IslandInvitation invitation) {
+        if (invitation.senderId().equals(player.getUniqueId()) || island.isOwnerOrStaff(player))
+            return true;
+        return island.hasPermission(player, invitation.type() == InvitationType.MEMBER
+                ? IslandPermission.INVITE_MEMBER
+                : IslandPermission.COOP_MEMBER);
+    }
+
+    /** Whether the invitation's sender is still a member of the island allowed to send it. */
+    private static boolean senderMayStillInvite(Island island, IslandInvitation invitation) {
+        IslandPermission required = invitation.type() == InvitationType.MEMBER
+                ? IslandPermission.INVITE_MEMBER
+                : IslandPermission.COOP_MEMBER;
+        return island.findMember(invitation.senderId())
+                .map(sender -> sender.isOwner() || (sender.role() != null && sender.role().hasPermission(required)))
+                .orElse(false);
     }
 
     /** Unwraps the completion wrapper a failed future arrives in, if it holds a full-island refusal. */
@@ -327,6 +402,9 @@ public class InvitationService {
      * The returned future is intentionally discarded — pruning is best-effort cleanup.
      */
     private void pruneExpiredSync() {
-        pruneExpired();
+        pruneExpired().exceptionally(throwable -> {
+            plugin.getSLF4JLogger().warn("Failed to prune expired invitations", throwable);
+            return null;
+        });
     }
 }

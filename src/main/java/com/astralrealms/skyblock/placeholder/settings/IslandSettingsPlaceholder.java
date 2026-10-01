@@ -1,5 +1,7 @@
 package com.astralrealms.skyblock.placeholder.settings;
 
+import org.bukkit.entity.Player;
+
 import com.astralrealms.core.paper.placeholder.itemstack.ItemStackPlaceholder;
 import com.astralrealms.core.placeholder.PlaceholderContext;
 import com.astralrealms.core.placeholder.impl.system.ComplexPlaceholder;
@@ -22,7 +24,9 @@ public class IslandSettingsPlaceholder implements ComplexPlaceholder {
         return switch (context.next()) {
             case "id" -> setting.name();
             case "item" -> new ItemStackPlaceholder(this.setting.value().get(context.function()));
-            case "enabled" -> island.isSettingEnabled(setting);
+            case "enabled" -> context.context() instanceof Player viewer
+                               ? island.isSettingEnabled(viewer.getUniqueId(), setting)
+                               : island.isSettingEnabled(setting);
             case null, default -> null;
         };
     }
