@@ -143,7 +143,7 @@ public class IslandPermissionsListener implements Listener {
 
     @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
     public void onMinecartOpen(InventoryOpenEvent event) {
-        if (event.getInventory().getHolder() instanceof Minecart minecart
+        if (event.getInventory().getHolder(false) instanceof Minecart minecart
             && event.getPlayer() instanceof Player player)
             cancelIfDisabled(event, player, minecart.getWorld(), IslandPermission.MINECART_OPEN);
     }

@@ -23,7 +23,9 @@ import com.astralrealms.skyblock.repository.InvitationRepository;
 
 public class InvitationService {
 
-    private static final long PRUNE_INTERVAL_TICKS = 20L * 60;
+    private static final long PRUNE_INTERVAL_TICKS = 20L * 60 * 5;
+    // Only one server of the network prunes per interval: whoever takes this key first.
+    private static final String PRUNE_LOCK_KEY = "skyblock:invitation-prune";
 
     private final AstralSkyblock plugin;
     private final InvitationRepository repository;
@@ -402,9 +404,17 @@ public class InvitationService {
      * The returned future is intentionally discarded — pruning is best-effort cleanup.
      */
     private void pruneExpiredSync() {
-        pruneExpired().exceptionally(throwable -> {
-            plugin.getSLF4JLogger().warn("Failed to prune expired invitations", throwable);
-            return null;
-        });
+        // Every server used to run the same DELETE every minute. Expired invitations are already
+        // refused on accept, so this is only housekeeping: one server, every five minutes.
+        long lockMillis = PRUNE_INTERVAL_TICKS * 50 - 5_000;
+        plugin.cache()
+                .runAsync(commands -> commands
+                        .set(PRUNE_LOCK_KEY, "1", io.lettuce.core.SetArgs.Builder.nx().px(lockMillis))
+                        .toCompletableFuture())
+                .thenCompose(reply -> "OK".equals(reply) ? pruneExpired() : CompletableFuture.completedFuture(null))
+                .exceptionally(throwable -> {
+                    plugin.getSLF4JLogger().warn("Failed to prune expired invitations", throwable);
+                    return null;
+                });
     }
 }

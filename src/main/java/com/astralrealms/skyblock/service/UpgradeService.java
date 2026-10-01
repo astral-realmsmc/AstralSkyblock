@@ -32,6 +32,8 @@ import com.astralrealms.skyblock.repository.UpgradeRepository;
 public class UpgradeService {
 
     private final AstralSkyblock plugin;
+    // Generator keys already reported as unknown, so a misconfiguration is logged once, not per block.
+    private final Set<String> unknownGenerators = ConcurrentHashMap.newKeySet();
     private final UpgradeRepository repository;
     private final Map<UpgradeType, IslandUpgrade> blueprints = new HashMap<>();
     // Islands with a purchase in flight, so a double click cannot be charged twice.
@@ -425,7 +427,9 @@ public class UpgradeService {
                 GeneratorConfiguration generator = this.plugin.generators().findById(level.key()).orElse(null);
                 if (generator != null)
                     return generator;
-                this.plugin.getSLF4JLogger().warn("Generator upgrade level {} references unknown generator '{}'", level.level(), level.key());
+                // Once per key: this runs on every block a generator forms.
+                if (this.unknownGenerators.add(level.key()))
+                    this.plugin.getSLF4JLogger().warn("Generator upgrade level {} references unknown generator '{}'", level.level(), level.key());
             }
         }
         return this.plugin.generators().defaultGenerator();

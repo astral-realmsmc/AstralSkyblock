@@ -7,6 +7,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -53,6 +54,9 @@ public class LevelService {
     // Islands with a scan in flight, so a second /is calc cannot start a parallel scan.
     private final Set<UUID> scanning = ConcurrentHashMap.newKeySet();
     // islandId -> epoch millis of its last completed scan, for the /is calc cooldown.
+    // Summing runs on Bukkit's async pool rather than the JVM-wide ForkJoin common pool, which
+    // every plugin on the server shares.
+    private final Executor asyncExecutor = this::runAsync;
     private final Map<UUID, Long> lastScan = new ConcurrentHashMap<>();
     // Islands whose blocks changed since their last scan. The periodic pass only rescans these: an
     // island nobody touched scores the same, and walking its whole border box again for nothing
@@ -86,6 +90,10 @@ public class LevelService {
     // =========================================================================
     //  Scanning
     // =========================================================================
+
+    private void runAsync(Runnable task) {
+        Bukkit.getScheduler().runTaskAsynchronously(this.plugin, task);
+    }
 
     /** Notes that blocks of an island changed, so the next periodic pass rescans it. */
     public void markDirty(UUID islandId) {
@@ -208,7 +216,7 @@ public class LevelService {
                     scan.spawners.addAll(tally.spawners);
                     scan.hoppers += tally.hoppers;
                     return tally.value;
-                })
+                }, this.asyncExecutor)
                 .whenComplete((batchValue, throwable) -> resume(result, () -> {
                     if (throwable != null) {
                         result.completeExceptionally(throwable);

@@ -48,7 +48,6 @@ public abstract class SyncedRepository<K, V> {
 
     protected AsyncLoadingCache<K, V> buildCache(AsyncCacheLoader<K, V> cacheLoader) {
         return Caffeine.newBuilder()
-                .recordStats()
                 .buildAsync(cacheLoader);
     }
 

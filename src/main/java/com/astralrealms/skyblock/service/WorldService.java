@@ -615,7 +615,7 @@ public class WorldService {
                     } catch (Exception e) {
                         throw new CompletionException("Failed to delete world for island with UUID: " + uniqueId, e);
                     }
-                });
+                }, this.saveExecutor); // JDBC: not on the shared ForkJoin pool
     }
 
     /**

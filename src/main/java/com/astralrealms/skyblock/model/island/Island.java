@@ -69,8 +69,9 @@ public class Island implements Unique, ComplexPlaceholder {
     // a cascade swaps them in on a database thread while the main thread reads them.
     @Setter
     private transient volatile IslandMember owner;
-    @Setter
     private transient volatile Collection<IslandMember> members = new ArrayList<>();
+    // The same members by player: findMember runs on every protected event, and was a stream.
+    private transient volatile Map<UUID, IslandMember> membersByPlayer = Map.of();
     @Setter
     private transient volatile Collection<IslandRole> roles = new ArrayList<>();
     @Setter
@@ -156,11 +157,16 @@ public class Island implements Unique, ComplexPlaceholder {
     }
 
     public Optional<IslandMember> findMember(UUID uniqueId) {
-        if (this.members == null)
-            return Optional.empty();
-        return this.members.stream()
-                .filter(member -> member.playerUuid().equals(uniqueId))
-                .findFirst();
+        return Optional.ofNullable(this.membersByPlayer.get(uniqueId));
+    }
+
+    /** Replaces the island's members (a cascade or refresh); the lookup index follows. */
+    public void members(Collection<IslandMember> members) {
+        Map<UUID, IslandMember> byPlayer = new HashMap<>();
+        if (members != null)
+            members.forEach(member -> byPlayer.put(member.playerUuid(), member));
+        this.membersByPlayer = Map.copyOf(byPlayer);
+        this.members = members;
     }
 
     public Optional<IslandCoop> findCoop(UUID playerUuid) {

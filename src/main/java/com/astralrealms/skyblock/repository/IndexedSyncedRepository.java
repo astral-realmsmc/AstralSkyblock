@@ -45,7 +45,6 @@ public abstract class IndexedSyncedRepository<K, V, I> extends SyncedRepository<
     @Override
     protected AsyncLoadingCache<K, V> buildCache(AsyncCacheLoader<K, V> cacheLoader) {
         return Caffeine.newBuilder()
-                .recordStats()
                 .evictionListener((RemovalListener<K, V>) (key, value, _) -> {
                     if (key != null)
                         deindex(key, value);
