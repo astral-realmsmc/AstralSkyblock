@@ -11,7 +11,6 @@ spawn-location:
   pitch: 0.0
 icon:
   material: stone
-  name: "Default Blueprint"
+  name: "Île classique"
   lore:
-    - "This is the default blueprint."
-    - "It is used when no other blueprint is specified."
+    - "Le modèle d'île par défaut."

@@ -3,10 +3,10 @@ roles:
     type: VISITOR
     weight: 0
     default: false
-    name: "Visitor"
+    name: "Visiteur"
     icon:
       material: "stone"
-      name: "Visitor"
+      name: "Visiteur"
     # Visitors get nothing by default: they may look around, and that is it. Grant
     # entries here (or through the in-game permissions menu) to loosen that.
     permissions: []
@@ -14,10 +14,10 @@ roles:
     type: COOP
     weight: 1
     default: false
-    name: "Co-Op"
+    name: "Coopérateur"
     icon:
       material: "gold_ingot"
-      name: "Co-Op"
+      name: "Coopérateur"
     # Trusted helpers: build, break and interact with the world,
     # but no island management and no warps.
     permissions:
@@ -56,10 +56,10 @@ roles:
     type: MEMBER
     weight: 2
     default: true
-    name: "Member"
+    name: "Membre"
     icon:
       material: "iron_ingot"
-      name: "Member"
+      name: "Membre"
     # Full islanders: everything a co-op can do, plus warps, the island
     # spawn, invites, expelling visitors and valuable/spawner harvesting.
     permissions:

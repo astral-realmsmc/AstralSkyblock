@@ -1,108 +1,108 @@
 always-day:
   material: SUNFLOWER
-  name: "<green>Always Day"
+  name: "<green>Toujours le jour"
   lore:
-    - "<gray>Keeps the island time at day."
+    - "<gray>Garde l'île en plein jour."
 
 always-middle-day:
   material: DAYLIGHT_DETECTOR
-  name: "<green>Always Midday"
+  name: "<green>Toujours midi"
   lore:
-    - "<gray>Keeps the island time at midday."
+    - "<gray>Garde l'île à midi."
 
 always-night:
   material: CLOCK
-  name: "<green>Always Night"
+  name: "<green>Toujours la nuit"
   lore:
-    - "<gray>Keeps the island time at night."
+    - "<gray>Garde l'île de nuit."
 
 always-middle-night:
   material: BLACK_BED
-  name: "<green>Always Midnight"
+  name: "<green>Toujours minuit"
   lore:
-    - "<gray>Keeps the island time at midnight."
+    - "<gray>Garde l'île à minuit."
 
 always-rain:
   material: WATER_BUCKET
-  name: "<green>Always Rain"
+  name: "<green>Toujours la pluie"
   lore:
-    - "<gray>Keeps the island weather rainy."
+    - "<gray>Fait toujours pleuvoir sur l'île."
 
 always-shiny:
   material: GLOWSTONE
-  name: "<green>Always Shiny"
+  name: "<green>Toujours beau temps"
   lore:
-    - "<gray>Keeps the island weather clear."
+    - "<gray>Garde un ciel dégagé sur l'île."
 
 creeper-explosion:
   material: CREEPER_HEAD
-  name: "<green>Creeper Explosion"
+  name: "<green>Explosions de creepers"
   lore:
-    - "<gray>Allows creepers to damage the island."
+    - "<gray>Autorise les creepers à endommager l'île."
 
 crops-growth:
   material: WHEAT
-  name: "<green>Crops Growth"
+  name: "<green>Pousse des cultures"
   lore:
-    - "<gray>Allows crops to grow on the island."
+    - "<gray>Autorise les cultures à pousser sur l'île."
 
 egg-lay:
   material: EGG
-  name: "<green>Egg Lay"
+  name: "<green>Ponte des œufs"
   lore:
-    - "<gray>Allows chickens to lay eggs."
+    - "<gray>Autorise les poules à pondre des œufs."
 
 enderman-grief:
   material: ENDER_PEARL
-  name: "<green>Enderman Grief"
+  name: "<green>Endermen"
   lore:
-    - "<gray>Allows endermen to pick up and move blocks."
+    - "<gray>Autorise les endermen à prendre et déplacer des blocs."
 
 fire-spread:
   material: FIRE_CHARGE
-  name: "<green>Fire Spread"
+  name: "<green>Propagation du feu"
   lore:
-    - "<gray>Allows fire to spread on the island."
+    - "<gray>Autorise le feu à se propager sur l'île."
 
 ghast-fireball:
   material: FIRE_CHARGE
-  name: "<green>Ghast Fireball"
+  name: "<green>Boules de feu des ghasts"
   lore:
-    - "<gray>Allows ghast fireballs to damage the island."
+    - "<gray>Autorise les boules de feu des ghasts à endommager l'île."
 
 lava-flow:
   material: LAVA_BUCKET
-  name: "<green>Lava Flow"
+  name: "<green>Écoulement de la lave"
   lore:
-    - "<gray>Allows lava to flow on the island."
+    - "<gray>Autorise la lave à s'écouler sur l'île."
 
 pvp:
   material: DIAMOND_SWORD
   name: "<green>PvP"
   lore:
-    - "<gray>Allows players to fight on the island."
+    - "<gray>Autorise les joueurs à se battre sur l'île."
 
 tnt-explosion:
   material: TNT
-  name: "<green>TNT Explosion"
+  name: "<green>Explosions de TNT"
   lore:
-    - "<gray>Allows TNT, end crystals, beds and respawn"
-    - "<gray>anchors to damage the island."
+    - "<gray>Autorise la TNT, les cristaux de l'End, les lits"
+    - "<gray>et les ancres de réapparition à endommager l'île."
 
 tree-growth:
   material: OAK_SAPLING
-  name: "<green>Tree Growth"
+  name: "<green>Pousse des arbres"
   lore:
-    - "<gray>Allows saplings to grow into trees."
+    - "<gray>Autorise les pousses à devenir des arbres."
 
 water-flow:
   material: WATER_BUCKET
-  name: "<green>Water Flow"
+  name: "<green>Écoulement de l'eau"
   lore:
-    - "<gray>Allows water to flow on the island."
+    - "<gray>Autorise l'eau à s'écouler sur l'île."
 
 wither-explosion:
   material: WITHER_SKELETON_SKULL
-  name: "<green>Wither Explosion"
+  name: "<green>Explosions du wither"
   lore:
-    - "<gray>Allows the wither to damage the island."
+    - "<gray>Autorise le wither à endommager l'île."

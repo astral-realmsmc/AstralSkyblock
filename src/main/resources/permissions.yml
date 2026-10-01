@@ -1,337 +1,337 @@
 all:
   material: NETHER_STAR
-  name: "<green>All Permissions"
+  name: "<green>Toutes les permissions"
   lore:
-    - "<gray>Grants all permissions."
+    - "<gray>Accorde toutes les permissions."
 animal-breed:
   material: BONE
-  name: "<green>Animal Breed"
+  name: "<green>Reproduction des animaux"
   lore:
-    - "<gray>Allows you to breed animals."
+    - "<gray>Permet de faire se reproduire les animaux."
 
 animal-shear:
   material: SHEARS
-  name: "<green>Animal Shear"
+  name: "<green>Tonte des animaux"
   lore:
-    - "<gray>Allows you to shear animals."
+    - "<gray>Permet de tondre les animaux."
 
 ban-member:
   material: BARRIER
-  name: "<green>Ban Member"
+  name: "<green>Bannir"
   lore:
-    - "<gray>Allows you to ban players from the island."
+    - "<gray>Permet de bannir des joueurs de l'île."
 
 break:
   material: DIAMOND_PICKAXE
-  name: "<green>Break Blocks"
+  name: "<green>Casser des blocs"
   lore:
-    - "<gray>Allows you to break blocks on the island."
+    - "<gray>Permet de casser des blocs sur l'île."
 
 brush:
   material: BRUSH
-  name: "<green>Brush"
+  name: "<green>Pinceau"
   lore:
-    - "<gray>Allows you to brush suspicious blocks."
+    - "<gray>Permet de brosser les blocs suspects."
 
 bucket:
   material: BUCKET
-  name: "<green>Buckets"
+  name: "<green>Seaux"
   lore:
-    - "<gray>Allows you to empty and fill buckets"
-    - "<gray>(lava, water, milk, fish...) on the island."
+    - "<gray>Permet de vider et remplir des seaux"
+    - "<gray>(lave, eau, lait, poissons...) sur l'île."
 
 build:
   material: BRICKS
-  name: "<green>Build"
+  name: "<green>Construire"
   lore:
-    - "<gray>Allows you to place blocks on the island."
+    - "<gray>Permet de poser des blocs sur l'île."
 
 change-name:
   material: NAME_TAG
-  name: "<green>Change Name"
+  name: "<green>Renommer l'île"
   lore:
-    - "<gray>Allows you to change the island name."
+    - "<gray>Permet de changer le nom de l'île."
 
 chorus-fruit:
   material: CHORUS_FRUIT
-  name: "<green>Chorus Fruit"
+  name: "<green>Fruit de chorus"
   lore:
-    - "<gray>Allows you to teleport with chorus fruit."
+    - "<gray>Permet de se téléporter avec des fruits de chorus."
 
 close-bypass:
   material: IRON_DOOR
-  name: "<green>Close Bypass"
+  name: "<green>Entrer sur l'île fermée"
   lore:
-    - "<gray>Allows you to enter the island while it is closed."
+    - "<gray>Permet d'entrer sur l'île quand elle est fermée."
 
 close-island:
   material: IRON_DOOR
-  name: "<green>Close Island"
+  name: "<green>Fermer l'île"
   lore:
-    - "<gray>Allows you to close the island to visitors."
+    - "<gray>Permet de fermer l'île aux visiteurs."
 
 container-open:
   material: CHEST
-  name: "<green>Open Containers"
+  name: "<green>Ouvrir les conteneurs"
   lore:
-    - "<gray>Allows you to open chests, barrels, furnaces,"
-    - "<gray>hoppers, shulker boxes and other containers."
+    - "<gray>Permet d'ouvrir les coffres, tonneaux, fourneaux,"
+    - "<gray>entonnoirs, boîtes de shulker et autres conteneurs."
 
 coop-member:
   material: LEAD
-  name: "<green>Coop Member"
+  name: "<green>Ajouter des coopérateurs"
   lore:
-    - "<gray>Allows you to coop players onto the island."
+    - "<gray>Permet d'ajouter des coopérateurs à l'île."
 
 decoration:
   material: ITEM_FRAME
-  name: "<green>Decorations"
+  name: "<green>Décorations"
   lore:
-    - "<gray>Allows you to use and break item frames,"
-    - "<gray>paintings and armor stands."
+    - "<gray>Permet d'utiliser et casser les cadres,"
+    - "<gray>tableaux et porte-armures."
 
 delete-warp:
   material: RED_BED
-  name: "<green>Delete Warp"
+  name: "<green>Supprimer des warps"
   lore:
-    - "<gray>Allows you to delete island warps."
+    - "<gray>Permet de supprimer les warps de l'île."
 
 demote-members:
   material: RED_DYE
-  name: "<green>Demote Members"
+  name: "<green>Rétrograder des membres"
   lore:
-    - "<gray>Allows you to demote island members."
+    - "<gray>Permet de rétrograder les membres de l'île."
 
 drop-items:
   material: DROPPER
-  name: "<green>Drop Items"
+  name: "<green>Jeter des objets"
   lore:
-    - "<gray>Allows you to drop items on the island."
+    - "<gray>Permet de jeter des objets sur l'île."
 
 dye-sheep:
   material: PINK_DYE
-  name: "<green>Dye Sheep"
+  name: "<green>Teindre les moutons"
   lore:
-    - "<gray>Allows you to dye sheep."
+    - "<gray>Permet de teindre les moutons."
 
 ender-pearl:
   material: ENDER_PEARL
-  name: "<green>Ender Pearl"
+  name: "<green>Perles de l'End"
   lore:
-    - "<gray>Allows you to teleport with ender pearls."
+    - "<gray>Permet de se téléporter avec des perles de l'End."
 
 entity-damage:
   material: IRON_SWORD
-  name: "<green>Hurt Entities"
+  name: "<green>Blesser les entités"
   lore:
-    - "<gray>Allows you to hurt animals, villagers, golems,"
-    - "<gray>pets and vehicles. Hostile mobs are always fair game."
+    - "<gray>Permet de blesser les animaux, villageois, golems,"
+    - "<gray>animaux de compagnie et véhicules. Les monstres hostiles restent toujours attaquables."
 
 entity-place:
   material: ARMOR_STAND
-  name: "<green>Place Entities"
+  name: "<green>Poser des entités"
   lore:
-    - "<gray>Allows you to place armor stands, boats, minecarts,"
-    - "<gray>end crystals, item frames and paintings."
+    - "<gray>Permet de poser des porte-armures, bateaux, wagonnets,"
+    - "<gray>cristaux de l'End, cadres et tableaux."
 
 entity-ride:
   material: SADDLE
-  name: "<green>Entity Ride"
+  name: "<green>Monter les entités"
   lore:
-    - "<gray>Allows you to ride entities."
+    - "<gray>Permet de monter sur les entités."
 
 expel-bypass:
   material: LEATHER_BOOTS
-  name: "<green>Expel Bypass"
+  name: "<green>Immunité à l'expulsion"
   lore:
-    - "<gray>Allows you to bypass being expelled from the island."
+    - "<gray>Empêche d'être expulsé de l'île."
 
 expel-players:
   material: IRON_BOOTS
-  name: "<green>Expel Players"
+  name: "<green>Expulser des joueurs"
   lore:
-    - "<gray>Allows you to expel players from the island."
+    - "<gray>Permet d'expulser des joueurs de l'île."
 
 fertilize:
   material: BONE_MEAL
-  name: "<green>Fertilize"
+  name: "<green>Fertiliser"
   lore:
-    - "<gray>Allows you to fertilize crops with bone meal."
+    - "<gray>Permet de fertiliser avec de la poudre d'os."
 
 fish:
   material: FISHING_ROD
-  name: "<green>Fish"
+  name: "<green>Pêcher"
   lore:
-    - "<gray>Allows you to fish on the island."
+    - "<gray>Permet de pêcher sur l'île."
 
 fly:
   material: ELYTRA
-  name: "<green>Fly"
+  name: "<green>Voler"
   lore:
-    - "<gray>Allows you to fly on the island."
+    - "<gray>Permet de voler sur l'île."
 
 ignite-creeper:
   material: FLINT_AND_STEEL
-  name: "<green>Ignite Creeper"
+  name: "<green>Allumer les creepers"
   lore:
-    - "<gray>Allows you to ignite creepers with flint and steel."
+    - "<gray>Permet d'allumer les creepers avec un briquet."
 
 interact-block:
   material: CAKE
-  name: "<green>Use Blocks"
+  name: "<green>Utiliser les blocs"
   lore:
-    - "<gray>Allows you to use beds, respawn anchors, cakes,"
-    - "<gray>composters, flower pots, jukeboxes, campfires,"
-    - "<gray>candles, cauldrons, bookshelves, pots and hives."
+    - "<gray>Permet d'utiliser les lits, ancres de réapparition, gâteaux,"
+    - "<gray>composteurs, pots de fleurs, jukebox, feux de camp,"
+    - "<gray>bougies, chaudrons, bibliothèques, pots et ruches."
 
 invite-member:
   material: PAPER
-  name: "<green>Invite Member"
+  name: "<green>Inviter des membres"
   lore:
-    - "<gray>Allows you to invite players to the island."
+    - "<gray>Permet d'inviter des joueurs sur l'île."
 
 kick-member:
   material: IRON_BOOTS
-  name: "<green>Kick Member"
+  name: "<green>Retirer des membres"
   lore:
-    - "<gray>Allows you to kick members from the island."
+    - "<gray>Permet de retirer des membres de l'île."
 
 leash:
   material: LEAD
-  name: "<green>Leash"
+  name: "<green>Laisse"
   lore:
-    - "<gray>Allows you to leash entities."
+    - "<gray>Permet de tenir des entités en laisse."
 
 minecart-enter:
   material: MINECART
-  name: "<green>Minecart Enter"
+  name: "<green>Monter en wagonnet"
   lore:
-    - "<gray>Allows you to enter minecarts."
+    - "<gray>Permet de monter dans les wagonnets."
 
 minecart-open:
   material: CHEST_MINECART
-  name: "<green>Minecart Open"
+  name: "<green>Ouvrir les wagonnets"
   lore:
-    - "<gray>Allows you to open minecarts with containers."
+    - "<gray>Permet d'ouvrir les wagonnets à conteneur."
 
 name-entity:
   material: NAME_TAG
-  name: "<green>Name Entity"
+  name: "<green>Nommer les entités"
   lore:
-    - "<gray>Allows you to name entities with name tags."
+    - "<gray>Permet de nommer les entités avec des étiquettes."
 
 open-island:
   material: OAK_DOOR
-  name: "<green>Open Island"
+  name: "<green>Ouvrir l'île"
   lore:
-    - "<gray>Allows you to open the island to visitors."
+    - "<gray>Permet d'ouvrir l'île aux visiteurs."
 
 pickup-drops:
   material: HOPPER
-  name: "<green>Pickup Drops"
+  name: "<green>Ramasser les objets"
   lore:
-    - "<gray>Allows you to pick up dropped items."
+    - "<gray>Permet de ramasser les objets au sol."
 
 promote-members:
   material: LIME_DYE
-  name: "<green>Promote Members"
+  name: "<green>Promouvoir des membres"
   lore:
-    - "<gray>Allows you to promote island members."
+    - "<gray>Permet de promouvoir les membres de l'île."
 
 rankup:
   material: EXPERIENCE_BOTTLE
-  name: "<green>Rank Up"
+  name: "<green>Améliorations"
   lore:
-    - "<gray>Allows you to rank up the island."
+    - "<gray>Permet d'acheter des améliorations pour l'île."
 
 saddle-entity:
   material: SADDLE
-  name: "<green>Saddle Entity"
+  name: "<green>Seller les entités"
   lore:
-    - "<gray>Allows you to saddle entities."
+    - "<gray>Permet de seller les entités."
 
 sculk-sensor:
   material: SCULK_SENSOR
-  name: "<green>Sculk Sensor"
+  name: "<green>Capteurs sculk"
   lore:
-    - "<gray>Allows you to interact with sculk sensors."
+    - "<gray>Permet de déclencher les capteurs sculk."
 
 set-biome:
   material: GRASS_BLOCK
-  name: "<green>Set Biome"
+  name: "<green>Changer le biome"
   lore:
-    - "<gray>Allows you to change the island biome."
+    - "<gray>Permet de changer le biome de l'île."
 
 set-home:
   material: RED_BED
-  name: "<green>Set Home"
+  name: "<green>Point d'apparition"
   lore:
-    - "<gray>Allows you to set the island home."
+    - "<gray>Permet de définir le point d'apparition de l'île."
 
 set-permission:
   material: WRITABLE_BOOK
-  name: "<green>Set Permission"
+  name: "<green>Gérer les permissions"
   lore:
-    - "<gray>Allows you to manage island permissions."
+    - "<gray>Permet de gérer les permissions des rôles."
 
 set-role:
   material: LEATHER_CHESTPLATE
-  name: "<green>Set Role"
+  name: "<green>Gérer les rôles"
   lore:
-    - "<gray>Allows you to manage island roles."
+    - "<gray>Permet de gérer les rôles de l'île."
 
 set-settings:
   material: COMPARATOR
-  name: "<green>Set Settings"
+  name: "<green>Gérer les paramètres"
   lore:
-    - "<gray>Allows you to manage island settings."
+    - "<gray>Permet de gérer les paramètres de l'île."
 
 set-warp:
   material: LODESTONE
-  name: "<green>Set Warp"
+  name: "<green>Créer des warps"
   lore:
-    - "<gray>Allows you to set island warps."
+    - "<gray>Permet de créer et modifier les warps de l'île."
 
 spawner-break:
   material: SPAWNER
-  name: "<green>Spawner Break"
+  name: "<green>Casser les générateurs"
   lore:
-    - "<gray>Allows you to break spawners."
+    - "<gray>Permet de casser les générateurs de monstres."
 
 uncoop-member:
   material: LEAD
-  name: "<green>Uncoop Member"
+  name: "<green>Retirer des coopérateurs"
   lore:
-    - "<gray>Allows you to remove cooped players from the island."
+    - "<gray>Permet de retirer des coopérateurs de l'île."
 
 use-doors:
   material: OAK_DOOR
-  name: "<green>Use Doors"
+  name: "<green>Utiliser les portes"
   lore:
-    - "<gray>Allows you to open doors, trapdoors and fence gates."
+    - "<gray>Permet d'ouvrir les portes, trappes et portillons."
 
 use-redstone:
   material: LEVER
-  name: "<green>Use Redstone"
+  name: "<green>Utiliser la redstone"
   lore:
-    - "<gray>Allows you to use levers, buttons, pressure plates,"
-    - "<gray>repeaters, comparators and other redstone components."
+    - "<gray>Permet d'utiliser les leviers, boutons, plaques de pression,"
+    - "<gray>répéteurs, comparateurs et autres composants de redstone."
 
 valuable-break:
   material: EMERALD_ORE
-  name: "<green>Valuable Break"
+  name: "<green>Casser les blocs précieux"
   lore:
-    - "<gray>Allows you to break valuable blocks."
+    - "<gray>Permet de casser les blocs de valeur."
 
 villager-trading:
   material: EMERALD
-  name: "<green>Villager Trading"
+  name: "<green>Commerce avec les villageois"
   lore:
-    - "<gray>Allows you to trade with villagers."
+    - "<gray>Permet de commercer avec les villageois."
 
 wind-charge:
   material: WIND_CHARGE
-  name: "<green>Wind Charge"
+  name: "<green>Charges de vent"
   lore:
-    - "<gray>Allows you to use wind charges."
+    - "<gray>Permet d'utiliser les charges de vent."
 
