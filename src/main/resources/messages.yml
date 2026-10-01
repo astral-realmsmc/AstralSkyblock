@@ -34,6 +34,7 @@ biome-unknown: "%biome% is not a valid biome."
 biome-updating: "Changing the biome of %island_name% to %biome%..."
 biome-updated: "%island_name% is now %biome%. Rejoin if some chunks still show the old biome."
 biome-in-progress: "The biome of %island_name% is already being changed."
+biome-cooldown: "The biome of %island_name% can be changed again in %cooldown% seconds."
 biome-not-hosted: "%island_name% must be loaded to change its biome — visit it and try again."
 
 # Roles

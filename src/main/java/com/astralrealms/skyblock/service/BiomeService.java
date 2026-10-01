@@ -3,11 +3,14 @@ package com.astralrealms.skyblock.service;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.bukkit.Bukkit;
+import org.bukkit.Chunk;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Registry;
 import org.bukkit.World;
@@ -36,6 +39,10 @@ public class BiomeService {
 
     /** Chunks repainted per tick. Each is a few thousand cell writes plus one chunk resend. */
     private static final int CHUNKS_PER_TICK = 2;
+    /** Chunk coordinates examined per tick at most, generated or not. */
+    private static final int MAX_SKIPS_PER_TICK = 256;
+    /** How often an island may be repainted. Each pass resends every chunk to every viewer. */
+    private static final long REPAINT_COOLDOWN_MILLIS = 60_000;
     /** Edge of a biome cell, in blocks: biomes are stored per 4×4×4 volume. */
     private static final int CELL = 4;
     /**
@@ -47,6 +54,8 @@ public class BiomeService {
 
     private final AstralSkyblock plugin;
     // Islands with a repaint in flight, so a second /is biome cannot start a parallel pass.
+    // When each island was last repainted here; forgotten when its world unloads.
+    private final Map<UUID, Long> lastRepaint = new ConcurrentHashMap<>();
     private final Set<UUID> repainting = ConcurrentHashMap.newKeySet();
 
     public BiomeService(AstralSkyblock plugin) {
@@ -70,6 +79,11 @@ public class BiomeService {
         List<String> names = new ArrayList<>();
         Registry.BIOME.forEach(biome -> names.add(biome.getKey().getKey()));
         return names;
+    }
+
+    /** Forgets an island's repaint cooldown. Called when its world unloads here. */
+    public void forget(UUID islandId) {
+        this.lastRepaint.remove(islandId);
     }
 
     /**
@@ -101,10 +115,18 @@ public class BiomeService {
             return;
         }
 
+        Long last = this.lastRepaint.get(island.uniqueId());
+        long remaining = last == null ? 0 : last + REPAINT_COOLDOWN_MILLIS - System.currentTimeMillis();
+        if (remaining > 0 && !player.hasPermission("skyblock.admin")) {
+            ASMessages.BIOME_COOLDOWN.message(player, placeholders.registerDirect("cooldown", (remaining + 999) / 1000));
+            return;
+        }
+
         if (!this.repainting.add(island.uniqueId())) {
             ASMessages.BIOME_IN_PROGRESS.message(player, placeholders);
             return;
         }
+        this.lastRepaint.put(island.uniqueId(), System.currentTimeMillis());
 
         ASMessages.BIOME_UPDATING.message(player, placeholders);
         repaint(new Repaint(island.uniqueId(), world, biome, chunkCoordinates(island, world)), player, placeholders);
@@ -131,37 +153,51 @@ public class BiomeService {
             return;
         }
 
-        int minHeight = pass.world.getMinHeight();
-        int maxHeight = pass.world.getMaxHeight();
-        int end = Math.min(pass.cursor + CHUNKS_PER_TICK, pass.chunks.size());
-        for (int index = pass.cursor; index < end; index++) {
-            long coordinate = pass.chunks.get(index);
+        // The next few generated chunks. Never-generated ones are skipped (nothing to repaint, and
+        // generating them would carve terrain out of the void just to colour it), but only so many
+        // per tick: most of a border box is void.
+        List<CompletableFuture<Chunk>> loads = new ArrayList<>();
+        int examined = 0;
+        while (pass.cursor < pass.chunks.size() && loads.size() < CHUNKS_PER_TICK && examined < MAX_SKIPS_PER_TICK) {
+            long coordinate = pass.chunks.get(pass.cursor++);
+            examined++;
             int chunkX = (int) (coordinate >> 32);
             int chunkZ = (int) coordinate;
-            // Never generated: nothing to repaint, and generating it here would carve terrain out of
-            // the void just to colour it.
-            if (!pass.world.isChunkGenerated(chunkX, chunkZ))
-                continue;
-
-            for (int x = 0; x < 16; x += CELL)
-                for (int z = 0; z < 16; z += CELL)
-                    for (int y = minHeight; y < maxHeight; y += CELL)
-                        pass.world.setBiome((chunkX << 4) + x, y, (chunkZ << 4) + z, pass.biome);
-
-            // Biome colours are baked into the client's chunk mesh, so the chunk has to be resent
-            // for the change to be visible without a relog.
-            pass.world.refreshChunk(chunkX, chunkZ);
+            if (pass.world.isChunkGenerated(chunkX, chunkZ))
+                // Loaded asynchronously first: World#setBiome on an unloaded chunk loads it
+                // synchronously, stalling the tick. Paper completes this on the main thread.
+                loads.add(pass.world.getChunkAtAsync(chunkX, chunkZ, false));
         }
-        pass.cursor = end;
 
-        try {
-            Bukkit.getScheduler().runTask(this.plugin, () -> repaint(pass, player, placeholders));
-        } catch (Exception exception) {
-            // Scheduling throws once the plugin is disabling; release the slot rather than leaving
-            // the island unable to be repainted for the rest of this server's life.
-            this.repainting.remove(pass.islandId);
-            this.plugin.getSLF4JLogger().warn("Biome repaint of island {} aborted: {}", pass.islandId, exception.getMessage());
-        }
+        CompletableFuture.allOf(loads.toArray(CompletableFuture[]::new))
+                .whenComplete((ignored, loadError) -> {
+                    try {
+                        int minHeight = pass.world.getMinHeight();
+                        int maxHeight = pass.world.getMaxHeight();
+                        for (CompletableFuture<Chunk> load : loads) {
+                            Chunk chunk = load.getNow(null);
+                            if (chunk == null)
+                                continue;
+                            int baseX = chunk.getX() << 4;
+                            int baseZ = chunk.getZ() << 4;
+                            for (int x = 0; x < 16; x += CELL)
+                                for (int z = 0; z < 16; z += CELL)
+                                    for (int y = minHeight; y < maxHeight; y += CELL)
+                                        pass.world.setBiome(baseX + x, y, baseZ + z, pass.biome);
+
+                            // Biome colours are baked into the client's chunk mesh, so the chunk has
+                            // to be resent for the change to be visible without a relog.
+                            pass.world.refreshChunk(chunk.getX(), chunk.getZ());
+                        }
+                        Bukkit.getScheduler().runTask(this.plugin, () -> repaint(pass, player, placeholders));
+                    } catch (Exception exception) {
+                        // Scheduling throws once the plugin is disabling (and a world unloaded under
+                        // the pass throws here too); release the slot rather than leaving the island
+                        // unable to be repainted for the rest of this server's life.
+                        this.repainting.remove(pass.islandId);
+                        this.plugin.getSLF4JLogger().warn("Biome repaint of island {} aborted: {}", pass.islandId, exception.getMessage());
+                    }
+                });
     }
 
     /**

@@ -1,6 +1,7 @@
 package com.astralrealms.skyblock.service;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -12,7 +13,6 @@ import org.bukkit.Bukkit;
 import org.bukkit.scheduler.BukkitTask;
 import org.jetbrains.annotations.Nullable;
 
-import com.astralrealms.core.cache.CacheRepository;
 import com.astralrealms.core.paper.AstralPaperAPI;
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.model.IslandServer;
@@ -67,12 +67,10 @@ public class ServerService {
             """;
 
     private final AstralSkyblock plugin;
-    private final CacheRepository<IslandServer> repository;
     private BukkitTask heartbeatTask;
 
     public ServerService(AstralSkyblock plugin) {
         this.plugin = plugin;
-        this.repository = new CacheRepository<>(plugin.cache(), ASConstants.SERVER_CACHE_KEY, IslandServer.class, HEARTBEAT_TTL);
 
         if (this.plugin.configuration().isIslandServer()) {
             // Server ids are stable across restarts: anything still mapped to us describes worlds
@@ -116,15 +114,40 @@ public class ServerService {
         return this.plugin.cache().exists(ARRIVAL_PREFIX + island);
     }
 
+    /**
+     * Heartbeats live in one hash, {@code server id -> "loaded|maximum|publishedAt"}, so placement
+     * reads every server in one command. They used to be a key per server, found with a
+     * {@code KEYS} scan of the whole Redis keyspace on every placement.
+     */
     private void update() {
-        this.repository.set(new IslandServer(
-                localId(),
-                plugin.worlds().getLoadedWorlds().size(),
-                plugin.configuration().maximumIslands()
-        )).exceptionally(throwable -> {
-            this.plugin.getSLF4JLogger().error("Failed to publish island server heartbeat", throwable);
-            return null;
-        });
+        String heartbeat = plugin.worlds().getLoadedWorlds().size()
+                           + "|" + plugin.configuration().maximumIslands()
+                           + "|" + System.currentTimeMillis();
+        this.plugin.cache()
+                .hset(ASConstants.SERVER_CACHE_KEY, localId().toString(), heartbeat)
+                .exceptionally(throwable -> {
+                    this.plugin.getSLF4JLogger().error("Failed to publish island server heartbeat", throwable);
+                    return null;
+                });
+    }
+
+    /** Every server whose heartbeat is recent, dropping (best effort) the ones that are not. */
+    private CompletableFuture<List<IslandServer>> liveServers() {
+        return this.plugin.cache()
+                .hgetall(ASConstants.SERVER_CACHE_KEY)
+                .thenApply(entries -> {
+                    long staleBefore = System.currentTimeMillis() - HEARTBEAT_TTL.toMillis();
+                    List<IslandServer> live = new ArrayList<>();
+                    for (Map.Entry<String, String> entry : entries.entrySet()) {
+                        String[] parts = entry.getValue().split("\\|");
+                        boolean valid = parts.length == 3;
+                        if (valid && Long.parseLong(parts[2]) >= staleBefore)
+                            live.add(new IslandServer(UUID.fromString(entry.getKey()), Integer.parseInt(parts[0]), Integer.parseInt(parts[1])));
+                        else
+                            this.plugin.cache().hdel(ASConstants.SERVER_CACHE_KEY, entry.getKey());
+                    }
+                    return live;
+                });
     }
 
     /**
@@ -139,14 +162,16 @@ public class ServerService {
         if (!this.plugin.configuration().isIslandServer())
             return;
         try {
-            this.repository.delete(localId()).get(STARTUP_CLEANUP_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            this.plugin.cache()
+                    .hdel(ASConstants.SERVER_CACHE_KEY, localId().toString())
+                    .get(STARTUP_CLEANUP_TIMEOUT_SECONDS, TimeUnit.SECONDS);
         } catch (Exception e) {
             this.plugin.getSLF4JLogger().warn("Failed to withdraw the island server heartbeat on shutdown", e);
         }
     }
 
     public CompletableFuture<IslandServer> findEmptiestServer() {
-        return this.repository.findAll()
+        return liveServers()
                 .thenApply(servers -> servers.stream()
                         .filter(server -> server.loadedIslands() < server.maximumIslands())
                         .min(Comparator.comparingInt(IslandServer::loadedIslands))
@@ -157,7 +182,13 @@ public class ServerService {
     public CompletableFuture<Boolean> isAlive(UUID server) {
         if (server.equals(localId()))
             return CompletableFuture.completedFuture(this.plugin.configuration().isIslandServer());
-        return this.repository.exists(server);
+        return this.plugin.cache()
+                .hget(ASConstants.SERVER_CACHE_KEY, server.toString())
+                .thenApply(heartbeat -> heartbeat
+                        .map(value -> value.split("\\|"))
+                        .filter(parts -> parts.length == 3)
+                        .map(parts -> Long.parseLong(parts[2]) >= System.currentTimeMillis() - HEARTBEAT_TTL.toMillis())
+                        .orElse(false));
     }
 
     /** The server hosting (or loading) {@code island}, or {@code null} when none does. */

@@ -1,8 +1,7 @@
 package com.astralrealms.skyblock.repository;
 
-import java.sql.SQLException;
-import java.sql.Connection;
 import java.sql.PreparedStatement;
+import java.time.Duration;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -10,15 +9,15 @@ import java.util.concurrent.CompletableFuture;
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.model.member.SkyblockPlayer;
 import com.astralrealms.skyblock.utils.ASConstants;
+import com.github.benmanes.caffeine.cache.Caffeine;
+import com.github.benmanes.caffeine.cache.AsyncLoadingCache;
+import com.github.benmanes.caffeine.cache.AsyncCacheLoader;
 
 /**
  * Canonical UUID &lt;-&gt; name directory. Cached because protection checks, GUIs and command
  * tab-completion resolve player identities constantly.
  */
 public class PlayerRepository extends UUIDSyncedRepository<SkyblockPlayer> {
-
-    /** Name stored for a player referenced before they were ever seen. */
-    private static final String UNKNOWN_NAME = "?";
 
     public PlayerRepository(AstralSkyblock plugin) {
         super(
@@ -44,29 +43,11 @@ public class PlayerRepository extends UUIDSyncedRepository<SkyblockPlayer> {
 
     /**
      * Upserts the player on join: inserts a fresh row, or refreshes the stored name and bumps
-     * {@code last_seen} for a returning player — without disturbing {@code first_seen}. The cache
-     * is invalidated globally so every server reloads the canonical row on next access.
+     * {@code last_seen} for a returning player — without disturbing {@code first_seen}. Nothing
+     * else: no read-back and no invalidation broadcast, which every join used to pay for although
+     * nothing reads the cached player.
      */
-    /**
-     * Makes sure {@code players} has a row for each of {@code uuids}, inserting a placeholder name
-     * where there is none, so the foreign keys of a ban, coop, invitation or membership hold even
-     * for a player who never joined a skyblock server (or whose join has not been recorded yet).
-     * An existing row is left untouched; a placeholder is replaced on the player's first join.
-     */
-    public static void ensureRows(Connection connection, UUID... uuids) throws SQLException {
-        try (PreparedStatement statement = connection.prepareStatement("INSERT IGNORE INTO players (uuid, name) VALUES (?, ?)")) {
-            for (UUID uuid : uuids) {
-                if (uuid == null)
-                    continue;
-                statement.setObject(1, uuid);
-                statement.setString(2, UNKNOWN_NAME);
-                statement.addBatch();
-            }
-            statement.executeBatch();
-        }
-    }
-
-    public CompletableFuture<SkyblockPlayer> recordSeen(UUID uuid, String name) {
+    public CompletableFuture<Void> recordSeen(UUID uuid, String name) {
         String query = """
                 INSERT INTO players (uuid, name) VALUES (?, ?)
                 ON DUPLICATE KEY UPDATE name = VALUES(name), last_seen = CURRENT_TIMESTAMP(3)
@@ -79,9 +60,15 @@ public class PlayerRepository extends UUIDSyncedRepository<SkyblockPlayer> {
                         statement.executeUpdate();
                     }
                 })
-                .thenCompose(ignored -> {
-                    invalidateGlobally(uuid);
-                    return findById(uuid);
-                });
+                .thenRun(() -> invalidateLocally(uuid));
+    }
+
+    /** Bounded: a player entry would otherwise stay cached for the life of the server. */
+    @Override
+    protected AsyncLoadingCache<UUID, SkyblockPlayer> buildCache(AsyncCacheLoader<UUID, SkyblockPlayer> cacheLoader) {
+        return Caffeine.newBuilder()
+                .maximumSize(10_000)
+                .expireAfterAccess(Duration.ofMinutes(30))
+                .buildAsync(cacheLoader);
     }
 }

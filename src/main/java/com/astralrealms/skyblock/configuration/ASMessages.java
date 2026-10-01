@@ -37,6 +37,7 @@ public enum ASMessages implements MessageEnum {
     BIOME_UPDATING,
     BIOME_UPDATED,
     BIOME_IN_PROGRESS,
+    BIOME_COOLDOWN,
     BIOME_NOT_HOSTED,
     // Roles
     ROLE_PERMISSION_HIGHER,

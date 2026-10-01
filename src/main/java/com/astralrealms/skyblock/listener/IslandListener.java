@@ -54,6 +54,8 @@ public class IslandListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onIslandWorldUnloaded(IslandWorldUnloadedEvent event) {
         this.plugin.blockLimits().forget(event.island().uniqueId());
+        this.plugin.levels().forget(event.island().uniqueId());
+        this.plugin.biomes().forget(event.island().uniqueId());
     }
 
     /**

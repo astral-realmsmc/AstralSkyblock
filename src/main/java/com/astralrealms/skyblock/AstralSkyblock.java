@@ -213,7 +213,8 @@ public final class AstralSkyblock extends AstralPaperPlugin {
             this.registerListeners(
                     new IslandSettingsListener(this),
                     new IslandPermissionsListener(this),
-                    new UpgradeEffectsListener(this)
+                    new UpgradeEffectsListener(this),
+                    new IslandChangeListener(this)
             );
         if (this.configuration.generators().enabled())
             this.registerListener(new GeneratorListener(this));

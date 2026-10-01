@@ -34,12 +34,20 @@ public class LevelCommand extends BaseCommand {
             return;
         }
 
+        // Scanning walks every chunk inside the border; letting anyone trigger it on any island let
+        // one player keep scans running back to back by cycling through the hosted islands.
+        if (target.findMember(player.getUniqueId()).isEmpty() && !player.hasPermission("skyblock.admin")) {
+            ASMessages.NO_PERMISSION.message(player);
+            return;
+        }
+
         PlaceholderContainer placeholders = AstralPaperAPI.createPlaceholderContainer(player)
                 .registerPlaceholder(target);
 
         long cooldown = this.plugin.levels().cooldownRemaining(target.uniqueId());
         if (cooldown > 0 && !player.hasPermission("skyblock.admin")) {
-            ASMessages.LEVEL_COOLDOWN.message(player, placeholders.registerDirect("cooldown", cooldown / 1000));
+            // Rounded up: 0.4 s left is "1 second", not "0 seconds".
+            ASMessages.LEVEL_COOLDOWN.message(player, placeholders.registerDirect("cooldown", (cooldown + 999) / 1000));
             return;
         }
 

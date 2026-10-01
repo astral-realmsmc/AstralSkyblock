@@ -54,6 +54,10 @@ public class LevelService {
     private final Set<UUID> scanning = ConcurrentHashMap.newKeySet();
     // islandId -> epoch millis of its last completed scan, for the /is calc cooldown.
     private final Map<UUID, Long> lastScan = new ConcurrentHashMap<>();
+    // Islands whose blocks changed since their last scan. The periodic pass only rescans these: an
+    // island nobody touched scores the same, and walking its whole border box again for nothing
+    // was most of what the timer cost.
+    private final Set<UUID> dirty = ConcurrentHashMap.newKeySet();
     private volatile List<Island> top = List.of();
     // Whether a rescan pass is walking the hosted islands, so the timer cannot start a second one.
     private final AtomicBoolean rescanning = new AtomicBoolean();
@@ -83,6 +87,17 @@ public class LevelService {
     //  Scanning
     // =========================================================================
 
+    /** Notes that blocks of an island changed, so the next periodic pass rescans it. */
+    public void markDirty(UUID islandId) {
+        this.dirty.add(islandId);
+    }
+
+    /** Forgets an island's scan bookkeeping. Called when its world unloads here. */
+    public void forget(UUID islandId) {
+        this.lastScan.remove(islandId);
+        this.dirty.remove(islandId);
+    }
+
     /**
      * Rescans an island and persists its new value and level. Fails when the island world is not
      * loaded on this server (only its host can read its blocks) or when a scan is already running
@@ -97,6 +112,8 @@ public class LevelService {
             return CompletableFuture.failedFuture(new NotHostedException(island.uniqueId()));
         if (!this.scanning.add(island.uniqueId()))
             return CompletableFuture.failedFuture(new ScanInProgressException(island.uniqueId()));
+        // Changes from here on are the next scan's business.
+        this.dirty.remove(island.uniqueId());
 
         CompletableFuture<Long> result = new CompletableFuture<>();
         try {
@@ -114,8 +131,10 @@ public class LevelService {
                 .thenCompose(value -> persist(island, value).thenApply(ignored -> value))
                 .whenComplete((value, throwable) -> {
                     this.scanning.remove(island.uniqueId());
-                    if (throwable != null)
+                    if (throwable != null) {
                         this.plugin.blockLimits().endScan(island.uniqueId());
+                        this.dirty.add(island.uniqueId()); // not scored: try again next pass
+                    }
                     if (throwable == null)
                         this.lastScan.put(island.uniqueId(), System.currentTimeMillis());
                 });
@@ -367,7 +386,10 @@ public class LevelService {
         // chains can never walk the island list side by side.
         int generation = this.rescanGeneration.incrementAndGet();
         this.rescanStartedAt = System.currentTimeMillis();
-        rescanNext(List.copyOf(this.plugin.worlds().getLoadedWorlds().keySet()), 0, generation);
+        List<UUID> changed = this.plugin.worlds().getLoadedWorlds().keySet().stream()
+                .filter(this.dirty::contains)
+                .toList();
+        rescanNext(changed, 0, generation);
     }
 
     /**
