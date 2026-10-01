@@ -18,6 +18,9 @@ import org.bukkit.block.Biome;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.Nullable;
 
+import io.papermc.paper.registry.RegistryAccess;
+import io.papermc.paper.registry.RegistryKey;
+
 import com.astralrealms.core.paper.AstralPaperAPI;
 import com.astralrealms.core.placeholder.container.PlaceholderContainer;
 import com.astralrealms.skyblock.AstralSkyblock;
@@ -71,13 +74,17 @@ public class BiomeService {
             return null;
 
         NamespacedKey key = NamespacedKey.fromString(name.strip().toLowerCase(Locale.ROOT));
-        return key == null ? null : Registry.BIOME.get(key);
+        return key == null ? null : biomes().get(key);
+    }
+
+    private static Registry<Biome> biomes() {
+        return RegistryAccess.registryAccess().getRegistry(RegistryKey.BIOME);
     }
 
     /** Every registered biome key, for command completion. */
     public List<String> biomeNames() {
         List<String> names = new ArrayList<>();
-        Registry.BIOME.forEach(biome -> names.add(biome.getKey().getKey()));
+        biomes().forEach(biome -> names.add(biome.getKey().getKey()));
         return names;
     }
 

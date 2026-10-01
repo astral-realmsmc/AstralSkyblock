@@ -3,7 +3,7 @@ package com.astralrealms.skyblock.listener;
 import java.util.Collection;
 import java.util.List;
 
-import org.bukkit.GameRule;
+import org.bukkit.GameRules;
 import org.bukkit.Material;
 import org.bukkit.potion.PotionEffectTypeCategory;
 import org.bukkit.potion.PotionEffect;
@@ -229,14 +229,14 @@ public class IslandSettingsListener implements Listener {
     public static void applyEnvironment(Island island, World world) {
         // Time
         Long time = fixedTime(island);
-        world.setGameRule(GameRule.DO_DAYLIGHT_CYCLE, time == null);
+        world.setGameRule(GameRules.ADVANCE_TIME, time == null);
         if (time != null)
             world.setTime(time);
 
         // Weather
         boolean alwaysRain = island.isSettingEnabled(IslandSettings.ALWAYS_RAIN);
         boolean alwaysShiny = island.isSettingEnabled(IslandSettings.ALWAYS_SHINY);
-        world.setGameRule(GameRule.DO_WEATHER_CYCLE, !alwaysRain && !alwaysShiny);
+        world.setGameRule(GameRules.ADVANCE_WEATHER, !alwaysRain && !alwaysShiny);
         if (alwaysRain) {
             world.setStorm(true);
         } else if (alwaysShiny) {
