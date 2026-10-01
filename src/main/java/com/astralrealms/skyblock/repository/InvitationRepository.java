@@ -112,7 +112,6 @@ public class InvitationRepository {
                 VALUES (?, ?, ?, ?, ?, ?, ?)
                 """;
         return this.plugin.database().supply(conn -> {
-            PlayerRepository.ensureRows(conn, invitation.senderId(), invitation.recipientId());
             try (PreparedStatement expired = conn.prepareStatement(
                     "DELETE FROM island_invitations WHERE island_id = ? AND recipient_id = ? AND type = ? AND expires_at <= ?")) {
                 expired.setObject(1, invitation.islandId());

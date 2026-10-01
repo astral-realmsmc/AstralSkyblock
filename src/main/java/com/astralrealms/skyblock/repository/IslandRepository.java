@@ -335,7 +335,6 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
     }
 
     private void insertOwner(Connection connection, UUID islandId, UUID ownerUuid) throws SQLException {
-        PlayerRepository.ensureRows(connection, ownerUuid);
         @Language("SQL") String INSERT_OWNER = """
                 INSERT INTO island_members (island_id, player_uuid, is_owner, role_id)
                 VALUES (?, ?, TRUE, NULL)

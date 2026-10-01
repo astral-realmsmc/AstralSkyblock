@@ -88,7 +88,6 @@ public class CoopRepository extends IndexedSyncedRepository<IslandPlayerKey, Isl
         return this.plugin.database()
                 .transactionSupply(connection -> {
                     MemberRepository.lockIsland(connection, coop.islandId());
-                    PlayerRepository.ensureRows(connection, coop.playerUuid());
                     try (PreparedStatement statement = connection.prepareStatement(
                             "SELECT COUNT(*) FROM island_coops WHERE island_id = ? AND player_uuid <> ?")) {
                         statement.setObject(1, coop.islandId());

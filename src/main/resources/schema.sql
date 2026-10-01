@@ -58,8 +58,7 @@
 -- -------------------------------------------------------------------------------------
 --  players — canonical UUID <-> name record; FK target for every player reference.
 --  (Having real referential integrity here prevents the "unrecognized uuid on load"
---   class of bug. Upserted on join; a player referenced before ever joining (banned,
---   invited, cooped by name) gets a placeholder row whose name the first join replaces.)
+--   class of bug. Upserted on join.)
 -- -------------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS players
 (

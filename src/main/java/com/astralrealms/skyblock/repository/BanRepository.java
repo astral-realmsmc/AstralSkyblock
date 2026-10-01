@@ -139,7 +139,6 @@ public class BanRepository extends IndexedSyncedRepository<IslandPlayerKey, Isla
                 """;
         return this.plugin.database()
                 .run(connection -> {
-                    PlayerRepository.ensureRows(connection, value.playerUuid());
                     try (PreparedStatement statement = connection.prepareStatement(query)) {
                         statement.setObject(1, value.islandId());
                         statement.setObject(2, value.playerUuid());

@@ -121,7 +121,6 @@ public class MemberRepository extends IndexedSyncedRepository<MemberKey, IslandM
         return this.plugin.database()
                 .transactionSupply(connection -> {
                     lockIsland(connection, islandId);
-                    PlayerRepository.ensureRows(connection, playerUuid);
                     if (countRows(connection, "SELECT COUNT(*) FROM island_members WHERE island_id = ?", islandId) >= limit)
                         throw new IslandFullException(islandId, limit, true);
 
