@@ -14,17 +14,18 @@ inputs:
     label: "<gray>Nom du rôle"
     max-length: 16
     initial: "%parameters_role_name%"
+  # A text field rather than a slider: a slider cannot start at the role's current weight, and
+  # saving a rename would then silently re-weight the role. Left as is, the weight is kept.
   weight:
-    type: SLIDER
+    type: TEXT
     id: weight
-    label: "<gray>Poids"
-    start: 1.0
-    end: 20.0
-    step: 1.0
+    label: "<gray>Poids (1-20)"
+    max-length: 2
+    initial: "%parameters_role_weight%"
 
 yes-button:
   label: "<green>Enregistrer"
   actions:
-    - "[edit-role] %parameters_island% %parameters_role% %input_name% $round(%input_weight%)"
+    - "[edit-role] %parameters_island% %parameters_role% %input_weight% %input_name%"
 no-button:
   label: "<gray>Annuler"

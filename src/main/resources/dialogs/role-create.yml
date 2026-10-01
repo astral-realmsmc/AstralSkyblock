@@ -26,6 +26,6 @@ yes-button:
   label: "<green>Créer"
   tooltip: "<gray>Crée le rôle sur votre île"
   actions:
-    - "[create-role] %parameters_island% %input_name% $round(%input_weight%)"
+    - "[create-role] %parameters_island% $round(%input_weight%) %input_name%"
 no-button:
   label: "<gray>Annuler"

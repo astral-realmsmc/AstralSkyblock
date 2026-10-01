@@ -21,7 +21,7 @@ items:
     taints:
       - "coop"
     view-requirements:
-      - "[compare] %skyblock_player_island_hasPermission_UNCOOP_MEMBER% == true"
+      - "[compare] %parameters_island_hasPermission_UNCOOP_MEMBER% == true"
     actions:
       - "[uncoop-player] %parameters_island% %parameter_coop_playerId%"
       - "[refresh]"

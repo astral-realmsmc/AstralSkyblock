@@ -1,5 +1,6 @@
 package com.astralrealms.skyblock.configuration;
 
+import java.util.List;
 import java.util.Set;
 
 import org.spongepowered.configurate.objectmapping.ConfigSerializable;
@@ -10,8 +11,28 @@ import com.astralrealms.skyblock.model.island.IslandSettings;
 
 @ConfigSerializable
 public record SkyblockConfiguration(int maximumIslands, String islandsGroup, int worldIdleUnloadSeconds,
-                                    String fallbackGroup, int maximumWarps, Defaults defaults, Level level,
-                                    Set<IslandSettings> defaultSettings, Generators generators) {
+                                    String fallbackGroup, int maximumWarps, int maximumRoles, Defaults defaults, Level level,
+                                    Set<IslandSettings> defaultSettings, Generators generators, List<String> allowedBiomes,
+                                    String ownerRoleName) {
+
+    /** Biomes refused by /is biome unless listed in {@code allowed-biomes}: they change what spawns. */
+    private static final Set<String> NON_OVERWORLD_BIOMES = Set.of(
+            "minecraft:nether_wastes", "minecraft:soul_sand_valley", "minecraft:crimson_forest",
+            "minecraft:warped_forest", "minecraft:basalt_deltas", "minecraft:the_end",
+            "minecraft:end_highlands", "minecraft:end_midlands", "minecraft:small_end_islands",
+            "minecraft:end_barrens", "minecraft:the_void");
+
+    /**
+     * Whether players may paint their island with the biome {@code key} ({@code minecraft:plains}).
+     * An empty or absent {@code allowed-biomes} allows every overworld biome; nether, end and void
+     * biomes (ghast and piglin spawns on an overworld island) only when listed.
+     */
+    public boolean isBiomeAllowed(String key) {
+        if (this.allowedBiomes != null && !this.allowedBiomes.isEmpty())
+            return this.allowedBiomes.stream().anyMatch(allowed -> allowed.equalsIgnoreCase(key)
+                                                                   || ("minecraft:" + allowed).equalsIgnoreCase(key));
+        return !NON_OVERWORLD_BIOMES.contains(key);
+    }
 
     public boolean isIslandServer() {
         return this.islandsGroup.equals(AstralPaperAPI.serverInformation().group());
@@ -36,6 +57,18 @@ public record SkyblockConfiguration(int maximumIslands, String islandsGroup, int
     @Override
     public int maximumWarps() {
         return this.maximumWarps <= 0 ? 1 : this.maximumWarps;
+    }
+
+    /** Maximum number of custom member roles an island may define. {@code 0}/absent falls back to 10. */
+    @Override
+    public int maximumRoles() {
+        return this.maximumRoles <= 0 ? 10 : this.maximumRoles;
+    }
+
+    /** Rank shown for an island's owner in member menus — the owner holds no role. */
+    @Override
+    public String ownerRoleName() {
+        return this.ownerRoleName == null || this.ownerRoleName.isBlank() ? "Owner" : this.ownerRoleName;
     }
 
     @Override
@@ -150,9 +183,19 @@ public record SkyblockConfiguration(int maximumIslands, String islandsGroup, int
      */
     @ConfigSerializable
     public record Level(int pointsPerLevel, int chunksPerBatch, int rescanIntervalSeconds,
-                        int cooldownSeconds, int topSize, int topRefreshSeconds) {
+                        int cooldownSeconds, int topSize, int topRefreshSeconds, int valuableThreshold) {
 
-        private static final Level FALLBACK = new Level(0, 0, 0, 0, 0, 0);
+        private static final Level FALLBACK = new Level(0, 0, 0, 0, 0, 0, 0);
+
+        /**
+         * Minimum block value that makes breaking a block need {@code VALUABLE_BREAK} rather than
+         * plain {@code BREAK}. Without one, cobblestone (worth 1) counted as valuable and a coop
+         * could not mine the island's generator.
+         */
+        @Override
+        public int valuableThreshold() {
+            return this.valuableThreshold <= 0 ? 10 : this.valuableThreshold;
+        }
 
         /** Block value one island level is worth. */
         @Override

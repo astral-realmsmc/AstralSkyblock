@@ -40,7 +40,7 @@ items:
     taints:
       - "upgrade"
     click-requirements:
-      - "[compare] %skyblock_player_island_hasPermission_RANKUP% == true"
+      - "[compare] %parameters_island_hasPermission_RANKUP% == true"
     actions:
       - "[purchase-upgrade] %parameters_island% %parameter_upgrade_type%"
       - "[refresh-layout] upgrade <delay=4>"

@@ -49,16 +49,16 @@ items:
       - "[toggle-warp-visibility] %parameters_island% %parameter_warp_name%"
       - "[refresh] <delay=2>"
     right-click-requirements:
-      - "[compare] %skyblock_player_island_hasPermission_SET_WARP% == true"
+      - "[compare] %parameters_island_hasPermission_SET_WARP% == true"
     shift-left-click-actions:
       - "[set-warp-icon] %parameters_island% %parameter_warp_name%"
       - "[refresh] <delay=2>"
     shift-left-click-requirements:
-      - "[compare] %skyblock_player_island_hasPermission_SET_WARP% == true"
+      - "[compare] %parameters_island_hasPermission_SET_WARP% == true"
     shift-right-click-actions:
       - "[open-menu] island-confirm-delete-warp:island=%parameters_island%:warp=%parameter_warp_name%"
     shift-right-click-requirements:
-      - "[compare] %skyblock_player_island_hasPermission_DELETE_WARP% == true"
+      - "[compare] %parameters_island_hasPermission_DELETE_WARP% == true"
 
   create:
     slot: 48
@@ -73,7 +73,7 @@ items:
       - ""
       - "<secondary_color><italic>Commande</italic> <information_color>: /is setwarp <nom>"
     view-requirements:
-      - "[compare] %skyblock_player_island_hasPermission_SET_WARP% == true"
+      - "[compare] %parameters_island_hasPermission_SET_WARP% == true"
 
   back:
     slot: 49

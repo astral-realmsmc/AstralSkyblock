@@ -9,6 +9,7 @@ import lombok.Setter;
 public enum ASMessages implements MessageEnum {
     // Creation
     NAME_ALREADY_TAKEN,
+    ALREADY_HAS_ISLAND,
     ISLAND_CREATED,
     // Deletion
     ISLAND_DELETED,
@@ -43,6 +44,7 @@ public enum ASMessages implements MessageEnum {
     ROLE_UPDATED,
     ROLE_INVALID_NAME,
     ROLE_WEIGHT_TOO_HIGH,
+    ROLE_LIMIT_REACHED,
     ROLE_NOT_EDITABLE,
     ROLE_NOT_ASSIGNABLE,
     // Role permissions
@@ -103,6 +105,7 @@ public enum ASMessages implements MessageEnum {
     WARP_MOVED,
     WARP_NOT_FOUND,
     WARP_ALREADY_EXISTS,
+    WARP_UNSAFE,
     WARP_INVALID_NAME,
     WARP_LIMIT_REACHED,
     WARP_NOT_ON_ISLAND,
@@ -129,6 +132,7 @@ public enum ASMessages implements MessageEnum {
     MEMBER_LIMIT_REACHED,
     COOP_LIMIT_REACHED,
     HOPPER_LIMIT_REACHED,
+    HOPPER_COUNT_PENDING,
     MINECART_LIMIT_REACHED,
     // Settings
     SETTINGS_UPDATE_SUCCESS,

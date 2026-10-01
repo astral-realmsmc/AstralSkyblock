@@ -39,7 +39,8 @@ public class IslandCoop implements ComplexPlaceholder {
             case "playerId" -> playerUuid;
             case "player" -> new MinecraftPlayerPlaceholder(playerUuid);
             case "addedBy" -> addedBy;
-            case "executor" -> new MinecraftPlayerPlaceholder(addedBy);
+            // Null for a coop granted with no recorded adder (or by the console): render nothing.
+            case "executor" -> addedBy == null ? "" : new MinecraftPlayerPlaceholder(addedBy);
             case "createdAt" -> createdAt;
             default -> null;
         };

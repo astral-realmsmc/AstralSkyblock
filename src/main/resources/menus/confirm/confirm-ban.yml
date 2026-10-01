@@ -12,7 +12,7 @@ items:
       - HIDE_ATTRIBUTES
     actions:
       - "[ban-member] %parameters_island% %parameters_member_playerId%"
-      - "[open-menu] island-members:island=%parameters_island%"
+      - "[open-menu] island-members:island=%parameters_island% <delay=10>"
 
   cancel:
     slot: 12

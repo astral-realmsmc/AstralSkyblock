@@ -11,6 +11,11 @@ fallback-group: "hub"
 
 # Maximum number of warps an island may define. 0 uses the default of 1.
 maximum-warps: 1
+# Maximum number of member roles an island may define (the Visitor and Co-Op roles aside).
+maximum-roles: 10
+
+# Rank shown for an island's owner in member menus (the owner holds no role).
+owner-role-name: "Propriétaire"
 
 # Baseline values used when the matching upgrade has no blueprint configured — an island always
 # has a member cap, a border and so on, whether or not the upgrade behind it exists.
@@ -38,11 +43,18 @@ level:
   # Leaderboard size and refresh rate.
   top-size: 50
   top-refresh-seconds: 300
+  # Blocks worth at least this many points (block-values.yml) need the VALUABLE_BREAK permission
+  # to break; anything cheaper only needs BREAK.
+  valuable-threshold: 10
 
 # Generators
 generators:
   enabled: true
   default: "overworld"
+
+# Biomes players may pick with /is biome, as namespaced keys ("minecraft:plains"). Empty allows
+# every overworld biome; nether, end and void biomes are only allowed when listed here.
+allowed-biomes: []
 
 # Settings
 default-settings:

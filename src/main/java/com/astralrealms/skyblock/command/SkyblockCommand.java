@@ -10,6 +10,7 @@ import org.jetbrains.annotations.Nullable;
 
 import com.astralrealms.core.model.player.MinecraftPlayer;
 import com.astralrealms.core.paper.AstralPaperAPI;
+import com.astralrealms.core.placeholder.container.PlaceholderContainer;
 import com.astralrealms.core.provider.ItemProvider;
 import com.astralrealms.core.service.impl.TeleportationService;
 import com.astralrealms.skyblock.AstralSkyblock;
@@ -69,7 +70,19 @@ public class SkyblockCommand extends BaseCommand {
     @Syntax("<island>")
     @CommandCompletion("@islands")
     public void onDelete(Player player, Island island) {
-        this.plugin.islands().delete(player, island);
+        if (!island.isOwnerOrStaff(player)) {
+            ASMessages.NOT_ISLAND_OWNER.message(player);
+            return;
+        }
+
+        // Irreversible, so it goes through the same confirmation as the menu button.
+        this.plugin.menus()
+                .computeAndOpen(player, "island-confirm-disband", Map.of("island", island))
+                .exceptionally(throwable -> {
+                    this.plugin.getSLF4JLogger().error("Failed to open the disband confirmation for {}", player.getName(), throwable);
+                    ASMessages.UNEXPECTED_ERROR.message(player);
+                    return null;
+                });
     }
 
     @Subcommand("go")
@@ -77,18 +90,32 @@ public class SkyblockCommand extends BaseCommand {
     @CommandCompletion("@islands")
     @Syntax("<island>")
     public void onGo(Player player, Island island) {
+        PlaceholderContainer placeholders = AstralPaperAPI.createPlaceholderContainer(player).registerPlaceholder(island);
+
+        // Refused up front, as warps do: arrival would bounce them anyway, after a world load and
+        // possibly a server switch.
+        if (this.plugin.bans().isBanned(island.uniqueId(), player.getUniqueId())) {
+            ASMessages.BANNED_FROM_ISLAND.message(player, placeholders);
+            return;
+        }
+        if (island.locked() && !this.plugin.islands().mayEnterClosed(island, player)) {
+            ASMessages.ISLAND_IS_CLOSED.message(player, placeholders);
+            return;
+        }
+
         this.plugin.islands()
                 .spawnIsland(island)
-                .whenComplete((result, throwable) -> {
-                    if (throwable != null) {
-                        this.plugin.getSLF4JLogger().error("Error while spawning island: {}", island.uniqueId(), throwable);
-                        ASMessages.UNEXPECTED_ERROR.message(player);
-                        return;
-                    }
-
-                    TeleportationService teleportationService = AstralPaperAPI.getService(TeleportationService.class)
-                            .orElseThrow(() -> new IllegalStateException("TeleportationService not found"));
-                    teleportationService.teleport(player.getUniqueId(), result);
+                .thenCompose(location -> {
+                    if (location == null)
+                        throw new IllegalStateException("No island server can host island " + island.uniqueId());
+                    return AstralPaperAPI.getService(TeleportationService.class)
+                            .orElseThrow(() -> new IllegalStateException("TeleportationService not found"))
+                            .teleport(player.getUniqueId(), location);
+                })
+                .exceptionally(throwable -> {
+                    this.plugin.getSLF4JLogger().error("Failed to send {} to island {}", player.getName(), island.uniqueId(), throwable);
+                    ASMessages.UNEXPECTED_ERROR.message(player, placeholders);
+                    return null;
                 });
     }
 

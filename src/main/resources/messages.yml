@@ -1,5 +1,6 @@
 # Creation
 name-already-taken: "%name% is already taken. Please choose a different name."
+already-has-island: "You already belong to an island. Leave it first."
 island-created: "%island_name% has been successfully created!"
 
 # Deletion
@@ -42,6 +43,7 @@ role-created: "Role %role_name% has been created."
 role-updated: "Role %role_name% has been updated."
 role-invalid-name: "A role name must not be empty and may be at most %maximum% characters."
 role-weight-too-high: "You cannot create or edit a role at or above your own rank."
+role-limit-reached: "%island_name% already has the maximum of %maximum% roles."
 role-not-editable: "That role is built in and cannot be edited."
 role-not-assignable: "That role cannot be assigned to a member."
 
@@ -108,6 +110,7 @@ warp-deleted: "Warp %warp_name% has been deleted."
 warp-moved: "Warp %warp_name% now points to your position."
 warp-not-found: "%island_name% has no warp named %warp_name%."
 warp-already-exists: "%island_name% already has a warp named %warp_name%."
+warp-unsafe: "Stand on solid ground, inside the border and away from lava or fire to place a warp here."
 warp-invalid-name: "Warp names may only contain letters, digits, dashes and underscores (32 characters max)."
 warp-limit-reached: "%island_name% already has its maximum of %warp_limit% warp(s)."
 warp-not-on-island: "You must be standing on the island to do that."
@@ -137,6 +140,7 @@ level-in-progress: "%island_name% is already being recalculated."
 member-limit-reached: "%island_name% has reached its member limit (%limit%)."
 coop-limit-reached: "%island_name% has reached its co-op limit (%limit%)."
 hopper-limit-reached: "%island_name% has reached its hopper limit (%limit%). Upgrade it with /is upgrades."
+hopper-count-pending: "%island_name%'s hoppers are still being counted. Try again in a moment."
 minecart-limit-reached: "%island_name% has reached its minecart limit (%limit%). Upgrade it with /is upgrades."
 
 # Settings

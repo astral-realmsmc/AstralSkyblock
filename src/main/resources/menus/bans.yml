@@ -22,7 +22,7 @@ items:
     taints:
       - "ban"
     view-requirements:
-      - "[compare] %skyblock_player_island_hasPermission_BAN_MEMBER% == true"
+      - "[compare] %parameters_island_hasPermission_BAN_MEMBER% == true"
     actions:
       - "[unban-player] %parameters_island% %parameter_ban_playerId%"
       - "[refresh]"

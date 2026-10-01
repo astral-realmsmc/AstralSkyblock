@@ -22,7 +22,7 @@ items:
       - ""
       - "<white>%img_icons:left-click% <information_color>Ouvrir le sélecteur de rôle"
     view-requirements:
-      - "[compare] %skyblock_player_island_hasPermission_SET_ROLE% == true"
+      - "[compare] %parameters_island_hasPermission_SET_ROLE% == true"
     actions:
       - "[open-menu] island-member-role:island=%parameters_island%:member=%parameters_member%"
 
@@ -36,7 +36,7 @@ items:
       - ""
       - "<white>%img_icons:left-click% <information_color>Expulser ce membre"
     view-requirements:
-      - "[compare] %skyblock_player_island_hasPermission_KICK_MEMBER% == true"
+      - "[compare] %parameters_island_hasPermission_KICK_MEMBER% == true"
     actions:
       - "[open-menu] island-confirm-kick:island=%parameters_island%:member=%parameters_member%"
 
@@ -52,7 +52,7 @@ items:
       - ""
       - "<white>%img_icons:left-click% <information_color>Bannir ce membre"
     view-requirements:
-      - "[compare] %skyblock_player_island_hasPermission_BAN_MEMBER% == true"
+      - "[compare] %parameters_island_hasPermission_BAN_MEMBER% == true"
     actions:
       - "[open-menu] island-confirm-ban:island=%parameters_island%:member=%parameters_member%"
 

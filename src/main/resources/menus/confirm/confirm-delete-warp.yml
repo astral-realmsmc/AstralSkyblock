@@ -15,7 +15,7 @@ items:
       - HIDE_ATTRIBUTES
     actions:
       - "[delete-warp] %parameters_island% %parameters_warp%"
-      - "[open-menu] island-warps:island=%parameters_island%"
+      - "[open-menu] island-warps:island=%parameters_island% <delay=10>"
 
   cancel:
     slot: 12

@@ -47,7 +47,7 @@ items:
       - ""
       - "<white>%img_icons:left-click% <information_color>Ouvrir le menu des rôles"
     view-requirements:
-      - "[compare] %skyblock_player_island_hasPermission_SET_ROLE% == true"
+      - "[compare] %parameters_island_hasPermission_SET_ROLE% == true"
     actions:
       - "[open-menu] island-roles:island=%parameters_island%"
   roles-forbidden:
@@ -70,7 +70,7 @@ items:
       - ""
       - "<white>%img_icons:left-click% <information_color>Ouvrir le menu de paramètres"
     view-requirements:
-      - "[compare] %skyblock_player_island_hasPermission_SET_SETTINGS% == true"
+      - "[compare] %parameters_island_hasPermission_SET_SETTINGS% == true"
     actions:
       - "[open-menu] island-settings:island=%parameters_island%"
   settings-forbidden:
@@ -94,7 +94,7 @@ items:
       - ""
       - "<white>%img_icons:left-click% <information_color>Ouvrir le menu des coopérateurs"
     view-requirements:
-      - "[compare] %skyblock_player_island_hasPermission_COOP_MEMBER% == true"
+      - "[compare] %parameters_island_hasPermission_COOP_MEMBER% == true"
     actions:
       - "[open-menu] island-coops:island=%parameters_island%"
   coops-forbidden:
@@ -132,7 +132,7 @@ items:
       - ""
       - "<white>%img_icons:left-click% <information_color>Ouvrir le menu des améliorations"
     view-requirements:
-      - "[compare] %skyblock_player_island_hasPermission_RANKUP% == true"
+      - "[compare] %parameters_island_hasPermission_RANKUP% == true"
     actions:
       - "[open-menu] island-upgrades:island=%parameters_island%"
   upgrades-forbidden:
@@ -155,7 +155,7 @@ items:
       - ""
       - "<white>%img_icons:left-click% <information_color>Quitter l'île"
     view-requirements:
-      - "[compare] %skyblock_player_island_isOwner% == false"
+      - "[compare] %parameters_island_isOwner% == false"
     actions:
       - "[open-menu] island-confirm-leave:island=%parameters_island%"
   # Disband
@@ -171,7 +171,7 @@ items:
       - ""
       - "<white>%img_icons:left-click% <information_color>Supprimer l'île"
     view-requirements:
-      - "[compare] %skyblock_player_island_hasPermission_DISBAND_ISLAND% == true"
+      - "[compare] %parameters_island_isOwner% == true"
     actions:
       - "[open-menu] island-confirm-disband:island=%parameters_island%"
   # Bans
@@ -189,7 +189,7 @@ items:
       - ""
       - "<white>%img_icons:left-click% <information_color>Ouvrir le menu des bannis"
     view-requirements:
-      - "[compare] %skyblock_player_island_hasPermission_BAN_MEMBER% == true"
+      - "[compare] %parameters_island_hasPermission_BAN_MEMBER% == true"
     actions:
       - "[open-menu] island-bans:island=%parameters_island%"
   bans-forbidden:

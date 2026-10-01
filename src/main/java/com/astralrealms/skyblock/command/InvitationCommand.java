@@ -73,7 +73,8 @@ public class InvitationCommand extends BaseCommand {
                                     .findFirst()
                                     .ifPresentOrElse(
                                             i -> this.plugin.invitations().accept(player, i.islandId()),
-                                            () -> ASMessages.NO_PENDING_INVITATION.message(player)));
+                                            () -> ASMessages.NO_PENDING_INVITATION.message(player)))
+                    .exceptionally(throwable -> lookupFailed(player, throwable));
             return;
         }
 
@@ -90,7 +91,8 @@ public class InvitationCommand extends BaseCommand {
                     }
 
                     this.plugin.invitations().accept(player, valid.getFirst().islandId());
-                });
+                })
+                .exceptionally(throwable -> lookupFailed(player, throwable));
     }
 
     @Subcommand("decline")
@@ -106,7 +108,8 @@ public class InvitationCommand extends BaseCommand {
                                     .filter(i -> i.senderId().equals(sender.uniqueId()) && !i.expired())
                                     .findFirst()
                                     .ifPresentOrElse(i -> this.plugin.invitations().decline(player, i.islandId()),
-                                            () -> ASMessages.NO_PENDING_INVITATION.message(player)));
+                                            () -> ASMessages.NO_PENDING_INVITATION.message(player)))
+                    .exceptionally(throwable -> lookupFailed(player, throwable));
             return;
         }
 
@@ -121,7 +124,7 @@ public class InvitationCommand extends BaseCommand {
             }
 
             this.plugin.invitations().decline(player, valid.getFirst().islandId());
-        });
+        }).exceptionally(throwable -> lookupFailed(player, throwable));
     }
 
     @Subcommand("cancel")
@@ -136,5 +139,12 @@ public class InvitationCommand extends BaseCommand {
         }
 
         this.plugin.invitations().cancel(island, player, target);
+    }
+
+    /** A failed invitation lookup: tell the player and log it, rather than answer nothing at all. */
+    private Void lookupFailed(Player player, Throwable throwable) {
+        ASMessages.UNEXPECTED_ERROR.message(player);
+        this.plugin.getSLF4JLogger().error("Failed to look up the invitations of {}", player.getName(), throwable);
+        return null;
     }
 }
