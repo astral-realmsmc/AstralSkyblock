@@ -19,7 +19,6 @@ import com.astralrealms.core.paper.AstralPaperAPI;
 import com.astralrealms.core.paper.placeholder.MinecraftPlayerPlaceholder;
 import com.astralrealms.core.placeholder.container.PlaceholderContainer;
 import com.astralrealms.core.service.impl.TeleportationService;
-import com.astralrealms.core.service.impl.ChatService;
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.event.island.IslandLockChangedEvent;
 import com.astralrealms.skyblock.event.island.IslandRenamedEvent;
@@ -40,6 +39,7 @@ import com.astralrealms.skyblock.model.role.IslandPermission;
 import com.astralrealms.skyblock.repository.IslandRepository;
 import com.astralrealms.skyblock.utils.ASConstants;
 import com.astralrealms.skyblock.utils.PlayerText;
+import com.astralrealms.skyblock.utils.Notifier;
 import com.infernalsuite.asp.api.world.SlimeWorldInstance;
 
 import lombok.Getter;
@@ -448,9 +448,7 @@ public class IslandService {
                     PlaceholderContainer placeholders = AstralPaperAPI.createPlaceholderContainer(player)
                             .registerPlaceholder(island);
                     ASMessages.ISLAND_DELETED.message(player, placeholders);
-                    ChatService chat = AstralPaperAPI.getService(ChatService.class).orElse(null);
-                    if (chat != null)
-                        otherMembers.forEach(member -> chat.sendMessage(member, ASMessages.ISLAND_DELETED.component(placeholders)));
+                    otherMembers.forEach(member -> Notifier.send(member, ASMessages.ISLAND_DELETED.component(placeholders)));
 
                     // Log
                     this.plugin.getSLF4JLogger().info("Island {} deleted for player {}", island.uniqueId(), player.getName());

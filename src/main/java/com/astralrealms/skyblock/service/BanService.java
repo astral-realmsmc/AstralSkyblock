@@ -12,7 +12,6 @@ import org.jetbrains.annotations.Nullable;
 import com.astralrealms.core.paper.AstralPaperAPI;
 import com.astralrealms.core.paper.placeholder.MinecraftPlayerPlaceholder;
 import com.astralrealms.core.placeholder.container.PlaceholderContainer;
-import com.astralrealms.core.service.impl.ChatService;
 import com.astralrealms.core.service.impl.TeleportationService;
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.event.ban.IslandUnbanEvent;
@@ -27,6 +26,7 @@ import com.astralrealms.skyblock.model.role.IslandPermission;
 import com.astralrealms.skyblock.repository.BanRepository;
 import com.astralrealms.skyblock.utils.ASConstants;
 import com.astralrealms.skyblock.utils.PlayerText;
+import com.astralrealms.skyblock.utils.Notifier;
 
 /**
  * Island bans: who may not set foot on an island.
@@ -120,9 +120,7 @@ public class BanService {
                     ASMessages.PLAYER_BANNED_SENDER.message(executor, placeholders);
 
                     // Notify banned player
-                    AstralPaperAPI.getService(ChatService.class)
-                            .orElseThrow()
-                            .sendMessage(targetUuid, ASMessages.PLAYER_BANNED_TARGET.component(placeholders));
+                    Notifier.send(targetUuid, ASMessages.PLAYER_BANNED_TARGET.component(placeholders));
                     return null;
                 });
     }
@@ -160,9 +158,7 @@ public class BanService {
                     ASMessages.PLAYER_UNBANNED_SENDER.message(executor, placeholders);
 
                     // Notify unbanned player
-                    AstralPaperAPI.getService(ChatService.class)
-                            .orElseThrow()
-                            .sendMessage(targetUuid, ASMessages.PLAYER_UNBANNED_TARGET.component(placeholders));
+                    Notifier.send(targetUuid, ASMessages.PLAYER_UNBANNED_TARGET.component(placeholders));
                     return null;
                 });
     }

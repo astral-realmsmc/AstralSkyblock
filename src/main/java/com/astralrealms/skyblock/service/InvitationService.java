@@ -12,7 +12,6 @@ import com.astralrealms.core.model.player.MinecraftPlayer;
 import com.astralrealms.core.paper.AstralPaperAPI;
 import com.astralrealms.core.paper.placeholder.MinecraftPlayerPlaceholder;
 import com.astralrealms.core.placeholder.container.PlaceholderContainer;
-import com.astralrealms.core.service.impl.ChatService;
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.configuration.ASMessages;
 import com.astralrealms.skyblock.model.island.Island;
@@ -20,6 +19,7 @@ import com.astralrealms.skyblock.model.role.IslandPermission;
 import com.astralrealms.skyblock.model.member.InvitationType;
 import com.astralrealms.skyblock.model.member.IslandInvitation;
 import com.astralrealms.skyblock.repository.InvitationRepository;
+import com.astralrealms.skyblock.utils.Notifier;
 
 public class InvitationService {
 
@@ -140,9 +140,7 @@ public class InvitationService {
                                 ASMessages.INVITATION_SENT.message(sender, placeholders);
 
                                 // Notify recipient
-                                AstralPaperAPI.getService(ChatService.class)
-                                        .orElseThrow()
-                                        .sendMessage(recipient.uniqueId(), ASMessages.INVITATION_RECEIVED.component(placeholders));
+                                Notifier.send(recipient.uniqueId(), ASMessages.INVITATION_RECEIVED.component(placeholders));
                                 return null;
                             });
     }
@@ -243,9 +241,7 @@ public class InvitationService {
                                 ASMessages.INVITATION_ACCEPTED_RECIPIENT.message(player, placeholders);
 
                                 // Notify sender
-                                AstralPaperAPI.getService(ChatService.class)
-                                        .orElseThrow()
-                                        .sendMessage(invitation.senderId(), ASMessages.INVITATION_ACCEPTED_SENDER.component(placeholders));
+                                Notifier.send(invitation.senderId(), ASMessages.INVITATION_ACCEPTED_SENDER.component(placeholders));
                                 return null;
                             });
                 })
@@ -295,9 +291,7 @@ public class InvitationService {
                                 ASMessages.INVITATION_DECLINED_RECIPIENT.message(player, placeholders);
 
                                 // Notify sender
-                                AstralPaperAPI.getService(ChatService.class)
-                                        .orElseThrow()
-                                        .sendMessage(opt.get().senderId(), ASMessages.INVITATION_DECLINED_SENDER.component(placeholders));
+                                Notifier.send(opt.get().senderId(), ASMessages.INVITATION_DECLINED_SENDER.component(placeholders));
                                 return null;
                             });
                 })
@@ -341,9 +335,7 @@ public class InvitationService {
                                 ASMessages.INVITATION_CANCELLED_SENDER.message(sender, placeholders);
 
                                 // Notify recipient
-                                AstralPaperAPI.getService(ChatService.class)
-                                        .orElseThrow()
-                                        .sendMessage(target.uniqueId(), ASMessages.INVITATION_CANCELLED_RECIPIENT.component(placeholders));
+                                Notifier.send(target.uniqueId(), ASMessages.INVITATION_CANCELLED_RECIPIENT.component(placeholders));
                                 return null;
                             });
                 })

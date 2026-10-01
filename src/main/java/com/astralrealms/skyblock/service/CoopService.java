@@ -10,9 +10,9 @@ import org.bukkit.entity.Player;
 import com.astralrealms.core.paper.AstralPaperAPI;
 import com.astralrealms.core.paper.placeholder.MinecraftPlayerPlaceholder;
 import com.astralrealms.core.placeholder.container.PlaceholderContainer;
-import com.astralrealms.core.service.impl.ChatService;
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.model.member.IslandMember;
+import com.astralrealms.skyblock.utils.Notifier;
 import org.jetbrains.annotations.Nullable;
 import io.lettuce.core.SetArgs;
 import com.astralrealms.skyblock.configuration.ASMessages;
@@ -188,9 +188,7 @@ public class CoopService {
                     ASMessages.COOP_REMOVED_SENDER.message(remover, placeholders);
 
                     // Notify removed co-op player
-                    AstralPaperAPI.getService(ChatService.class)
-                            .orElseThrow()
-                            .sendMessage(playerUuid, ASMessages.COOP_REMOVED_TARGET.component(placeholders));
+                    Notifier.send(playerUuid, ASMessages.COOP_REMOVED_TARGET.component(placeholders));
                 })
                 .thenAccept(ignored -> {
                 });

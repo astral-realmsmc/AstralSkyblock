@@ -10,7 +10,6 @@ import org.jetbrains.annotations.Unmodifiable;
 import com.astralrealms.core.paper.AstralPaperAPI;
 import com.astralrealms.core.paper.placeholder.MinecraftPlayerPlaceholder;
 import com.astralrealms.core.placeholder.container.PlaceholderContainer;
-import com.astralrealms.core.service.impl.ChatService;
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.event.island.IslandOwnershipTransferredEvent;
 import com.astralrealms.skyblock.configuration.ASMessages;
@@ -25,6 +24,7 @@ import com.astralrealms.skyblock.model.role.IslandPermission;
 import com.astralrealms.skyblock.model.role.IslandRole;
 import com.astralrealms.skyblock.repository.MemberRepository;
 import com.astralrealms.skyblock.utils.ASConstants;
+import com.astralrealms.skyblock.utils.Notifier;
 
 public class MemberService {
 
@@ -204,9 +204,7 @@ public class MemberService {
                     ASMessages.MEMBER_KICKED_SENDER.message(kicker, placeholders);
 
                     // Notify kicked player
-                    AstralPaperAPI.getService(ChatService.class)
-                            .orElseThrow()
-                            .sendMessage(targetUuid, ASMessages.MEMBER_KICKED_TARGET.component(placeholders));
+                    Notifier.send(targetUuid, ASMessages.MEMBER_KICKED_TARGET.component(placeholders));
                 });
     }
 
@@ -310,9 +308,7 @@ public class MemberService {
                     ASMessages.MEMBER_PROMOTED_SENDER.message(sender, placeholders);
 
                     // Notify promoted member
-                    AstralPaperAPI.getService(ChatService.class)
-                            .orElseThrow()
-                            .sendMessage(targetUuid, ASMessages.MEMBER_PROMOTED_TARGET.component(placeholders));
+                    Notifier.send(targetUuid, ASMessages.MEMBER_PROMOTED_TARGET.component(placeholders));
                 })
                 .thenAccept(v -> {
                 });
@@ -377,9 +373,7 @@ public class MemberService {
                     ASMessages.MEMBER_DEMOTED_SENDER.message(sender, placeholders);
 
                     // Notify demoted member
-                    AstralPaperAPI.getService(ChatService.class)
-                            .orElseThrow()
-                            .sendMessage(targetUuid, ASMessages.MEMBER_DEMOTED_TARGET.component(placeholders));
+                    Notifier.send(targetUuid, ASMessages.MEMBER_DEMOTED_TARGET.component(placeholders));
                 })
                 .thenAccept(v -> {
                 });
@@ -453,9 +447,7 @@ public class MemberService {
                     ASMessages.MEMBER_ROLE_UPDATED_SENDER.message(sender, placeholders);
 
                     // Notify the member
-                    AstralPaperAPI.getService(ChatService.class)
-                            .orElseThrow()
-                            .sendMessage(targetUuid, ASMessages.MEMBER_ROLE_UPDATED_TARGET.component(placeholders));
+                    Notifier.send(targetUuid, ASMessages.MEMBER_ROLE_UPDATED_TARGET.component(placeholders));
                     return null;
                 });
     }
@@ -503,9 +495,7 @@ public class MemberService {
                     ASMessages.OWNERSHIP_TRANSFERRED_SENDER.message(currentOwner, placeholders);
 
                     // Notify new owner
-                    AstralPaperAPI.getService(ChatService.class)
-                            .orElseThrow()
-                            .sendMessage(newOwner.playerUuid(), ASMessages.OWNERSHIP_TRANSFERRED_TARGET.component(placeholders));
+                    Notifier.send(newOwner.playerUuid(), ASMessages.OWNERSHIP_TRANSFERRED_TARGET.component(placeholders));
                 })
                 .thenAccept(v -> {
                 });
