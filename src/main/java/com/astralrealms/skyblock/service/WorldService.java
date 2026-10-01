@@ -11,6 +11,8 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import org.bukkit.Bukkit;
@@ -45,6 +47,9 @@ public class WorldService {
 
     /** How long the shutdown host-server flush is allowed to block waiting on Redis. */
     private static final long SHUTDOWN_FLUSH_TIMEOUT_SECONDS = 5;
+    /** How long shutdown waits for every world save to reach storage. */
+    private static final long SHUTDOWN_SAVE_TIMEOUT_SECONDS = 60;
+    private static final int SAVE_THREADS = 4;
     /** Idle-unload sweep cadence, in ticks (30s at 20 TPS). */
     private static final long IDLE_SWEEP_INTERVAL_TICKS = 20L * 30;
     /** Minimum gap between two fallback-group transfer requests for the same player. */
@@ -73,6 +78,18 @@ public class WorldService {
     // Last time each player was asked to move to the fallback group, so a retried evacuation does
     // not re-request a transfer for someone who is already on their way out.
     private final Map<UUID, Long> lastTransferRequest = new ConcurrentHashMap<>();
+
+    // World saves still writing to storage, by island. A load or delete of that island waits for
+    // it: reading before the write lands would bring back the previous state, and deleting before
+    // it would let the write recreate the world.
+    private final Map<UUID, CompletableFuture<Void>> saving = new ConcurrentHashMap<>();
+    // Serialising and writing a world takes long enough to stall a tick; it never runs on the main
+    // thread. A dedicated pool, because the Bukkit scheduler refuses new tasks during shutdown.
+    private final ExecutorService saveExecutor = Executors.newFixedThreadPool(SAVE_THREADS, runnable -> {
+        Thread thread = new Thread(runnable, "AstralSkyblock-world-save");
+        thread.setDaemon(true);
+        return thread;
+    });
 
     private final FileLoader sourceLoader;
     private MysqlLoader worldLoader;
@@ -130,31 +147,39 @@ public class WorldService {
         // Save every loaded world and clear its host-server mapping. deleteHostServer is async (Redis), so
         // collect the futures and block briefly — otherwise the process can exit before they flush, leaving
         // stale island->server entries that route players to a dead server.
-        List<CompletableFuture<Void>> hostCleanups = new ArrayList<>();
+        // Snapshots are taken here, on the main thread, then written in parallel: one after another
+        // on the main thread, a full server could outlast the stop timeout and lose the rest.
+        List<CompletableFuture<Void>> saves = new ArrayList<>(this.saving.values());
+        List<UUID> flushed = new ArrayList<>();
         for (SlimeWorldInstance instance : loadedWorlds.values()) {
             UUID uniqueId = UUID.fromString(instance.getName());
+            flushed.add(uniqueId);
 
             // A world whose island was deleted is skipped: saving it here would write back the row
             // the delete just removed, which is the resurrection the delete path exists to prevent.
             if (this.deleted.contains(uniqueId)) {
                 this.plugin.getSLF4JLogger().info("Skipping the shutdown save of deleted island {}", uniqueId);
-            } else {
-                try {
-                    asp.saveWorld(instance);
-                } catch (IOException e) {
-                    this.plugin.getSLF4JLogger().error("Failed to save world: {}", instance.getName(), e);
-                }
+                continue;
             }
+            saves.add(saveAsync(uniqueId, instance.getSerializableCopy()));
+        }
 
+        try {
+            CompletableFuture.allOf(saves.toArray(CompletableFuture[]::new))
+                    .get(SHUTDOWN_SAVE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            this.plugin.getSLF4JLogger().info("Flushed {} island world(s).", flushed.size());
+        } catch (Exception e) {
+            this.plugin.getSLF4JLogger().error("Not every island world was saved before shutdown", e);
+        }
+
+        List<CompletableFuture<Void>> hostCleanups = new ArrayList<>();
+        for (UUID uniqueId : flushed)
             hostCleanups.add(this.plugin.servers()
-                    .deleteHostServer(uniqueId)
+                    .releaseHost(uniqueId, AstralPaperAPI.serverInformation().uniqueId())
                     .exceptionally(throwable -> {
                         plugin.getSLF4JLogger().error("Failed to delete host server for island with UUID: {}", uniqueId, throwable);
                         return null;
                     }));
-
-            this.plugin.getSLF4JLogger().info("World {} flushed successfully.", instance.getName());
-        }
 
         try {
             CompletableFuture.allOf(hostCleanups.toArray(CompletableFuture[]::new))
@@ -162,6 +187,7 @@ public class WorldService {
         } catch (Exception e) {
             this.plugin.getSLF4JLogger().warn("Timed out flushing host-server cleanup on shutdown", e);
         }
+        this.saveExecutor.shutdown();
 
         this.loadedWorlds.clear();
         this.worldNameToIslandId.clear();
@@ -178,22 +204,15 @@ public class WorldService {
     }
 
     public CompletableFuture<SlimeWorldInstance> create(UUID uniqueId, IslandBlueprint blueprint) {
+        // No save after loading: clone(name, loader) has already written the new world to storage,
+        // and a save here ran on the main thread, stalling the tick on every island creation.
         return this.createNewWorld(uniqueId, blueprint)
                 .thenCompose(clonedWorld -> this.loadWorld(uniqueId, clonedWorld))
-                .thenApply(instance -> {
-                    try {
-                        asp.saveWorld(instance);
-                    } catch (IOException e) {
-                        throw new CompletionException("Failed to save world after creation for island with UUID: " + uniqueId, e);
-                    }
-
-                    return instance;
-                })
                 .exceptionallyCompose(throwable -> {
                     // Best-effort teardown of whatever got created so a failed creation never leaves an
                     // orphaned slime world (or a half-loaded Bukkit world) behind.
                     this.plugin.getSLF4JLogger().error("Creation failed for island {}; cleaning up partial world", uniqueId, throwable);
-                    return this.delete(uniqueId)
+                    return this.delete(uniqueId, false)
                             .exceptionally(cleanupError -> {
                                 this.plugin.getSLF4JLogger().error("Failed to clean up partial world for island {}", uniqueId, cleanupError);
                                 return null;
@@ -221,9 +240,23 @@ public class WorldService {
         CompletableFuture<SlimeWorldInstance> prior = this.loading.putIfAbsent(id, inFlight);
         if (prior != null)
             return prior;
+        // A load that finished between the check above and the putIfAbsent has already registered
+        // its world and left the map: loading it again would only be refused by ASP.
+        existing = this.loadedWorlds.get(id);
+        if (existing != null) {
+            this.loading.remove(id, inFlight);
+            inFlight.complete(existing);
+            return inFlight;
+        }
 
         CompletableFuture<SlimeWorld> read = new CompletableFuture<>();
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+        // A save of this world still being written (it was just unloaded) must land first.
+        pendingSave(id).whenComplete((ignored, saveError) -> Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            if (isTombstoned(id)) {
+                this.deleted.add(id);
+                read.completeExceptionally(new IllegalStateException("Island was deleted: " + id));
+                return;
+            }
             try {
                 SlimePropertyMap propertyMap = buildPropertyMap(
                         (int) island.spawnX(),
@@ -235,14 +268,16 @@ public class WorldService {
             } catch (UnknownWorldException | IOException | CorruptedWorldException | NewerFormatException e) {
                 read.completeExceptionally(e);
             }
-        });
+        }));
 
         read.thenCompose(world -> this.loadWorld(id, world))
                 .whenComplete((instance, throwable) -> {
                     this.loading.remove(id);
-                    if (throwable != null)
+                    if (throwable != null) {
+                        // Hand the island back so another request can place it elsewhere.
+                        releaseLoadingClaim(id);
                         inFlight.completeExceptionally(throwable);
-                    else
+                    } else
                         inFlight.complete(instance);
                 });
         return inFlight;
@@ -278,32 +313,99 @@ public class WorldService {
                         .orElseThrow(() -> new IllegalStateException("Island not found for UUID: " + id));
                 IslandSettingsListener.applyEnvironment(island, instance.getBukkitWorld());
 
-                // Set host server for this island
+                // Record this server as the host. It only succeeds while nobody else holds the island:
+                // a copy that lost that race is dropped before anyone can play on it, or both copies
+                // would be saved and one would overwrite the other.
                 this.plugin.servers()
-                        .setHostServer(id, AstralPaperAPI.serverInformation().uniqueId())
-                        .exceptionally(throwable -> {
-                            plugin.getSLF4JLogger().error("Failed to set host server for island with UUID: {}", id, throwable);
-                            return null;
-                        });
+                        .confirmHost(id, AstralPaperAPI.serverInformation().uniqueId())
+                        .whenComplete((confirmed, throwable) -> Bukkit.getScheduler().runTask(plugin, () -> {
+                            if (throwable != null)
+                                // Redis is unreachable: nobody else can claim it either, so keep serving it.
+                                plugin.getSLF4JLogger().error("Failed to record this server as host of island {}", id, throwable);
+                            else if (!confirmed) {
+                                discard(id, instance);
+                                future.completeExceptionally(new IllegalStateException("Island " + id + " is already hosted by another server"));
+                                return;
+                            }
 
-                // Throw event
-                new IslandWorldLoadedEvent(island, instance.getBukkitWorld()).callEvent();
-
-                future.complete(instance);
+                            new IslandWorldLoadedEvent(island, instance.getBukkitWorld()).callEvent();
+                            this.plugin.servers().refreshHeartbeat();
+                            future.complete(instance);
+                        }));
             } catch (Exception ex) {
                 // Roll back the partially-registered world so a post-load failure can't leak a world that
                 // stays resident in Bukkit and the maps while the caller sees a failure.
-                this.loadedWorlds.remove(id);
-                this.worldNameToIslandId.remove(instance.getName());
-                try {
-                    Bukkit.unloadWorld(instance.getBukkitWorld(), false);
-                } catch (Exception unloadError) {
-                    this.plugin.getSLF4JLogger().error("Failed to roll back partially loaded world for island {}", id, unloadError);
-                }
+                discard(id, instance);
                 future.completeExceptionally(ex);
             }
         });
         return future;
+    }
+
+    /**
+     * Writes a world snapshot to storage on {@link #saveExecutor}, unless its island has been
+     * deleted by then. Tracked in {@link #saving} until it lands.
+     */
+    private CompletableFuture<Void> saveAsync(UUID id, SlimeWorld snapshot) {
+        CompletableFuture<Void> save = CompletableFuture.runAsync(() -> {
+            if (!this.deleted.contains(id) && isTombstoned(id))
+                this.deleted.add(id);
+            if (this.deleted.contains(id)) {
+                this.plugin.getSLF4JLogger().info("Skipping the save of deleted island {}", id);
+                return;
+            }
+            try {
+                this.asp.saveWorld(snapshot);
+            } catch (IOException e) {
+                throw new CompletionException("Failed to save world for island " + id, e);
+            }
+        }, this.saveExecutor);
+        this.saving.put(id, save);
+        save.whenComplete((ignored, throwable) -> {
+            this.saving.remove(id, save);
+            if (throwable != null)
+                this.plugin.getSLF4JLogger().error("Failed to save the world of island {}", id, throwable);
+        });
+        return save;
+    }
+
+    /**
+     * Whether {@code id} was deleted network-wide. Blocking (bounded); only called off the main
+     * thread. When Redis cannot answer, assumes not — refusing to save on a hiccup would lose data.
+     */
+    private boolean isTombstoned(UUID id) {
+        try {
+            return Boolean.TRUE.equals(this.plugin.servers().isDeleted(id).get(5, TimeUnit.SECONDS));
+        } catch (Exception e) {
+            this.plugin.getSLF4JLogger().warn("Could not check whether island {} was deleted", id, e);
+            return false;
+        }
+    }
+
+    /** The save of {@code id} still being written, as a future that never fails; done when there is none. */
+    private CompletableFuture<Void> pendingSave(UUID id) {
+        CompletableFuture<Void> save = this.saving.get(id);
+        return save == null ? CompletableFuture.completedFuture(null) : save.exceptionally(ignored -> null);
+    }
+
+    private void releaseLoadingClaim(UUID id) {
+        this.plugin.servers()
+                .releaseLoadingClaim(id, AstralPaperAPI.serverInformation().uniqueId())
+                .exceptionally(throwable -> {
+                    this.plugin.getSLF4JLogger().error("Failed to release the host claim on island {} after a failed load", id, throwable);
+                    return null;
+                });
+    }
+
+    /** Unregisters and unloads, without saving, a world that must not be kept. Main thread only. */
+    private void discard(UUID id, SlimeWorldInstance instance) {
+        this.loadedWorlds.remove(id);
+        this.worldNameToIslandId.remove(instance.getName());
+        try {
+            Bukkit.unloadWorld(instance.getBukkitWorld(), false);
+        } catch (Exception unloadError) {
+            this.plugin.getSLF4JLogger().error("Failed to roll back partially loaded world for island {}", id, unloadError);
+        }
     }
 
     private CompletableFuture<SlimeWorld> createNewWorld(UUID uniqueId, IslandBlueprint blueprint) {
@@ -400,8 +502,13 @@ public class WorldService {
             // to the fallback group — the local hop is what actually frees the world.
             evacuate(bukkitWorld);
 
+            // Snapshot now, write later: serialising and writing the world on the main thread stalls
+            // the tick. Bukkit itself is told not to save.
+            SlimeWorldInstance instance = this.loadedWorlds.get(uniqueId);
+            SlimeWorld snapshot = effectiveSave && instance != null ? instance.getSerializableCopy() : null;
+
             // Unload world
-            boolean success = Bukkit.unloadWorld(bukkitWorld, effectiveSave);
+            boolean success = Bukkit.unloadWorld(bukkitWorld, false);
             if (!success) {
                 future.completeExceptionally(new IllegalStateException("Bukkit refused to unload world for island with UUID: " + uniqueId));
                 return;
@@ -410,8 +517,16 @@ public class WorldService {
             // Remove from loaded worlds and world name mapping
             this.loadedWorlds.remove(uniqueId);
             this.worldNameToIslandId.remove(uniqueId.toString());
-            this.plugin.servers()
-                    .deleteHostServer(uniqueId)
+
+            // The island is only handed back once its save has landed: another server picking it
+            // up earlier would load the state from before this session.
+            CompletableFuture<Void> saved = snapshot == null
+                    ? CompletableFuture.completedFuture(null)
+                    : saveAsync(uniqueId, snapshot);
+            this.plugin.servers().refreshHeartbeat();
+            saved.handle((ignored, saveError) -> this.plugin.servers()
+                            .releaseHost(uniqueId, AstralPaperAPI.serverInformation().uniqueId()))
+                    .thenCompose(release -> release)
                     .exceptionally(throwable -> {
                         plugin.getSLF4JLogger().error("Failed to delete host server for island with UUID: {}", uniqueId, throwable);
                         return null;
@@ -445,8 +560,27 @@ public class WorldService {
     }
 
     public CompletableFuture<Void> delete(UUID uniqueId) {
+        return delete(uniqueId, true);
+    }
+
+    /**
+     * @param tombstone whether to record the deletion network-wide. Only a creation that failed
+     *                  skips it: the island may yet be created on another server, whose saves the
+     *                  tombstone would silently refuse.
+     */
+    private CompletableFuture<Void> delete(UUID uniqueId, boolean tombstone) {
         // From here on this island's world is write-protected everywhere in this service.
         this.deleted.add(uniqueId);
+
+        // Recorded first, so that a host which misses the broadcast below (its queue was
+        // reconnecting) still refuses to save the world back, and drops it on its next sweep.
+        if (tombstone)
+            this.plugin.servers()
+                    .markDeleted(uniqueId)
+                    .exceptionally(throwable -> {
+                        this.plugin.getSLF4JLogger().error("Failed to record the deletion of island {}", uniqueId, throwable);
+                        return null;
+                    });
 
         // Tell whichever server currently hosts this world to drop it without saving. We are echo-suppressed
         // from our own broadcast, so the local host (if any) is handled by the unload(false) below.
@@ -469,7 +603,9 @@ public class WorldService {
                                                            + "deleting it from storage anyway", uniqueId, throwable);
                     return null;
                 })
-                .thenCompose(ignored -> this.plugin.servers().deleteHostServer(uniqueId))
+                .thenCompose(ignored -> this.plugin.servers().clearHost(uniqueId))
+                // A save still being written would recreate the world right after it is deleted.
+                .thenCompose(ignored -> pendingSave(uniqueId))
                 .thenRunAsync(() -> {
                     try {
                         this.worldLoader.deleteWorld(uniqueId.toString());
@@ -586,15 +722,57 @@ public class WorldService {
             if (since == null)
                 continue; // first sweep seeing it empty — start the clock
 
-            if (now - since >= graceMillis) {
-                this.emptySince.remove(id);
-                this.plugin.getSLF4JLogger().info("Unloading idle island world {} (empty for {}s)", id, (now - since) / 1000);
-                this.unload(id).exceptionally(throwable -> {
-                    this.plugin.getSLF4JLogger().error("Failed to unload idle island world {}", id, throwable);
-                    return null;
-                });
-            }
+            if (now - since >= graceMillis)
+                unloadIfStillIdle(id, now - since);
         }
+
+        // Islands deleted while this server missed the broadcast: their tombstone is the only
+        // sign. Checked off the main thread, acted on back on it.
+        for (UUID id : List.copyOf(this.loadedWorlds.keySet())) {
+            if (this.deleted.contains(id))
+                continue;
+            this.plugin.servers()
+                    .isDeleted(id)
+                    .thenAccept(deletedElsewhere -> {
+                        if (Boolean.TRUE.equals(deletedElsewhere))
+                            Bukkit.getScheduler().runTask(this.plugin, () -> {
+                                this.plugin.getSLF4JLogger().warn("Island {} was deleted on another server; dropping its world", id);
+                                dropDeleted(id);
+                            });
+                    });
+        }
+    }
+
+    /**
+     * Unloads an idle world, unless a player turned up after the sweep looked or is being sent
+     * here right now — the host mapping still points at this server, so another server may be
+     * transferring someone in, and unloading under them would leave them nowhere to land.
+     */
+    private void unloadIfStillIdle(UUID id, long idleMillis) {
+        this.plugin.servers()
+                .isArriving(id)
+                .exceptionally(throwable -> false)
+                .thenAccept(arriving -> Bukkit.getScheduler().runTask(this.plugin, () -> {
+                    SlimeWorldInstance instance = this.loadedWorlds.get(id);
+                    if (instance == null || this.deleted.contains(id))
+                        return;
+                    if (arriving || !instance.getBukkitWorld().getPlayers().isEmpty()) {
+                        this.emptySince.remove(id); // start the idle clock over
+                        return;
+                    }
+
+                    this.emptySince.remove(id);
+                    this.plugin.getSLF4JLogger().info("Unloading idle island world {} (empty for {}s)", id, idleMillis / 1000);
+                    this.unload(id).exceptionally(throwable -> {
+                        this.plugin.getSLF4JLogger().error("Failed to unload idle island world {}", id, throwable);
+                        return null;
+                    });
+                }));
+    }
+
+    /** The island whose world this is, whether or not the island itself is cached here. */
+    public Optional<UUID> findIslandIdByWorld(World world) {
+        return Optional.ofNullable(worldNameToIslandId.get(world.getName()));
     }
 
     public Optional<Island> findByWorld(World world) {

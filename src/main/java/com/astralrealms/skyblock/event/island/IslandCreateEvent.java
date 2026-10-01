@@ -6,6 +6,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.Event;
 import org.bukkit.event.HandlerList;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 import com.astralrealms.skyblock.model.island.Island;
 
@@ -18,9 +19,11 @@ public class IslandCreateEvent extends Event {
 
     private final Player player;
     private final Island island;
+    /** The island's world, or {@code null} when it was created on another server. */
+    @Nullable
     private final World world;
 
-    public IslandCreateEvent(Player player, Island island, World world) {
+    public IslandCreateEvent(Player player, Island island, @Nullable World world) {
         super(!Bukkit.isPrimaryThread());
         this.player = player;
         this.island = island;

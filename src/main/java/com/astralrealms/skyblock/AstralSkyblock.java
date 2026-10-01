@@ -227,6 +227,10 @@ public final class AstralSkyblock extends AstralPaperPlugin {
     public void onDisable() {
         super.onDisable();
 
+        // Stop advertising this server first, so nothing new is placed here while worlds flush.
+        if (this.servers != null)
+            this.servers.shutdown();
+
         // Worlds
         this.worlds.unload();
 

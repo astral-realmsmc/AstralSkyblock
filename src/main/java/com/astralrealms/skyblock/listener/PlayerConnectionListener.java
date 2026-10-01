@@ -1,5 +1,7 @@
 package com.astralrealms.skyblock.listener;
 
+import java.util.concurrent.CompletableFuture;
+
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -24,7 +26,17 @@ public class PlayerConnectionListener implements Listener {
 
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
-        this.plugin.players().load(event.getPlayer());
+        Player player = event.getPlayer();
+        this.plugin.players().load(player);
+
+        // Every command resolves the player's island from the cache. Make sure it is there even
+        // when the startup warmup skipped it or it was evicted since.
+        this.plugin.members()
+                .loadPlayerIsland(player.getUniqueId())
+                .exceptionally(throwable -> {
+                    this.plugin.getSLF4JLogger().error("Failed to load the island of {} on join", player.getName(), throwable);
+                    return null;
+                });
     }
 
     /**
@@ -54,26 +66,35 @@ public class PlayerConnectionListener implements Listener {
         if (!player.isOnline())
             return;
 
-        TeleportationService teleportation = AstralPaperAPI.getService(TeleportationService.class)
-                .orElseThrow();
+        TeleportationService teleportation = AstralPaperAPI.getService(TeleportationService.class).orElse(null);
+        if (teleportation == null) {
+            this.plugin.getSLF4JLogger().error("Cannot restore {} to their island: no TeleportationService is registered", player.getName());
+            return;
+        }
         if (teleportation.wasTeleportedOnJoin(player.getUniqueId()))
             return; // the network teleport that brought them here owns where they end up
 
         if (this.plugin.worlds().findByWorld(player.getWorld()).isPresent())
             return; // already in an island world that is loaded here
 
-        Island island = this.plugin.members()
-                .findPlayerIsland(player.getUniqueId())
-                .orElse(null);
-        if (island == null)
-            return;
+        this.plugin.members()
+                .loadPlayerIsland(player.getUniqueId())
+                .thenCompose(island -> island.isEmpty()
+                        ? CompletableFuture.completedFuture(null)
+                        : restoreTo(player, teleportation, island.get()))
+                .exceptionally(throwable -> {
+                    this.plugin.getSLF4JLogger().error("Failed to restore {} to their island on join", player.getName(), throwable);
+                    return null;
+                });
+    }
 
-        this.plugin.islands()
+    private CompletableFuture<Void> restoreTo(Player player, TeleportationService teleportation, Island island) {
+        return this.plugin.islands()
                 .spawnIsland(island)
-                .whenComplete((location, throwable) -> {
-                    if (throwable != null || location == null) {
-                        this.plugin.getSLF4JLogger().error("Failed to restore {} to island {} on join",
-                                player.getName(), island.uniqueId(), throwable);
+                .thenAccept(location -> {
+                    if (location == null) {
+                        this.plugin.getSLF4JLogger().error("Failed to restore {} to island {} on join: no server can host it",
+                                player.getName(), island.uniqueId());
                         return;
                     }
 

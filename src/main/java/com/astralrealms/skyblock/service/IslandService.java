@@ -1,6 +1,7 @@
 package com.astralrealms.skyblock.service;
 
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -10,12 +11,15 @@ import java.util.concurrent.TimeUnit;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
+import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
 import com.astralrealms.core.model.location.NetworkLocation;
 import com.astralrealms.core.paper.AstralPaperAPI;
 import com.astralrealms.core.paper.placeholder.MinecraftPlayerPlaceholder;
 import com.astralrealms.core.placeholder.container.PlaceholderContainer;
+import com.astralrealms.core.service.impl.TeleportationService;
+import com.astralrealms.core.service.impl.ChatService;
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.configuration.ASMessages;
 import com.astralrealms.skyblock.event.island.IslandCreateEvent;
@@ -25,18 +29,23 @@ import com.astralrealms.skyblock.messaging.packet.island.IslandClosedPacket;
 import com.astralrealms.skyblock.messaging.packet.island.IslandDeletePacket;
 import com.astralrealms.skyblock.messaging.packet.island.IslandLoadRequestPacket;
 import com.astralrealms.skyblock.messaging.packet.island.IslandLoadResponsePacket;
+import com.astralrealms.skyblock.messaging.packet.repository.UniqueObjectUpdatePacket;
 import com.astralrealms.skyblock.model.IslandBlueprint;
 import com.astralrealms.skyblock.model.island.Island;
 import com.astralrealms.skyblock.model.island.IslandSettings;
+import com.astralrealms.skyblock.model.member.IslandMember;
 import com.astralrealms.skyblock.model.role.IslandPermission;
 import com.astralrealms.skyblock.repository.IslandRepository;
 import com.astralrealms.skyblock.utils.ASConstants;
 import com.astralrealms.skyblock.utils.PlayerText;
+import com.infernalsuite.asp.api.world.SlimeWorldInstance;
 
 import lombok.Getter;
 
 @Getter
 public class IslandService {
+
+    private static final java.time.Duration LOAD_REQUEST_TIMEOUT = java.time.Duration.ofSeconds(10);
 
     private final AstralSkyblock plugin;
     private final IslandRepository repository;
@@ -45,47 +54,53 @@ public class IslandService {
         this.plugin = plugin;
         this.repository = new IslandRepository(plugin);
 
-        // Warmup cache
-        try {
-            this.warmup().join();
-        } catch (Exception e) {
-            this.plugin.getSLF4JLogger().error("Failed to warm up island cache on startup", e);
-        }
+        // Warm the cache in the background: blocking enable on it meant minutes with the server
+        // unable to start on a large network. Names come first, in a single query, so every island
+        // can be named in a command while the islands themselves are still loading.
+        this.repository.loadNames()
+                .exceptionally(throwable -> {
+                    this.plugin.getSLF4JLogger().error("Failed to load island names on startup", throwable);
+                    return null;
+                })
+                .thenCompose(ignored -> this.warmup());
+
+        // Settings changed on another server: reload them, and re-apply the world locks if we host it.
+        this.plugin.messaging().registerExchange(ASConstants.FLAG_UPDATE_CHANNEL, packet -> {
+            if (packet instanceof UniqueObjectUpdatePacket update)
+                this.repository.refreshSettings(update.uniqueId())
+                        .thenAccept(island -> {
+                            if (island != null)
+                                reapplyEnvironment(island);
+                        })
+                        .exceptionally(throwable -> {
+                            this.plugin.getSLF4JLogger().error("Failed to reload the settings of island {}", update.uniqueId(), throwable);
+                            return null;
+                        });
+        });
 
         // Messaging listener
         this.plugin.messaging().registerExchange(ASConstants.ISLAND_MANAGEMENT_CHANNEL, (packet, envelope) -> {
             if (packet instanceof IslandLoadRequestPacket request) {
+                // The exchange is a fanout: every server receives every request. Only the server the
+                // requester picked may load the world, or each one loads its own copy and the last
+                // save overwrites the others.
+                if (!request.serverId().equals(AstralPaperAPI.serverInformation().uniqueId())
+                    || !plugin.configuration().isIslandServer())
+                    return null;
+
                 repository.findById(request.islandId())
-                        .thenAccept(island -> {
-                            if (island == null) {
-                                plugin.getSLF4JLogger().error("Failed to find island {} for load request: result is null", request.islandId());
-                                plugin.messaging().replyTo(new IslandLoadResponsePacket(false), envelope);
-                                return;
-                            } else if (plugin.worlds().getLoadedWorlds().containsKey(island.uniqueId())) {
-                                plugin.messaging().replyTo(new IslandLoadResponsePacket(true), envelope);
-                                return;
-                            }
-
-                            plugin.worlds()
-                                    .load(island)
-                                    .whenComplete((worldInstance, throwable) -> {
-                                        if (throwable != null) {
-                                            plugin.getSLF4JLogger().error("Failed to load island {} for load request", request.islandId(), throwable);
-                                            plugin.messaging().replyTo(new IslandLoadResponsePacket(false), envelope);
-                                            return;
-                                        } else if (worldInstance == null) {
-                                            plugin.getSLF4JLogger().error("Failed to load island {} for load request: result is null", request.islandId());
-                                            plugin.messaging().replyTo(new IslandLoadResponsePacket(false), envelope);
-                                            return;
-                                        }
-
-                                        plugin.getSLF4JLogger().info("Island {} loaded for load request", request.islandId());
-                                        plugin.messaging().replyTo(new IslandLoadResponsePacket(true), envelope);
-                                    });
-                        }).exceptionally(throwable -> {
-                            plugin.getSLF4JLogger().error("Failed to find island {} for load request", request.islandId(), throwable);
-                            plugin.messaging().replyTo(new IslandLoadResponsePacket(false), envelope);
-                            return null;
+                        .thenCompose(island -> {
+                            if (island == null)
+                                throw new IllegalStateException("Island not found: " + request.islandId());
+                            return loadLocally(island, request.blueprintId());
+                        })
+                        .whenComplete((worldInstance, throwable) -> {
+                            boolean success = throwable == null && worldInstance != null;
+                            if (success)
+                                plugin.getSLF4JLogger().info("Island {} loaded for load request", request.islandId());
+                            else
+                                plugin.getSLF4JLogger().error("Failed to load island {} for load request", request.islandId(), throwable);
+                            plugin.messaging().replyTo(new IslandLoadResponsePacket(success), envelope);
                         });
             } else if (packet instanceof IslandClosedPacket closed) {
                 // The island was closed on another server; send its visitors away if we host it.
@@ -126,63 +141,186 @@ public class IslandService {
      */
     public CompletableFuture<NetworkLocation> resolveLocation(Island island, double x, double y, double z,
                                                               float yaw, float pitch) {
+        return host(island, null)
+                .thenApply(server -> {
+                    if (server == null)
+                        return null;
+                    // The caller is about to send someone there: keep the host from idle-unloading
+                    // the world in the seconds the transfer takes.
+                    this.plugin.servers().markArriving(island.uniqueId());
+                    return new NetworkLocation(x, y, z, yaw, pitch, island.uniqueId().toString(), server);
+                })
+                // Room for a load request plus a retry on another server.
+                .orTimeout(25, TimeUnit.SECONDS);
+    }
+
+    /**
+     * Makes sure the island's world is up on exactly one server and completes with that server, or
+     * {@code null} when no server can take it. With a {@code blueprint}, the world does not exist yet
+     * and is created from it on the chosen server.
+     */
+    private CompletableFuture<UUID> host(Island island, @Nullable IslandBlueprint blueprint) {
+        return host(island, blueprint, 0);
+    }
+
+    private CompletableFuture<UUID> host(Island island, @Nullable IslandBlueprint blueprint, int attempt) {
         UUID islandId = island.uniqueId();
-        return this.plugin.servers()
-                .findHostServer(islandId)
-                .thenCompose(hostServer -> {
-                    if (hostServer != null)
-                        return CompletableFuture.completedFuture(
-                                new NetworkLocation(x, y, z, yaw, pitch, islandId.toString(), hostServer));
+        ServerService servers = this.plugin.servers();
+        return servers.findHost(islandId)
+                .thenCompose(host -> {
+                    if (host == null)
+                        return place(island, blueprint, attempt);
 
-                    return this.plugin.servers()
-                            .findEmptiestServer()
-                            .thenCompose(islandServer -> {
-                                if (islandServer == null) {
-                                    this.plugin.getSLF4JLogger().error("Failed to find emptiest server for island {}: result is null", islandId);
-                                    return CompletableFuture.completedFuture(null);
+                    return servers.isAlive(host.server())
+                            .thenCompose(alive -> {
+                                if (!alive) {
+                                    // The host crashed without releasing it; take the island back.
+                                    this.plugin.getSLF4JLogger().warn("Island {} was mapped to dead server {}; placing it again", islandId, host.server());
+                                    return servers.releaseHost(islandId, host.server())
+                                            .thenCompose(ignored -> place(island, blueprint, attempt));
                                 }
 
-                                if (islandServer.uniqueId().equals(AstralPaperAPI.serverInformation().uniqueId())) {
-                                    this.plugin.getSLF4JLogger().info("Found emptiest server {} for island {}: it's the current server, loading locally", islandServer.uniqueId(), islandId);
-                                    return this.plugin.worlds()
-                                            .load(island)
-                                            .thenApply(worldInstance -> {
-                                                if (worldInstance == null) {
-                                                    this.plugin.getSLF4JLogger().error("Failed to load island {} on current server: result is null", islandId);
-                                                    return null;
-                                                }
-                                                return new NetworkLocation(x, y, z, yaw, pitch, islandId.toString(),
-                                                        AstralPaperAPI.serverInformation().uniqueId());
-                                            });
-                                }
-
-                                this.plugin.getSLF4JLogger().info("Found emptiest server {} for island {}", islandServer.uniqueId(), islandId);
-                                return this.plugin.messaging()
-                                        .sendWithReply(ASConstants.ISLAND_MANAGEMENT_CHANNEL, new IslandLoadRequestPacket(islandId, islandServer.uniqueId()))
-                                        .thenApply(reply -> {
-                                            if (!(reply instanceof IslandLoadResponsePacket responsePacket)
-                                                || !responsePacket.success())
-                                                return null;
-                                            return new NetworkLocation(x, y, z, yaw, pitch, islandId.toString(),
-                                                    islandServer.uniqueId());
-                                        });
+                                // Still loading there, or mapped to us: ask for the load. It coalesces
+                                // with the one in flight and only answers once the world is up, so
+                                // nobody is sent to a world that is not there yet.
+                                if (host.loading() || host.server().equals(localServer()))
+                                    return loadOn(island, host.server(), null);
+                                return CompletableFuture.completedFuture(host.server());
                             });
-                }).orTimeout(15, TimeUnit.SECONDS);
+                });
+    }
+
+    /** Picks the emptiest island server, claims the island for it, and loads (or creates) it there. */
+    private CompletableFuture<UUID> place(Island island, @Nullable IslandBlueprint blueprint, int attempt) {
+        UUID islandId = island.uniqueId();
+        ServerService servers = this.plugin.servers();
+        return servers.findEmptiestServer()
+                .thenCompose(target -> {
+                    if (target == null) {
+                        this.plugin.getSLF4JLogger().error("No island server can host island {}", islandId);
+                        return CompletableFuture.completedFuture(null);
+                    }
+
+                    UUID targetId = target.uniqueId();
+                    return servers.claimHost(islandId, targetId)
+                            .thenCompose(claimed -> {
+                                if (!claimed)
+                                    // Someone placed it first: go wherever they put it.
+                                    return attempt < 2
+                                            ? host(island, blueprint, attempt + 1)
+                                            : CompletableFuture.completedFuture(null);
+
+                                this.plugin.getSLF4JLogger().info("Placing island {} on server {}", islandId, targetId);
+                                return loadOn(island, targetId, blueprint)
+                                        .handle((server, throwable) -> {
+                                            if (server != null)
+                                                return CompletableFuture.completedFuture(server);
+                                            if (throwable != null)
+                                                this.plugin.getSLF4JLogger().error("Failed to place island {} on server {}", islandId, targetId, throwable);
+                                            // Free the slot unless the world did come up after all, and try
+                                            // another server: this one may be full (its heartbeat is a few
+                                            // seconds old) or failing.
+                                            return servers.releaseLoadingClaim(islandId, targetId)
+                                                    .thenCompose(ignored -> attempt < 2
+                                                            ? place(island, blueprint, attempt + 1)
+                                                            : CompletableFuture.<UUID>completedFuture(null));
+                                        })
+                                        .thenCompose(future -> future);
+                            });
+                });
+    }
+
+    /** Loads (or creates) the island on {@code server}; completes with that server, or {@code null}. */
+    private CompletableFuture<UUID> loadOn(Island island, UUID server, @Nullable IslandBlueprint blueprint) {
+        if (server.equals(localServer()))
+            return loadLocally(island, blueprint == null ? null : blueprint.id())
+                    .thenApply(instance -> instance == null ? null : server);
+
+        return this.plugin.messaging()
+                // Reading a world from MySQL and loading it on a busy server can outlast the 5 s
+                // default; the target would then finish a load nobody waits for anymore.
+                .sendWithReply(ASConstants.ISLAND_MANAGEMENT_CHANNEL,
+                        new IslandLoadRequestPacket(island.uniqueId(), server, blueprint == null ? null : blueprint.id()),
+                        LOAD_REQUEST_TIMEOUT)
+                .thenApply(reply -> reply instanceof IslandLoadResponsePacket response && response.success()
+                        ? server
+                        : null);
+    }
+
+    private CompletableFuture<SlimeWorldInstance> loadLocally(Island island, @Nullable String blueprintId) {
+        // Placement picks servers from heartbeats up to 15 s old, so many requests can land on the
+        // same one at once. Past its cap it refuses, and the requester tries elsewhere.
+        Map<UUID, SlimeWorldInstance> loaded = this.plugin.worlds().getLoadedWorlds();
+        if (!loaded.containsKey(island.uniqueId()) && loaded.size() >= this.plugin.configuration().maximumIslands())
+            return CompletableFuture.failedFuture(new IllegalStateException(
+                    "This server already hosts its maximum of " + this.plugin.configuration().maximumIslands() + " islands"));
+
+        if (blueprintId == null)
+            return this.plugin.worlds().load(island);
+
+        IslandBlueprint blueprint = this.plugin.blueprints().findById(blueprintId).orElse(null);
+        if (blueprint == null)
+            return CompletableFuture.failedFuture(new IllegalStateException("Unknown blueprint " + blueprintId + " on this server"));
+        return this.plugin.worlds().create(island.uniqueId(), blueprint);
+    }
+
+    /**
+     * Whether {@code name} can name an island: not blank, short enough, and a single word — a name
+     * with spaces could never be typed as one command argument ({@code /is go <island>}).
+     */
+    private static boolean isValidIslandName(String name) {
+        return name != null && !name.isBlank()
+               && PlayerText.withinLimit(name, PlayerText.ISLAND_NAME_LIMIT)
+               && name.strip().chars().noneMatch(Character::isWhitespace);
+    }
+
+    private static UUID localServer() {
+        return AstralPaperAPI.serverInformation().uniqueId();
     }
 
     public void create(Player player, String name, IslandBlueprint blueprint) {
-        String finalName = name == null || name.isBlank() ? player.getName() : name.trim();
+        if (blueprint == null) {
+            this.plugin.getSLF4JLogger().error("{} tried to create an island but no blueprint is available (is a default blueprint configured?)", player.getName());
+            ASMessages.UNEXPECTED_ERROR.message(player);
+            return;
+        }
+
+        // A player belongs to one island at most; the database would refuse the owner row anyway,
+        // but only after a transaction, with an unexpected-error message.
+        if (this.plugin.members().findPlayerIsland(player.getUniqueId()).isPresent()) {
+            ASMessages.ALREADY_HAS_ISLAND.message(player);
+            return;
+        }
+
+        // A chosen name goes through the same checks as a rename: it is shown to everyone (the
+        // leaderboard, messages), so formatting is escaped, and it must fit the column.
+        boolean chosen = name != null && !name.isBlank();
+        String finalName;
+        if (chosen) {
+            String sanitised = isValidIslandName(name) ? PlayerText.sanitise(name) : null;
+            if (sanitised == null) {
+                ASMessages.ISLAND_NAME_INVALID.message(player, AstralPaperAPI.createPlaceholderContainer(player)
+                        .registerDirect("maximum", PlayerText.ISLAND_NAME_LIMIT));
+                return;
+            }
+            finalName = sanitised;
+        } else
+            finalName = player.getName();
+
         this.repository.existsByName(finalName)
                 .thenAccept(exists -> {
-                    if (exists) {
+                    if (exists && chosen) {
                         ASMessages.NAME_ALREADY_TAKEN.message(player, AstralPaperAPI.createPlaceholderContainer(player).registerDirect("name", finalName));
                         return;
                     }
+                    // The default name (the player's) is taken by someone else's island: create it
+                    // unnamed rather than refuse — the creation menu offers no way to pick another.
+                    String islandName = exists ? null : finalName;
 
                     long startTime = System.currentTimeMillis();
                     Island island = new Island(
                             UUID.randomUUID(),
-                            finalName,
+                            islandName,
                             false, // open to visitors until the owner closes it with /is close
                             0,
                             0,
@@ -198,19 +336,23 @@ public class IslandService {
                     // The island, its default roles + seeded permissions, and the owner member are all
                     // persisted in one transaction; only the world (filesystem, not the DB) is created after.
                     this.repository.create(island, this.plugin.roles().defaultRoleSeeds(island.uniqueId()), player.getUniqueId())
-                            .thenCompose(saved -> this.plugin.worlds().create(saved.uniqueId(), blueprint))
-                            .whenComplete((worldInstance, throwable) -> {
-                                if (throwable != null || worldInstance == null) {
+                            // The world is created on an island server picked like any other placement,
+                            // never just wherever the command was typed (a hub has no protection and
+                            // never unloads it).
+                            .thenCompose(saved -> host(saved, blueprint))
+                            .whenComplete((server, throwable) -> {
+                                if (throwable != null || server == null) {
                                     if (throwable != null)
                                         this.plugin.getSLF4JLogger().error("Failed to create island for player {}", player.getName(), throwable);
                                     else
-                                        this.plugin.getSLF4JLogger().error("Failed to create island for player {}: world is null", player.getName());
+                                        this.plugin.getSLF4JLogger().error("Failed to create island for player {}: no island server could host it", player.getName());
 
-                                    // The island row (and its roles/owner) was already committed; roll it back so a
-                                    // failed world creation doesn't leave an island with no world behind.
+                                    // The island row (and its roles/owner) was already committed; roll it back, and
+                                    // drop any world a slow remote creation may still have produced.
                                     this.repository.delete(island.uniqueId())
+                                            .thenCompose(ignored -> this.plugin.worlds().delete(island.uniqueId()))
                                             .exceptionally(rollbackError -> {
-                                                this.plugin.getSLF4JLogger().error("Failed to roll back island row for {} after creation failure", island.uniqueId(), rollbackError);
+                                                this.plugin.getSLF4JLogger().error("Failed to roll back island {} after creation failure", island.uniqueId(), rollbackError);
                                                 return null;
                                             });
 
@@ -218,8 +360,13 @@ public class IslandService {
                                     return;
                                 }
 
-                                // Teleport player
-                                player.teleportAsync(worldInstance.getBukkitWorld().getSpawnLocation());
+                                // Teleport player (possibly to another server)
+                                AstralPaperAPI.getService(TeleportationService.class)
+                                        .orElseThrow(() -> new IllegalStateException("TeleportationService not found"))
+                                        .teleport(player.getUniqueId(), new NetworkLocation(
+                                                island.spawnX(), island.spawnY(), island.spawnZ(),
+                                                island.spawnYaw(), island.spawnPitch(),
+                                                island.uniqueId().toString(), server));
 
                                 // Notify
                                 ASMessages.ISLAND_CREATED.message(
@@ -228,12 +375,12 @@ public class IslandService {
                                                 .registerPlaceholder(island)
                                 );
 
-                                // Trigger event
-                                new IslandCreateEvent(player, island, worldInstance.getBukkitWorld()).callEvent();
+                                // Trigger event (no world when it was created on another server)
+                                new IslandCreateEvent(player, island, Bukkit.getWorld(island.uniqueId().toString())).callEvent();
 
                                 // Log
-                                this.plugin.getSLF4JLogger().info("Island created for player {} in {} ms", island.uniqueId(), System.currentTimeMillis() - startTime);
-
+                                this.plugin.getSLF4JLogger().info("Island {} created for player {} on server {} in {} ms",
+                                        island.uniqueId(), player.getName(), server, System.currentTimeMillis() - startTime);
                             });
                 })
                 .exceptionally(throwable -> {
@@ -244,10 +391,10 @@ public class IslandService {
     }
 
     /**
-     * Warms the island cache on startup by loading every island into memory in pages of
-     * {@link com.astralrealms.skyblock.utils.ASConstants#ISLAND_WARMUP_PAGE_SIZE}. Runs asynchronously
-     * off the database executor; failures are logged but do not abort startup (islands missing from the
-     * cache are lazily loaded on first access).
+     * Warms the island cache by loading every island into memory in pages of
+     * {@link com.astralrealms.skyblock.utils.ASConstants#ISLAND_WARMUP_PAGE_SIZE}, a few at a time.
+     * Runs in the background; failures are logged and skipped (islands missing from the cache are
+     * lazily loaded on first access).
      */
     public CompletableFuture<Void> warmup() {
         long startTime = System.currentTimeMillis();
@@ -264,15 +411,20 @@ public class IslandService {
 
     /**
      * Disbands an island: removes its row (cascading every relationship) and deletes its world.
-     * Requires {@link IslandPermission#DISBAND_ISLAND} on the island being deleted — the command's
-     * context resolver already restricts which island a player can name, but an admin-supplied or
-     * GUI-supplied island must be authorised here too.
+     * Reserved to the owner (and staff) whatever the roles grant: it cannot be undone, and a role
+     * permission can be handed out — even to every visitor — by anyone allowed to edit roles.
      */
     public void delete(Player player, Island island) {
-        if (!island.hasPermission(player, IslandPermission.DISBAND_ISLAND)) {
-            ASMessages.NO_PERMISSION.message(player);
+        if (!island.isOwnerOrStaff(player)) {
+            ASMessages.NOT_ISLAND_OWNER.message(player);
             return;
         }
+
+        // Taken before the delete: it drops the island's member slice from the cache.
+        List<UUID> otherMembers = island.members().stream()
+                .map(IslandMember::playerUuid)
+                .filter(member -> !member.equals(player.getUniqueId()))
+                .toList();
 
         this.repository.delete(island.uniqueId())
                 .whenComplete((_, throwable) -> {
@@ -290,12 +442,13 @@ public class IslandService {
                                 return null;
                             });
 
-                    // Notify
-                    ASMessages.ISLAND_DELETED.message(
-                            player,
-                            AstralPaperAPI.createPlaceholderContainer(player)
-                                    .registerPlaceholder(island)
-                    );
+                    // Notify, members included, wherever they are on the network
+                    PlaceholderContainer placeholders = AstralPaperAPI.createPlaceholderContainer(player)
+                            .registerPlaceholder(island);
+                    ASMessages.ISLAND_DELETED.message(player, placeholders);
+                    ChatService chat = AstralPaperAPI.getService(ChatService.class).orElse(null);
+                    if (chat != null)
+                        otherMembers.forEach(member -> chat.sendMessage(member, ASMessages.ISLAND_DELETED.component(placeholders)));
 
                     // Log
                     this.plugin.getSLF4JLogger().info("Island {} deleted for player {}", island.uniqueId(), player.getName());
@@ -323,8 +476,8 @@ public class IslandService {
         PlaceholderContainer placeholders = AstralPaperAPI.createPlaceholderContainer(player)
                 .registerPlaceholder(island);
 
-        String sanitised = PlayerText.sanitise(name);
-        if (sanitised == null || !PlayerText.withinLimit(name, PlayerText.ISLAND_NAME_LIMIT)) {
+        String sanitised = isValidIslandName(name) ? PlayerText.sanitise(name) : null;
+        if (sanitised == null) {
             ASMessages.ISLAND_NAME_INVALID.message(player, placeholders.registerDirect("maximum", PlayerText.ISLAND_NAME_LIMIT));
             return;
         }
@@ -342,14 +495,11 @@ public class IslandService {
                         return CompletableFuture.completedFuture(null);
                     }
 
-                    String previous = island.name();
-                    island.name(sanitised);
-                    return this.repository.save(island)
-                            .<Void>handle((saved, throwable) -> {
+                    return this.repository.updateColumns(island.uniqueId(), Map.of("name", sanitised), cached -> cached.name(sanitised))
+                            .<Void>handle((ignored, throwable) -> {
                                 if (throwable != null) {
                                     // The unique index can still reject the name between the check and
-                                    // the write; put the island back the way it was either way.
-                                    island.name(previous);
+                                    // the write; nothing was applied in memory in that case.
                                     this.plugin.getSLF4JLogger().error("Failed to rename island {} to {}", island.uniqueId(), sanitised, throwable);
                                     ASMessages.UNEXPECTED_ERROR.message(player, placeholders);
                                     return null;
@@ -382,17 +532,22 @@ public class IslandService {
             return;
         }
 
-        double previousX = island.spawnX();
-        double previousY = island.spawnY();
-        double previousZ = island.spawnZ();
-        float previousYaw = island.spawnYaw();
-        float previousPitch = island.spawnPitch();
+        // Outside the border nobody could use it — and a spawn out there is where visitors land.
+        Location location = player.getLocation();
+        if (!player.getWorld().getWorldBorder().isInside(location)) {
+            ASMessages.NOT_ON_ISLAND.message(player, placeholders);
+            return;
+        }
 
-        island.location(player.getLocation());
-        this.repository.save(island)
-                .whenComplete((saved, throwable) -> {
+        Map<String, Object> columns = new LinkedHashMap<>();
+        columns.put("spawn_x", location.getX());
+        columns.put("spawn_y", location.getY());
+        columns.put("spawn_z", location.getZ());
+        columns.put("spawn_yaw", location.getYaw());
+        columns.put("spawn_pitch", location.getPitch());
+        this.repository.updateColumns(island.uniqueId(), columns, cached -> cached.location(location))
+                .whenComplete((ignored, throwable) -> {
                     if (throwable != null) {
-                        island.location(new Location(player.getWorld(), previousX, previousY, previousZ, previousYaw, previousPitch));
                         this.plugin.getSLF4JLogger().error("Failed to move the spawn of island {}", island.uniqueId(), throwable);
                         ASMessages.UNEXPECTED_ERROR.message(player, placeholders);
                         return;
@@ -424,11 +579,9 @@ public class IslandService {
             return;
         }
 
-        island.locked(locked);
-        this.repository.save(island)
-                .whenComplete((saved, throwable) -> {
+        this.repository.updateColumns(island.uniqueId(), Map.of("locked", locked), cached -> cached.locked(locked))
+                .whenComplete((ignored, throwable) -> {
                     if (throwable != null) {
-                        island.locked(!locked); // the write never landed; keep memory and the row in step
                         this.plugin.getSLF4JLogger().error("Failed to {} island {}", locked ? "close" : "open", island.uniqueId(), throwable);
                         ASMessages.UNEXPECTED_ERROR.message(player, placeholders);
                         return;
@@ -566,12 +719,13 @@ public class IslandService {
     }
 
     public void updateSettings(Player player, Island island) {
+        // Taken first: a refused save discards the edits rather than leaving them pending.
+        Map<IslandSettings, Boolean> settings = island.takePendingSettings(player.getUniqueId());
+
         if (!island.hasPermission(player, IslandPermission.SET_SETTINGS)) {
             ASMessages.NO_PERMISSION.message(player);
             return;
         }
-
-        Map<IslandSettings, Boolean> settings = island.flushSettings();
         if (settings.isEmpty())
             return;
 
@@ -589,13 +743,21 @@ public class IslandService {
                         return;
                     }
 
+                    // Only now that it is stored; then tell the other servers, since the one that
+                    // enforces the settings is whichever hosts the world, rarely the one editing them.
+                    island.applySettings(settings);
+                    this.repository.publishSettingsChange(island.uniqueId());
                     ASMessages.SETTINGS_UPDATE_SUCCESS.message(player, placeholders);
 
-                    // Time/weather locks require world state, not event cancels — re-apply if hosted here
-                    Bukkit.getScheduler().runTask(this.plugin, () -> this.plugin.worlds()
-                            .findByIslandId(island.uniqueId())
-                            .ifPresent(instance -> IslandSettingsListener.applyEnvironment(island, instance.getBukkitWorld())));
+                    reapplyEnvironment(island);
                 });
+    }
+
+    /** Re-applies the time/weather locks — world state, not event cancels — when this server hosts the island. */
+    private void reapplyEnvironment(Island island) {
+        Bukkit.getScheduler().runTask(this.plugin, () -> this.plugin.worlds()
+                .findByIslandId(island.uniqueId())
+                .ifPresent(instance -> IslandSettingsListener.applyEnvironment(island, instance.getBukkitWorld())));
     }
 
     @Unmodifiable
