@@ -2,6 +2,7 @@ package com.astralrealms.skyblock.repository;
 
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.Timestamp;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
@@ -77,6 +78,51 @@ public class WarpRepository extends IndexedSyncedRepository<WarpKey, IslandWarp,
         return save(warp);
     }
 
+    public enum CreateResult { CREATED, NAME_TAKEN, LIMIT_REACHED }
+
+    /**
+     * Stores a new warp, as long as the island has fewer than {@code maximum}. Counted under a lock
+     * on the island row, so two creations racing on two servers cannot both take the last slot; and
+     * a plain insert, so a warp of the same name (created meanwhile) is refused, not overwritten.
+     */
+    public CompletableFuture<CreateResult> create(IslandWarp warp, int maximum) {
+        @Language("SQL") String query = """
+                INSERT INTO island_warps (island_id, name, x, y, z, yaw, pitch, is_private, icon, display_name, description, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """;
+        return this.plugin.database()
+                .transactionSupply(connection -> {
+                    MemberRepository.lockIsland(connection, warp.islandId());
+                    if (MemberRepository.countRows(connection, "SELECT COUNT(*) FROM island_warps WHERE island_id = ?", warp.islandId()) >= maximum)
+                        return CreateResult.LIMIT_REACHED;
+                    try (PreparedStatement statement = connection.prepareStatement(query)) {
+                        statement.setObject(1, warp.islandId());
+                        statement.setString(2, warp.name());
+                        statement.setDouble(3, warp.x());
+                        statement.setDouble(4, warp.y());
+                        statement.setDouble(5, warp.z());
+                        statement.setFloat(6, warp.yaw());
+                        statement.setFloat(7, warp.pitch());
+                        statement.setBoolean(8, warp.isPrivate());
+                        statement.setString(9, warp.icon());
+                        statement.setString(10, warp.displayName());
+                        statement.setString(11, warp.description());
+                        statement.setTimestamp(12, new Timestamp(warp.createdAt()));
+                        statement.executeUpdate();
+                    } catch (java.sql.SQLIntegrityConstraintViolationException duplicate) {
+                        return CreateResult.NAME_TAKEN;
+                    }
+                    return CreateResult.CREATED;
+                })
+                .thenApply(result -> {
+                    if (result == CreateResult.CREATED) {
+                        cacheLocally(warp);
+                        publishUpdate(keyFromValue(warp), warp);
+                    }
+                    return result;
+                });
+    }
+
     /** Deletes a warp, evicting it everywhere. */
     public CompletableFuture<Void> remove(UUID islandId, String name) {
         return delete(new WarpKey(islandId, name)).thenAccept(ignored -> {
@@ -122,7 +168,8 @@ public class WarpRepository extends IndexedSyncedRepository<WarpKey, IslandWarp,
         @Language("SQL") String query = """
                 INSERT INTO island_warps (island_id, name, x, y, z, yaw, pitch, is_private, icon, display_name, description, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON DUPLICATE KEY UPDATE x            = VALUES(x),
+                ON DUPLICATE KEY UPDATE name         = VALUES(name),
+                                        x            = VALUES(x),
                                         y            = VALUES(y),
                                         z            = VALUES(z),
                                         yaw          = VALUES(yaw),
@@ -146,7 +193,7 @@ public class WarpRepository extends IndexedSyncedRepository<WarpKey, IslandWarp,
                         statement.setString(9, value.icon());
                         statement.setString(10, value.displayName());
                         statement.setString(11, value.description());
-                        statement.setLong(12, value.createdAt());
+                        statement.setTimestamp(12, new Timestamp(value.createdAt()));
                         statement.executeUpdate();
                     }
                 })
@@ -215,7 +262,7 @@ public class WarpRepository extends IndexedSyncedRepository<WarpKey, IslandWarp,
                 resultSet.getString("icon"),
                 resultSet.getString("display_name"),
                 resultSet.getString("description"),
-                resultSet.getLong("created_at")
+                resultSet.getTimestamp("created_at").getTime()
         );
     }
 }

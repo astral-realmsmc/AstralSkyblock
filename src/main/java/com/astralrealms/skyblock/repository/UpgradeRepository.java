@@ -36,17 +36,29 @@ public class UpgradeRepository extends IndexedSyncedRepository<UpgradeKey, Islan
                 IslandUpgrade.class
         );
         this.plugin.messaging().registerExchange(exchangeChannel, packet -> {
+            // Packets can arrive while the plugin is still enabling. Nothing is cached yet then, so
+            // there is nothing to refresh; dropping them is safe.
+            if (this.plugin.islands() == null || this.plugin.upgrades() == null)
+                return;
             if (packet instanceof IslandStringKeyUpdatePacket updatePacket) {
                 // The entry may be brand new here (first purchase made on another server); refresh
                 // both reloads a cached level and loads a missing one.
                 cache.synchronous().refresh(new UpgradeKey(updatePacket.islandId(), updatePacket.key()))
                         .thenCompose(ignored -> this.plugin.islands().refreshUpgrades(updatePacket.islandId()))
-                        .thenRun(() -> this.plugin.upgrades().applyEffects(updatePacket.islandId()));
+                        .thenRun(() -> this.plugin.upgrades().applyEffects(updatePacket.islandId()))
+                        .exceptionally(throwable -> {
+                            this.plugin.getSLF4JLogger().error("Failed to apply a remote {} change", "upgrade", throwable);
+                            return null;
+                        });
             } else if (packet instanceof IslandStringKeyDeletePacket deletePacket) {
                 invalidateLocally(new UpgradeKey(deletePacket.islandId(), deletePacket.key()));
                 this.plugin.islands()
                         .refreshUpgrades(deletePacket.islandId())
-                        .thenRun(() -> this.plugin.upgrades().applyEffects(deletePacket.islandId()));
+                        .thenRun(() -> this.plugin.upgrades().applyEffects(deletePacket.islandId()))
+                        .exceptionally(throwable -> {
+                            this.plugin.getSLF4JLogger().error("Failed to apply a remote {} change", "upgrade", throwable);
+                            return null;
+                        });
             }
         });
     }

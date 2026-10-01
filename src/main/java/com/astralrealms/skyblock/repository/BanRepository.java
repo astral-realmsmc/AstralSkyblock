@@ -2,6 +2,7 @@ package com.astralrealms.skyblock.repository;
 
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.Timestamp;
 import java.sql.SQLException;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -138,12 +139,13 @@ public class BanRepository extends IndexedSyncedRepository<IslandPlayerKey, Isla
                 """;
         return this.plugin.database()
                 .run(connection -> {
+                    PlayerRepository.ensureRows(connection, value.playerUuid());
                     try (PreparedStatement statement = connection.prepareStatement(query)) {
                         statement.setObject(1, value.islandId());
                         statement.setObject(2, value.playerUuid());
                         statement.setObject(3, value.bannedBy());
                         statement.setString(4, value.reason());
-                        statement.setLong(5, value.createdAt());
+                        statement.setTimestamp(5, new Timestamp(value.createdAt()));
                         statement.executeUpdate();
                     }
                 })
@@ -191,36 +193,36 @@ public class BanRepository extends IndexedSyncedRepository<IslandPlayerKey, Isla
     @Override
     protected void index(IslandBan value) {
         super.index(value);
-        playerBannedIslandsMap
-                .computeIfAbsent(value.playerUuid(), ignored -> ConcurrentHashMap.newKeySet())
-                .add(value.islandId());
+        playerBannedIslandsMap.compute(value.playerUuid(), (player, islands) -> {
+            Set<UUID> set = islands != null ? islands : ConcurrentHashMap.newKeySet();
+            set.add(value.islandId());
+            return set;
+        });
     }
 
     @Override
     protected void deindex(IslandPlayerKey key, IslandBan value) {
         super.deindex(key, value);
-        Set<UUID> islands = playerBannedIslandsMap.get(key.playerUuid());
-        if (islands == null)
-            return;
-        islands.remove(key.islandId());
-        if (islands.isEmpty())
-            playerBannedIslandsMap.remove(key.playerUuid());
+        unban(key);
     }
 
     /**
      * A prime replaces the island's whole slice, so entries that disappeared from the database must
      * also leave the secondary map — otherwise a ban lifted on another server would keep blocking
-     * the player here until the next restart.
+     * the player here until the next restart. Only this island's former entries are visited: the
+     * map holds every banned player on the network, and a prime runs for every island at warmup.
      */
     @Override
-    protected void onPrimed(UUID islandId, List<IslandBan> values) {
-        Set<UUID> stillBanned = values.stream().map(IslandBan::playerUuid).collect(java.util.stream.Collectors.toSet());
-        playerBannedIslandsMap.forEach((playerUuid, islands) -> {
-            if (!stillBanned.contains(playerUuid))
-                islands.remove(islandId);
-        });
-        playerBannedIslandsMap.values().removeIf(Set::isEmpty);
+    protected void onPrimed(UUID islandId, List<IslandPlayerKey> removed, List<IslandBan> values) {
+        removed.forEach(this::unban);
         values.forEach(this::index);
+    }
+
+    private void unban(IslandPlayerKey key) {
+        playerBannedIslandsMap.computeIfPresent(key.playerUuid(), (player, islands) -> {
+            islands.remove(key.islandId());
+            return islands.isEmpty() ? null : islands;
+        });
     }
 
     @Override
@@ -244,7 +246,7 @@ public class BanRepository extends IndexedSyncedRepository<IslandPlayerKey, Isla
                 resultSet.getObject("player_uuid", UUID.class),
                 bannedBy != null ? UUID.fromString(bannedBy) : null,
                 resultSet.getString("reason"),
-                resultSet.getLong("created_at")
+                resultSet.getTimestamp("created_at").getTime()
         );
     }
 }

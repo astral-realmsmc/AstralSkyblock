@@ -79,10 +79,12 @@ public class InvitationRepository {
      * Used to guard against duplicate invitations before sending a new one.
      */
     public CompletableFuture<Optional<IslandInvitation>> findPending(UUID islandId, UUID recipientId) {
+        // With both a member and a coop invitation pending, the most recent one is the one meant.
         @Language("SQL") String query = """
                 SELECT id, island_id, sender_id, recipient_id, type, expires_at, created_at
                 FROM island_invitations
                 WHERE island_id = ? AND recipient_id = ? AND expires_at > ?
+                ORDER BY created_at DESC
                 LIMIT 1
                 """;
         return this.plugin.database().supply(conn -> {
@@ -98,16 +100,27 @@ public class InvitationRepository {
     }
 
     /**
-     * Persists a new invitation row. The caller is responsible for ensuring no duplicate pending
-     * invitation exists (check with {@link #findPending} first).
+     * Persists a new invitation. Completes with {@code false} when the recipient already has a
+     * pending invitation of the same type to the island — {@code uq_invite} decides, so two members
+     * inviting the same player at the same moment on two servers cannot both store one. An expired
+     * one the minutely prune has not reached yet is replaced.
      */
-    public CompletableFuture<Void> create(IslandInvitation invitation) {
+    public CompletableFuture<Boolean> create(IslandInvitation invitation) {
         @Language("SQL") String query = """
                 INSERT INTO island_invitations
                     (id, island_id, sender_id, recipient_id, type, expires_at, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
                 """;
-        return this.plugin.database().run(conn -> {
+        return this.plugin.database().supply(conn -> {
+            PlayerRepository.ensureRows(conn, invitation.senderId(), invitation.recipientId());
+            try (PreparedStatement expired = conn.prepareStatement(
+                    "DELETE FROM island_invitations WHERE island_id = ? AND recipient_id = ? AND type = ? AND expires_at <= ?")) {
+                expired.setObject(1, invitation.islandId());
+                expired.setObject(2, invitation.recipientId());
+                expired.setString(3, invitation.type().name());
+                expired.setLong(4, System.currentTimeMillis());
+                expired.executeUpdate();
+            }
             try (PreparedStatement stmt = conn.prepareStatement(query)) {
                 stmt.setObject(1, invitation.uniqueId());
                 stmt.setObject(2, invitation.islandId());
@@ -117,6 +130,9 @@ public class InvitationRepository {
                 stmt.setLong(6, invitation.expiresAt());
                 stmt.setLong(7, invitation.createdAt());
                 stmt.executeUpdate();
+                return true;
+            } catch (java.sql.SQLIntegrityConstraintViolationException duplicate) {
+                return false;
             }
         });
     }
@@ -124,6 +140,19 @@ public class InvitationRepository {
     /**
      * Removes a single invitation by its primary key (accept / decline / revoke).
      */
+    /**
+     * Deletes an invitation to act on it. Completes with {@code false} when it was already gone —
+     * claimed by another accept, cancelled, or pruned.
+     */
+    public CompletableFuture<Boolean> claim(UUID invitationId) {
+        return this.plugin.database().supply(conn -> {
+            try (PreparedStatement stmt = conn.prepareStatement("DELETE FROM island_invitations WHERE id = ?")) {
+                stmt.setObject(1, invitationId);
+                return stmt.executeUpdate() == 1;
+            }
+        });
+    }
+
     public CompletableFuture<Void> delete(UUID invitationId) {
         @Language("SQL") String query = "DELETE FROM island_invitations WHERE id = ?";
         return this.plugin.database().run(conn -> {

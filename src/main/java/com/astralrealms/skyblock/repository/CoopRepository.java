@@ -2,6 +2,7 @@ package com.astralrealms.skyblock.repository;
 
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.Timestamp;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -11,6 +12,7 @@ import org.intellij.lang.annotations.Language;
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.model.member.IslandCoop;
 import com.astralrealms.skyblock.model.member.IslandPlayerKey;
+import com.astralrealms.skyblock.service.IslandFullException;
 import com.astralrealms.skyblock.utils.ASConstants;
 
 /**
@@ -70,6 +72,45 @@ public class CoopRepository extends IndexedSyncedRepository<IslandPlayerKey, Isl
             cacheLocally(saved);
             return saved;
         });
+    }
+
+    /**
+     * Like {@link #add(IslandCoop)}, but only while the island has fewer than {@code limit} other
+     * coops — counted under a lock on the island row, so concurrent grants on several servers
+     * cannot overshoot it. Fails with {@link IslandFullException} when the island is full.
+     */
+    public CompletableFuture<IslandCoop> add(IslandCoop coop, int limit) {
+        @Language("SQL") String insert = """
+                INSERT INTO island_coops (island_id, player_uuid, added_by, created_at)
+                VALUES (?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE added_by = VALUES(added_by)
+                """;
+        return this.plugin.database()
+                .transactionSupply(connection -> {
+                    MemberRepository.lockIsland(connection, coop.islandId());
+                    PlayerRepository.ensureRows(connection, coop.playerUuid());
+                    try (PreparedStatement statement = connection.prepareStatement(
+                            "SELECT COUNT(*) FROM island_coops WHERE island_id = ? AND player_uuid <> ?")) {
+                        statement.setObject(1, coop.islandId());
+                        statement.setObject(2, coop.playerUuid());
+                        try (ResultSet resultSet = statement.executeQuery()) {
+                            if (resultSet.next() && resultSet.getLong(1) >= limit)
+                                throw new IslandFullException(coop.islandId(), limit, false);
+                        }
+                    }
+                    try (PreparedStatement statement = connection.prepareStatement(insert)) {
+                        statement.setObject(1, coop.islandId());
+                        statement.setObject(2, coop.playerUuid());
+                        statement.setObject(3, coop.addedBy());
+                        statement.setTimestamp(4, new Timestamp(coop.createdAt()));
+                        statement.executeUpdate();
+                    }
+                    return coop;
+                })
+                .thenApply(saved -> {
+                    cacheLocally(saved);
+                    return saved;
+                });
     }
 
     /**
@@ -140,7 +181,7 @@ public class CoopRepository extends IndexedSyncedRepository<IslandPlayerKey, Isl
                         statement.setObject(1, value.islandId());
                         statement.setObject(2, value.playerUuid());
                         statement.setObject(3, value.addedBy());
-                        statement.setLong(4, value.createdAt());
+                        statement.setTimestamp(4, new Timestamp(value.createdAt()));
                         statement.executeUpdate();
                     }
                 })
@@ -188,18 +229,36 @@ public class CoopRepository extends IndexedSyncedRepository<IslandPlayerKey, Isl
     @Override
     protected void index(IslandCoop value) {
         super.index(value);
-        playerCoopIslandsMap
-                .computeIfAbsent(value.playerUuid(), k -> ConcurrentHashMap.newKeySet())
-                .add(value.islandId());
+        playerCoopIslandsMap.compute(value.playerUuid(), (k, ids) -> {
+            Set<UUID> set = ids != null ? ids : ConcurrentHashMap.newKeySet();
+            set.add(value.islandId());
+            return set;
+        });
     }
 
     @Override
     protected void deindex(IslandPlayerKey key, IslandCoop value) {
         super.deindex(key, value);
-        Set<UUID> ids = playerCoopIslandsMap.get(key.playerUuid());
-        if (ids == null) return;
-        ids.remove(key.islandId());
-        if (ids.isEmpty()) playerCoopIslandsMap.remove(key.playerUuid());
+        removeFromPlayerMap(key.playerUuid(), key.islandId());
+    }
+
+    /**
+     * {@link #prime} writes straight into L1 without going through {@link #index}, so the secondary
+     * map has to be rebuilt here — otherwise every coop loaded from the database (warmup, cascades)
+     * is invisible to {@link #isCoop} and can never be removed. Entries that disappeared from the
+     * database are dropped too; only this island's former entries are visited.
+     */
+    @Override
+    protected void onPrimed(UUID islandId, List<IslandPlayerKey> removed, List<IslandCoop> values) {
+        removed.forEach(key -> removeFromPlayerMap(key.playerUuid(), key.islandId()));
+        values.forEach(this::index);
+    }
+
+    private void removeFromPlayerMap(UUID playerUuid, UUID islandId) {
+        playerCoopIslandsMap.computeIfPresent(playerUuid, (k, ids) -> {
+            ids.remove(islandId);
+            return ids.isEmpty() ? null : ids;
+        });
     }
 
     // Cache coherency is handled via CoopAddPacket/CoopRemovePacket at the service layer.
@@ -219,7 +278,7 @@ public class CoopRepository extends IndexedSyncedRepository<IslandPlayerKey, Isl
                 resultSet.getObject("island_id", UUID.class),
                 resultSet.getObject("player_uuid", UUID.class),
                 addedBy != null ? UUID.fromString(addedBy) : null,
-                resultSet.getLong("created_at")
+                resultSet.getTimestamp("created_at").getTime()
         );
     }
 }

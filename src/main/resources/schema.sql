@@ -1,22 +1,21 @@
 -- =====================================================================================
---  AstralSkyblock — baseline schema (V1)
+--  AstralSkyblock — schema
 -- -------------------------------------------------------------------------------------
 --  Target:   MariaDB 10.11+ (native UUID type, CHECK, virtual generated columns)
 --  Engine:   InnoDB, utf8mb4 / utf8mb4_unicode_ci throughout
---  Drop-in:  rename to V1__init_astralskyblock.sql for Flyway/Liquibase baseline
+--
+--  This file always describes the latest tables and is the only source of the schema:
+--  there are no migrations. A change here needs a fresh database (or a hand-applied ALTER).
 --
 --  Design notes
 --  ------------
---  * Money is NOT stored here. An island's bank is an account in the network economy
---    plugin (account_type = BANK), keyed by `islands.id`. This schema never holds a
---    balance — overdraft/idempotency/double-entry stay in the one place they're solved.
---  * `islands.id` is an app-generated UUIDv7 (insert locality in the clustered index,
---    unlike random v4) and doubles as the economy bank-account id and the cross-server
---    island identity.
---  * Flags / upgrades are OVERRIDE-ONLY: a row exists only when an island differs from
---    the configured default. Default islands carry almost no sub-rows.
---  * Invites are ephemeral and live in Redis with a TTL (cross-server, self-expiring),
---    so there is deliberately no invites table.
+--  * Money is NOT stored here: upgrades are paid through the network economy plugin.
+--  * `islands.id` is an app-generated UUID and doubles as the cross-server island identity
+--    (and the name of the island's slime world).
+--  * Flags: one row per setting is written when an island is created; a setting with no
+--    row (added by a later build) falls back to the configured default.
+--  * Upgrades are OVERRIDE-ONLY: a row exists only once an island has bought a level.
+--  * Invitations are rows in `island_invitations`, expiring on `expires_at`.
 --  * MySQL 8 port: swap `UUID` -> `BINARY(16)`, keep everything else.
 --
 --  Roles & permissions (fully owner-customisable)
@@ -59,7 +58,8 @@
 -- -------------------------------------------------------------------------------------
 --  players — canonical UUID <-> name record; FK target for every player reference.
 --  (Having real referential integrity here prevents the "unrecognized uuid on load"
---   class of bug. Upsert on first contact.)
+--   class of bug. Upserted on join; a player referenced before ever joining (banned,
+--   invited, cooped by name) gets a placeholder row whose name the first join replaces.)
 -- -------------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS players
 (
@@ -80,7 +80,7 @@ CREATE TABLE IF NOT EXISTS players
 -- -------------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS islands
 (
-    id          UUID         NOT NULL,               -- app-supplied UUIDv7; also the economy bank-account id
+    id          UUID         NOT NULL,               -- app-supplied UUID; also the slime world name
     name        VARCHAR(64)  NULL,                   -- unique when set (case-insensitive); NULL = unnamed
 
     spawn_x     DOUBLE       NOT NULL,
@@ -88,6 +88,8 @@ CREATE TABLE IF NOT EXISTS islands
     spawn_z     DOUBLE       NOT NULL,
     spawn_yaw   FLOAT        NOT NULL DEFAULT 0,
     spawn_pitch FLOAT        NOT NULL DEFAULT 0,
+    center_x    DOUBLE       NOT NULL DEFAULT 0,     -- fixed border/scan centre (the blueprint spawn); /is sethome never moves it
+    center_z    DOUBLE       NOT NULL DEFAULT 0,
 
     locked      BOOLEAN      NOT NULL DEFAULT FALSE, -- locked = visitors cannot enter
     level       BIGINT       NOT NULL DEFAULT 0,     -- cached rank metric (recalc job); /is top orders by this
@@ -98,7 +100,7 @@ CREATE TABLE IF NOT EXISTS islands
 
     PRIMARY KEY (id),
     UNIQUE KEY uq_islands_name (name),               -- named islands are unique (NULLs exempt)
-    KEY idx_islands_level (level)                    -- /is top leaderboard
+    KEY idx_islands_value (value)                    -- /is top leaderboard: value DESC, then id (in the index)
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4
   COLLATE = utf8mb4_unicode_ci;
@@ -282,7 +284,8 @@ CREATE TABLE IF NOT EXISTS island_flags
 
 -- -------------------------------------------------------------------------------------
 --  island_upgrades — rankup source of truth (size, member_limit, coop_limit, generator,
---  spawner_rate, ...). The *effect* of a level (actual border radius, member cap,
+--  spawner_rate, ...). The *effect* of a level (actual border radius, member cap, ...)
+--  comes from the upgrades/ configuration, not from here. Override-only: an
 --  absent upgrade = level 0.
 -- -------------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS island_upgrades
@@ -298,6 +301,10 @@ CREATE TABLE IF NOT EXISTS island_upgrades
   DEFAULT CHARSET = utf8mb4
   COLLATE = utf8mb4_unicode_ci;
 
+-- -------------------------------------------------------------------------------------
+--  island_invitations — pending member/coop invitations. One per island, recipient and
+--  kind (uq_invite); expired rows are pruned periodically.
+-- -------------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS island_invitations
 (
     id           UUID        NOT NULL,
@@ -309,7 +316,12 @@ CREATE TABLE IF NOT EXISTS island_invitations
     created_at   BIGINT      NOT NULL,
 
     PRIMARY KEY (id),
+    UNIQUE KEY uq_invite (island_id, recipient_id, type), -- one pending invitation per island, player and kind
+    KEY idx_invite_recipient (recipient_id),
+    KEY idx_invite_expiry (expires_at),
     CONSTRAINT fk_invitation_island FOREIGN KEY (island_id) REFERENCES islands (id) ON DELETE CASCADE,
     CONSTRAINT fk_invitation_sender FOREIGN KEY (sender_id) REFERENCES players (uuid) ON DELETE CASCADE,
     CONSTRAINT fk_invitation_recipient FOREIGN KEY (recipient_id) REFERENCES players (uuid) ON DELETE CASCADE
-)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci;

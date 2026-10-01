@@ -50,13 +50,20 @@ public class RoleRepository extends IndexedSyncedRepository<Long, IslandRole, UU
                 IslandRole.class
         );
         this.plugin.messaging().registerExchange(exchangeChannel, packet -> {
+            // Packets can arrive while the plugin is still enabling. Nothing is cached yet then, so
+            // there is nothing to refresh; dropping them is safe.
+            if (this.plugin.islands() == null)
+                return;
             if (packet instanceof LongObjectUpdatePacket updatePacket) {
                 // The packet carries only the role id, so reload the role (it may be brand new here)
                 // and take its owning island from the reloaded value, then rebuild that island's snapshot.
                 cache.synchronous().refresh(updatePacket.id())
-                        .thenAccept(role -> {
-                            if (role != null)
-                                this.plugin.islands().refreshRelationships(role.islandId());
+                        .thenCompose(role -> role == null
+                                ? CompletableFuture.completedFuture(null)
+                                : this.plugin.islands().refreshRelationships(role.islandId()))
+                        .exceptionally(throwable -> {
+                            this.plugin.getSLF4JLogger().error("Failed to apply a remote {} change", "role", throwable);
+                            return null;
                         });
             } else if (packet instanceof LongObjectDeletePacket deletePacket) {
                 // Capture the owning island before evicting the role, then rebuild that island's snapshot.
@@ -112,6 +119,22 @@ public class RoleRepository extends IndexedSyncedRepository<Long, IslandRole, UU
      */
     public CompletableFuture<IslandRole> create(UUID islandId, String name, int weight) {
         return save(new IslandRole(null, islandId, IslandRole.Type.MEMBER, name, weight, false, 0L));
+    }
+
+    /**
+     * Renames and re-weights a role in one statement, so a failure can never leave it half-edited.
+     */
+    public CompletableFuture<Void> renameAndReweight(long roleId, String name, int weight) {
+        return this.plugin.database()
+                .run(connection -> {
+                    try (PreparedStatement statement = connection.prepareStatement("UPDATE island_roles SET name = ?, weight = ? WHERE id = ?")) {
+                        statement.setString(1, name);
+                        statement.setInt(2, weight);
+                        statement.setLong(3, roleId);
+                        statement.executeUpdate();
+                    }
+                })
+                .thenRun(() -> invalidateGlobally(roleId));
     }
 
     /**

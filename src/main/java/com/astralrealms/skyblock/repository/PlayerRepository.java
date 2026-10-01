@@ -1,5 +1,7 @@
 package com.astralrealms.skyblock.repository;
 
+import java.sql.SQLException;
+import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.util.Optional;
 import java.util.UUID;
@@ -14,6 +16,9 @@ import com.astralrealms.skyblock.utils.ASConstants;
  * tab-completion resolve player identities constantly.
  */
 public class PlayerRepository extends UUIDSyncedRepository<SkyblockPlayer> {
+
+    /** Name stored for a player referenced before they were ever seen. */
+    private static final String UNKNOWN_NAME = "?";
 
     public PlayerRepository(AstralSkyblock plugin) {
         super(
@@ -42,6 +47,25 @@ public class PlayerRepository extends UUIDSyncedRepository<SkyblockPlayer> {
      * {@code last_seen} for a returning player — without disturbing {@code first_seen}. The cache
      * is invalidated globally so every server reloads the canonical row on next access.
      */
+    /**
+     * Makes sure {@code players} has a row for each of {@code uuids}, inserting a placeholder name
+     * where there is none, so the foreign keys of a ban, coop, invitation or membership hold even
+     * for a player who never joined a skyblock server (or whose join has not been recorded yet).
+     * An existing row is left untouched; a placeholder is replaced on the player's first join.
+     */
+    public static void ensureRows(Connection connection, UUID... uuids) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("INSERT IGNORE INTO players (uuid, name) VALUES (?, ?)")) {
+            for (UUID uuid : uuids) {
+                if (uuid == null)
+                    continue;
+                statement.setObject(1, uuid);
+                statement.setString(2, UNKNOWN_NAME);
+                statement.addBatch();
+            }
+            statement.executeBatch();
+        }
+    }
+
     public CompletableFuture<SkyblockPlayer> recordSeen(UUID uuid, String name) {
         String query = """
                 INSERT INTO players (uuid, name) VALUES (?, ?)

@@ -17,6 +17,7 @@ import org.jetbrains.annotations.Unmodifiable;
 
 import com.astralrealms.core.storage.pagination.Pageable;
 import com.astralrealms.skyblock.AstralSkyblock;
+import com.astralrealms.skyblock.messaging.packet.repository.UniqueObjectUpdatePacket;
 import com.astralrealms.skyblock.model.island.IslandSettings;
 import com.astralrealms.skyblock.model.island.IslandWarp;
 import com.astralrealms.skyblock.model.member.IslandBan;
@@ -32,11 +33,17 @@ import com.github.benmanes.caffeine.cache.*;
 
 public class IslandRepository extends UUIDSyncedRepository<Island> {
 
+    // Keyed by nameKey(name): names are unique case-insensitively in the database (uq_islands_name
+    // and its collation), so "/is go steve" must find the island "Steve".
     private final Map<String, UUID> nameIslandMap = new ConcurrentHashMap<>();
     // Reverse of nameIslandMap, so a rename can drop the island's previous name in O(1) rather than
     // walking an index that holds an entry per island on the network.
     private final Map<UUID, String> islandNameMap = new ConcurrentHashMap<>();
     private final CoopRepository coopRepository;
+    // Relationship refreshes per island: the one running, and at most one queued behind it.
+    private final Object refreshLock = new Object();
+    private final Map<UUID, CompletableFuture<Void>> refreshing = new HashMap<>();
+    private final Map<UUID, CompletableFuture<Void>> queuedRefreshes = new HashMap<>();
 
     public IslandRepository(AstralSkyblock plugin) {
         super(
@@ -56,28 +63,43 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
                     if (key != null) {
                         String indexed = islandNameMap.remove(key);
                         if (indexed != null)
-                            nameIslandMap.remove(indexed, key);
+                            nameIslandMap.remove(nameKey(indexed), key);
                     }
                     if (value != null && value.name() != null)
-                        nameIslandMap.remove(value.name(), key);
+                        nameIslandMap.remove(nameKey(value.name()), key);
                 })
-                .buildAsync(cacheLoader);
+                // Islands also enter L1 through the loader: a lazy load, and the refresh() an update
+                // packet triggers (which is how a rename or a creation on another server arrives).
+                // Without this they would never be findable by name here, and a renamed island
+                // would keep its old name.
+                .buildAsync((key, executor) -> cacheLoader.asyncLoad(key, executor)
+                        .thenApply(island -> {
+                            if (island != null)
+                                indexName(island);
+                            return island;
+                        }));
     }
 
     @Override
     protected void cacheLocally(Island value) {
         super.cacheLocally(value);
+        indexName(value);
+    }
 
-        // A rename reaches this server as an update packet that refreshes the island in place, so the
-        // previous name has to be retired here or it would keep resolving to this island forever.
+    private static String nameKey(String name) {
+        return name.toLowerCase(java.util.Locale.ROOT);
+    }
+
+    /** Points the name index at {@code value}, retiring the island's previous name. */
+    private void indexName(Island value) {
         String previousName = value.name() == null
                 ? this.islandNameMap.remove(value.uniqueId())
                 : this.islandNameMap.put(value.uniqueId(), value.name());
         if (previousName != null && !previousName.equals(value.name()))
-            this.nameIslandMap.remove(previousName, value.uniqueId());
+            this.nameIslandMap.remove(nameKey(previousName), value.uniqueId());
 
         if (value.name() != null)
-            this.nameIslandMap.put(value.name(), value.uniqueId());
+            this.nameIslandMap.put(nameKey(value.name()), value.uniqueId());
     }
 
     /**
@@ -86,12 +108,23 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
      */
     @Override
     public @Nullable Island invalidateLocally(UUID key) {
+        // Islands are only ever invalidated when deleted (locally or on another server): drop the
+        // per-island slices of every relationship too, or each server keeps a deleted island's
+        // members, roles, coops, bans, warps and upgrades — and the player → island entries
+        // pointing at it — until restart.
+        this.plugin.members().repository().evictIndex(key);
+        this.plugin.roles().repository().evictIndex(key);
+        this.coopRepository.evictIndex(key);
+        this.plugin.bans().repository().evictIndex(key);
+        this.plugin.warps().repository().evictIndex(key);
+        this.plugin.upgrades().repository().evictIndex(key);
+
         Island value = super.invalidateLocally(key);
         String indexed = this.islandNameMap.remove(key);
         if (indexed != null)
-            this.nameIslandMap.remove(indexed, key);
+            this.nameIslandMap.remove(nameKey(indexed), key);
         if (value != null && value.name() != null)
-            this.nameIslandMap.remove(value.name(), key);
+            this.nameIslandMap.remove(nameKey(value.name()), key);
         return value;
     }
 
@@ -153,9 +186,61 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
         private Map<UpgradeType, Integer> upgrades = Map.of();
     }
 
+    /** Bounds how long a missed invalidation can keep a stale island in Redis. */
+    @Override
+    protected @Nullable java.time.Duration cacheTtl() {
+        return java.time.Duration.ofHours(6);
+    }
+
     @Override
     protected CompletableFuture<Island> postLoad(Island island) {
         return cascade(island);
+    }
+
+    /**
+     * An island update only ever carries scalar columns (name, lock, spawn, level...): membership,
+     * roles, bans, warps, settings and upgrades each have their own packet. So rather than the
+     * default reload — the full eight-query cascade, on every server, for every rename or level
+     * scan — this reads the one row and copies it onto the cached island. Islands not held here are
+     * not loaded; only their name is indexed, so they can still be found by it.
+     */
+    @Override
+    protected void onRemoteUpdate(UUID islandId) {
+        this.repository.findById(islandId)
+                .thenAccept(found -> found.ifPresent(fresh -> {
+                    Island cached = findCachedById(islandId).orElse(null);
+                    if (cached != null) {
+                        cached.copyScalarsFrom(fresh);
+                        indexName(cached);
+                    } else
+                        indexName(fresh);
+                }))
+                .exceptionally(throwable -> {
+                    this.plugin.getSLF4JLogger().error("Failed to reload island {} after a remote update", islandId, throwable);
+                    return null;
+                });
+    }
+
+    /**
+     * Disbands an island. Members must go first: {@code island_members.role_id} is RESTRICT against
+     * {@code island_roles}, which itself cascades from {@code islands}, so deleting the island row
+     * alone fails whenever InnoDB processes the role cascade before the member cascade. Everything
+     * else (roles, permissions, bans, coops, warps, flags, upgrades, invitations) cascades.
+     */
+    @Override
+    protected CompletableFuture<Void> deleteFromDatabase(UUID key) {
+        return this.plugin.database()
+                .transactionSupply(connection -> {
+                    try (PreparedStatement statement = connection.prepareStatement("DELETE FROM island_members WHERE island_id = ?")) {
+                        statement.setObject(1, key);
+                        statement.executeUpdate();
+                    }
+                    try (PreparedStatement statement = connection.prepareStatement("DELETE FROM islands WHERE id = ?")) {
+                        statement.setObject(1, key);
+                        statement.executeUpdate();
+                    }
+                    return null;
+                });
     }
 
     /**
@@ -190,8 +275,8 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
 
     private void insertIsland(Connection connection, Island island) throws SQLException {
         @Language("SQL") String INSERT_ISLAND = """
-                INSERT INTO islands (id, name, locked, level, value, spawn_x, spawn_y, spawn_z, spawn_yaw, spawn_pitch)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO islands (id, name, locked, level, value, spawn_x, spawn_y, spawn_z, spawn_yaw, spawn_pitch, center_x, center_z)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """;
         try (PreparedStatement statement = connection.prepareStatement(INSERT_ISLAND)) {
             statement.setObject(1, island.uniqueId());
@@ -204,6 +289,8 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
             statement.setDouble(8, island.spawnZ());
             statement.setFloat(9, island.spawnYaw());
             statement.setFloat(10, island.spawnPitch());
+            statement.setDouble(11, island.centerX());
+            statement.setDouble(12, island.centerZ());
             statement.executeUpdate();
         }
     }
@@ -248,6 +335,7 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
     }
 
     private void insertOwner(Connection connection, UUID islandId, UUID ownerUuid) throws SQLException {
+        PlayerRepository.ensureRows(connection, ownerUuid);
         @Language("SQL") String INSERT_OWNER = """
                 INSERT INTO island_members (island_id, player_uuid, is_owner, role_id)
                 VALUES (?, ?, TRUE, NULL)
@@ -300,6 +388,77 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
                 });
     }
 
+    /**
+     * Writes only {@code columns} of an island, then applies the same change through {@code apply}
+     * to the instance currently cached here.
+     *
+     * <p>This replaces whole-row saves for single-field changes. A whole-row save writes every
+     * column from whatever {@link Island} object the caller holds, and that object may be a stale
+     * copy (a remote refresh swaps in a new instance): a level scan finishing on the host would then
+     * revert a rename or a lock made on another server meanwhile. Here nothing but the changed
+     * columns is written, and the shared copy is dropped rather than overwritten, so the other
+     * servers reload the island from the database instead of from a possibly stale cache entry.
+     *
+     * @param columns column name → value; names must be trusted constants, never player input
+     */
+    public CompletableFuture<Void> updateColumns(UUID islandId, Map<String, Object> columns, java.util.function.Consumer<Island> apply) {
+        StringBuilder query = new StringBuilder("UPDATE islands SET ");
+        columns.keySet().forEach(column -> query.append(column).append(" = ?, "));
+        query.append("updated_at = CURRENT_TIMESTAMP(3) WHERE id = ?");
+
+        List<Object> values = List.copyOf(columns.values());
+        return this.plugin.database()
+                .run(connection -> {
+                    try (PreparedStatement statement = connection.prepareStatement(query.toString())) {
+                        for (int i = 0; i < values.size(); i++)
+                            statement.setObject(i + 1, values.get(i));
+                        statement.setObject(values.size() + 1, islandId);
+                        if (statement.executeUpdate() != 1)
+                            throw new SQLException("Island " + islandId + " no longer exists");
+                    }
+                })
+                .thenCompose(ignored -> {
+                    Island cached = findCachedById(islandId).orElse(null);
+                    if (cached != null) {
+                        apply.accept(cached);
+                        indexName(cached);
+                    }
+                    return this.plugin.cache()
+                            .del(cacheKey(islandId))
+                            .handle((deleted, throwable) -> {
+                                if (throwable != null)
+                                    this.plugin.getSLF4JLogger().error("Failed to drop the shared cache entry of island {}", islandId, throwable);
+                                publishUpdate(islandId, cached);
+                                return null;
+                            });
+                });
+    }
+
+    /** Tells every other server that an island's settings changed (see {@link #refreshSettings}). */
+    public void publishSettingsChange(UUID islandId) {
+        this.plugin.messaging()
+                .send(ASConstants.FLAG_UPDATE_CHANNEL, new UniqueObjectUpdatePacket(islandId))
+                .exceptionally(throwable -> {
+                    this.plugin.getSLF4JLogger().error("Failed to broadcast the settings change of island {}", islandId, throwable);
+                    return null;
+                });
+    }
+
+    /**
+     * Reloads only a cached island's settings. Completes with the island, or {@code null} when it is
+     * not cached on this server.
+     */
+    public CompletableFuture<@Nullable Island> refreshSettings(UUID islandId) {
+        Island island = findCachedById(islandId).orElse(null);
+        if (island == null)
+            return CompletableFuture.completedFuture(null);
+        return findSettingsByIsland(islandId)
+                .thenApply(settings -> {
+                    island.settings(settings);
+                    return island;
+                });
+    }
+
     public CompletableFuture<EnumSet<IslandSettings>> findSettingsByIsland(UUID islandId) {
         @Language("SQL") String query = """
                 SELECT flag, allowed
@@ -309,16 +468,28 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
 
         return this.plugin.database()
                 .supply(connection -> {
+                    // A setting with no row takes the configured default, so a setting added in a
+                    // later build starts out as configured on existing islands rather than off.
                     EnumSet<IslandSettings> settings = EnumSet.noneOf(IslandSettings.class);
+                    if (this.plugin.configuration().defaultSettings() != null)
+                        settings.addAll(this.plugin.configuration().defaultSettings());
                     try (PreparedStatement statement = connection.prepareStatement(query)) {
                         statement.setObject(1, islandId);
                         try (ResultSet rs = statement.executeQuery()) {
                             while (rs.next()) {
                                 String flagName = rs.getString("flag");
-                                boolean allowed = rs.getBoolean("allowed");
-                                IslandSettings setting = IslandSettings.valueOf(flagName);
-                                if (allowed)
+                                IslandSettings setting;
+                                try {
+                                    setting = IslandSettings.valueOf(flagName);
+                                } catch (IllegalArgumentException e) {
+                                    // A renamed or removed setting must not fail the whole island load.
+                                    this.plugin.getSLF4JLogger().warn("Unknown island setting '{}' stored for island {}; ignoring.", flagName, islandId);
+                                    continue;
+                                }
+                                if (rs.getBoolean("allowed"))
                                     settings.add(setting);
+                                else
+                                    settings.remove(setting);
                             }
                         }
                     }
@@ -331,10 +502,44 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
      * the island is not cached on this server.
      */
     public CompletableFuture<Void> refreshRelationships(UUID islandId) {
-        Island island = findCachedById(islandId).orElse(null);
-        if (island == null)
+        if (findCachedById(islandId).isEmpty())
             return CompletableFuture.completedFuture(null);
-        return cascade(island).thenAccept(ignored -> {
+
+        synchronized (this.refreshLock) {
+            // A cascade already running may have read the database before the change being
+            // signalled: run exactly one more once it ends, shared by every request made meanwhile.
+            // Bursts (a menu save, several packets) collapse into at most two cascades, and they
+            // run in order, so an older read can never overwrite a newer one.
+            if (this.refreshing.containsKey(islandId))
+                return this.queuedRefreshes.computeIfAbsent(islandId, ignored -> new CompletableFuture<>());
+
+            CompletableFuture<Void> refresh = new CompletableFuture<>();
+            this.refreshing.put(islandId, refresh);
+            runRefresh(islandId, refresh);
+            return refresh;
+        }
+    }
+
+    private void runRefresh(UUID islandId, CompletableFuture<Void> refresh) {
+        Island island = findCachedById(islandId).orElse(null);
+        CompletableFuture<?> cascade = island == null
+                ? CompletableFuture.completedFuture(null)
+                : cascade(island);
+        cascade.whenComplete((ignored, throwable) -> {
+            CompletableFuture<Void> next;
+            synchronized (this.refreshLock) {
+                next = this.queuedRefreshes.remove(islandId);
+                if (next == null)
+                    this.refreshing.remove(islandId);
+                else
+                    this.refreshing.put(islandId, next);
+            }
+            if (throwable != null)
+                refresh.completeExceptionally(throwable);
+            else
+                refresh.complete(null);
+            if (next != null)
+                runRefresh(islandId, next);
         });
     }
 
@@ -411,14 +616,59 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
         return warmupPage(0);
     }
 
+    /**
+     * Cascades {@code islands} {@link ASConstants#ISLAND_WARMUP_CONCURRENCY} at a time. A whole page
+     * at once meant hundreds of eight-query chains fighting over a ten-connection pool, starving
+     * every other query on the server for the duration.
+     */
+    private CompletableFuture<Void> warmupBatch(List<Island> islands, int from) {
+        if (from >= islands.size())
+            return CompletableFuture.completedFuture(null);
+
+        int to = Math.min(islands.size(), from + ASConstants.ISLAND_WARMUP_CONCURRENCY);
+        // One island that fails to cascade (a bad row, a timeout) is skipped, not allowed to fail
+        // its page and every page after it: those players would all find themselves without an
+        // island until a restart.
+        CompletableFuture<?>[] tasks = islands.subList(from, to).stream()
+                .map(island -> cascade(island)
+                        .thenAccept(this::cacheLocally)
+                        .exceptionally(throwable -> {
+                            this.plugin.getSLF4JLogger().error("Failed to warm up island {}; it will load on first use", island.uniqueId(), throwable);
+                            return null;
+                        }))
+                .toArray(CompletableFuture[]::new);
+        return CompletableFuture.allOf(tasks).thenCompose(ignored -> warmupBatch(islands, to));
+    }
+
+    /**
+     * Indexes the name of every named island, in one query, without loading the islands. Names
+     * already indexed (by a load that beat this query) are left alone.
+     */
+    public CompletableFuture<Void> loadNames() {
+        return this.plugin.database()
+                .run(connection -> {
+                    try (PreparedStatement statement = connection.prepareStatement("SELECT id, name FROM islands WHERE name IS NOT NULL");
+                         ResultSet resultSet = statement.executeQuery()) {
+                        while (resultSet.next()) {
+                            UUID islandId = resultSet.getObject("id", UUID.class);
+                            String name = resultSet.getString("name");
+                            if (this.islandNameMap.putIfAbsent(islandId, name) == null)
+                                this.nameIslandMap.putIfAbsent(nameKey(name), islandId);
+                        }
+                    }
+                });
+    }
+
+    /** The id of the island named {@code name}, whether or not it is loaded here. */
+    public Optional<UUID> findIdByName(String name) {
+        return Optional.ofNullable(this.nameIslandMap.get(nameKey(name)));
+    }
+
     private CompletableFuture<Void> warmupPage(int page) {
         Pageable pageable = Pageable.of(page, ASConstants.ISLAND_WARMUP_PAGE_SIZE, "id");
         return this.repository.findAll(pageable)
                 .thenCompose(result -> {
-                    CompletableFuture<?>[] tasks = result.content().stream()
-                            .map(island -> cascade(island).thenAccept(this::cacheLocally))
-                            .toArray(CompletableFuture[]::new);
-                    return CompletableFuture.allOf(tasks)
+                    return warmupBatch(List.copyOf(result.content()), 0)
                             .thenCompose(ignored -> result.hasNext()
                                     ? warmupPage(page + 1)
                                     : CompletableFuture.completedFuture(null));
@@ -426,15 +676,15 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
     }
 
     /**
-     * The highest-ranked islands, most valuable first. Reads ids straight from the indexed
-     * {@code level} column and resolves them through the cache, so the leaderboard costs one small
+     * The highest-ranked islands, most valuable first (exact value, not the rounded level, so equal
+     * levels are still ordered). Reads ids straight from the indexed {@code value} column and resolves them through the cache, so the leaderboard costs one small
      * query regardless of how many islands exist.
      */
     public CompletableFuture<List<Island>> findTop(int limit) {
         @Language("SQL") String query = """
                 SELECT id FROM islands
-                WHERE level > 0
-                ORDER BY level DESC, updated_at ASC
+                WHERE value > 0
+                ORDER BY value DESC, id
                 LIMIT ?
                 """;
         return this.plugin.database()
@@ -471,14 +721,14 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
     }
 
     public Optional<Island> findByName(String name) {
-        UUID islandId = this.nameIslandMap.get(name);
+        UUID islandId = this.nameIslandMap.get(nameKey(name));
         if (islandId == null)
             return Optional.empty();
         return findCachedById(islandId);
     }
 
     public CompletableFuture<Boolean> existsByName(String name) {
-        UUID islandId = this.nameIslandMap.get(name);
+        UUID islandId = this.nameIslandMap.get(nameKey(name));
         if (islandId != null)
             return CompletableFuture.completedFuture(true);
         @Language("SQL") String query = """
@@ -500,6 +750,6 @@ public class IslandRepository extends UUIDSyncedRepository<Island> {
 
     @Unmodifiable
     public Collection<String> names() {
-        return this.nameIslandMap.keySet();
+        return this.islandNameMap.values();
     }
 }

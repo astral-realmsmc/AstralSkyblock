@@ -12,6 +12,7 @@ import com.astralrealms.skyblock.messaging.packet.repository.MemberObjectDeleteP
 import com.astralrealms.skyblock.messaging.packet.repository.MemberObjectUpdatePacket;
 import com.astralrealms.skyblock.model.member.IslandMember;
 import com.astralrealms.skyblock.model.member.MemberKey;
+import com.astralrealms.skyblock.service.IslandFullException;
 import com.astralrealms.skyblock.utils.ASConstants;
 
 /**
@@ -35,6 +36,10 @@ public class MemberRepository extends IndexedSyncedRepository<MemberKey, IslandM
                 IslandMember.class
         );
         this.plugin.messaging().registerExchange(exchangeChannel, packet -> {
+            // Packets can arrive while the plugin is still enabling. Nothing is cached yet then, so
+            // there is nothing to refresh; dropping them is safe.
+            if (this.plugin.islands() == null)
+                return;
             if (packet instanceof MemberObjectUpdatePacket updatePacket) {
                 // Keep the member entry coherent for direct lookups, then rebuild the island's
                 // relationship snapshot (which also re-primes the slice when the island is cached here).
@@ -107,19 +112,48 @@ public class MemberRepository extends IndexedSyncedRepository<MemberKey, IslandM
     }
 
     /**
-     * Adds a member with a role. Fails on {@code uq_member_player} if they already belong to an island.
+     * Adds a member with a role, as long as the island holds fewer than {@code limit} members.
+     * The island row is locked while counting, so two joins racing on two servers cannot both
+     * take the last slot. Fails with {@link IslandFullException} when the island is full, and on
+     * {@code uq_member_player} if the player already belongs to an island.
      */
-    public CompletableFuture<IslandMember> add(UUID islandId, UUID playerUuid, long roleId) {
+    public CompletableFuture<IslandMember> add(UUID islandId, UUID playerUuid, long roleId, int limit) {
         return this.plugin.database()
-                .run(connection -> {
+                .transactionSupply(connection -> {
+                    lockIsland(connection, islandId);
+                    PlayerRepository.ensureRows(connection, playerUuid);
+                    if (countRows(connection, "SELECT COUNT(*) FROM island_members WHERE island_id = ?", islandId) >= limit)
+                        throw new IslandFullException(islandId, limit, true);
+
                     try (PreparedStatement statement = connection.prepareStatement("INSERT INTO island_members (island_id, player_uuid, is_owner, role_id) VALUES (?, ?, FALSE, ?)")) {
                         statement.setObject(1, islandId);
                         statement.setObject(2, playerUuid);
                         statement.setLong(3, roleId);
                         statement.executeUpdate();
                     }
+                    return null;
                 })
                 .thenCompose(ignored -> reload(islandId, playerUuid));
+    }
+
+    /** Takes a row lock on the island, serialising every capped write to it until commit. */
+    static void lockIsland(Connection connection, UUID islandId) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("SELECT id FROM islands WHERE id = ? FOR UPDATE")) {
+            statement.setObject(1, islandId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                if (!resultSet.next())
+                    throw new SQLException("Island " + islandId + " no longer exists");
+            }
+        }
+    }
+
+    static long countRows(Connection connection, String query, UUID islandId) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(query)) {
+            statement.setObject(1, islandId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return resultSet.next() ? resultSet.getLong(1) : 0L;
+            }
+        }
     }
 
     /**
@@ -127,16 +161,17 @@ public class MemberRepository extends IndexedSyncedRepository<MemberKey, IslandM
      */
     public CompletableFuture<Void> remove(UUID islandId, UUID playerUuid) {
         return this.plugin.database()
-                .run(connection -> {
+                .supply(connection -> {
                     try (PreparedStatement statement = connection.prepareStatement("DELETE FROM island_members WHERE island_id = ? AND player_uuid = ? AND is_owner = FALSE")) {
                         statement.setObject(1, islandId);
                         statement.setObject(2, playerUuid);
-                        statement.executeUpdate();
+                        return statement.executeUpdate();
                     }
                 })
-                .thenCompose(ignored -> {
+                .thenCompose(removed -> {
                     invalidateGlobally(new MemberKey(islandId, playerUuid));
-                    return this.plugin.islands().refreshRelationships(islandId);
+                    return this.plugin.islands().refreshRelationships(islandId)
+                            .thenRun(() -> requireRow(removed, islandId, playerUuid));
                 });
     }
 
@@ -145,15 +180,41 @@ public class MemberRepository extends IndexedSyncedRepository<MemberKey, IslandM
      */
     public CompletableFuture<IslandMember> setRole(UUID islandId, UUID playerUuid, long roleId) {
         return this.plugin.database()
-                .run(connection -> {
+                .supply(connection -> {
                     try (PreparedStatement statement = connection.prepareStatement("UPDATE island_members SET role_id = ? WHERE island_id = ? AND player_uuid = ? AND is_owner = FALSE")) {
                         statement.setLong(1, roleId);
                         statement.setObject(2, islandId);
                         statement.setObject(3, playerUuid);
-                        statement.executeUpdate();
+                        return statement.executeUpdate();
                     }
                 })
-                .thenCompose(ignored -> reload(islandId, playerUuid));
+                .thenCompose(updated -> reload(islandId, playerUuid)
+                        .thenApply(member -> {
+                            requireRow(updated, islandId, playerUuid);
+                            return member;
+                        }));
+    }
+
+    /**
+     * A write that matched no row: the member left or was removed (often on another server) after
+     * the caller looked them up. The snapshot has been refreshed either way; the caller must not
+     * report a kick or a promotion that never happened.
+     */
+    public static final class MemberNotFoundException extends IllegalStateException {
+        MemberNotFoundException(UUID islandId, UUID playerUuid) {
+            super(playerUuid + " is no longer a member of island " + islandId);
+        }
+    }
+
+    /** Whether {@code throwable} (or its cause) is a {@link MemberNotFoundException}. */
+    public static boolean isMemberGone(Throwable throwable) {
+        return throwable instanceof MemberNotFoundException
+               || (throwable != null && throwable.getCause() instanceof MemberNotFoundException);
+    }
+
+    private static void requireRow(int rows, UUID islandId, UUID playerUuid) {
+        if (rows == 0)
+            throw new MemberNotFoundException(islandId, playerUuid);
     }
 
     /**
@@ -184,12 +245,16 @@ public class MemberRepository extends IndexedSyncedRepository<MemberKey, IslandM
                         demote.setLong(1, exOwnerRoleId);
                         demote.setObject(2, islandId);
                         demote.setObject(3, oldOwner);
-                        demote.executeUpdate();
+                        if (demote.executeUpdate() != 1)
+                            throw new SQLException("Island " + islandId + ": " + oldOwner + " is no longer the owner");
                     }
-                    try (PreparedStatement promote = connection.prepareStatement("UPDATE island_members SET is_owner = TRUE, role_id = NULL WHERE island_id = ? AND player_uuid = ?")) {
+                    // The new owner may have left or been kicked on another server since the caller
+                    // checked; committing the demote alone would leave the island without an owner.
+                    try (PreparedStatement promote = connection.prepareStatement("UPDATE island_members SET is_owner = TRUE, role_id = NULL WHERE island_id = ? AND player_uuid = ? AND is_owner = FALSE")) {
                         promote.setObject(1, islandId);
                         promote.setObject(2, newOwner);
-                        promote.executeUpdate();
+                        if (promote.executeUpdate() != 1)
+                            throw new SQLException("Island " + islandId + ": " + newOwner + " is no longer a member");
                     }
                 })
                 .thenCompose(success -> {
@@ -311,7 +376,9 @@ public class MemberRepository extends IndexedSyncedRepository<MemberKey, IslandM
     }
 
     @Override
-    protected void onPrimed(UUID islandId, List<IslandMember> values) {
+    protected void onPrimed(UUID islandId, List<MemberKey> removed, List<IslandMember> values) {
+        // A member who left or was kicked on another server must stop resolving to this island.
+        removed.forEach(key -> this.playerIslandsMap.remove(key.playerUuid(), key.islandId()));
         values.forEach(member -> this.playerIslandsMap.put(member.playerUuid(), member.islandId()));
     }
 

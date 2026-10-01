@@ -2,6 +2,8 @@ package com.astralrealms.skyblock.repository;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 import org.jetbrains.annotations.Nullable;
@@ -96,18 +98,27 @@ public abstract class IndexedSyncedRepository<K, V, I> extends SyncedRepository<
     public CompletableFuture<List<V>> prime(I indexKey) {
         return loadByIndex(indexKey)
                 .thenApply(values -> {
-                    this.index.replaceValues(indexKey, values.stream().map(this::keyFromValue).toList());
+                    List<K> keys = values.stream().map(this::keyFromValue).toList();
+                    Collection<K> previous = this.index.replaceValues(indexKey, keys);
                     values.forEach(value -> cache.synchronous().put(keyFromValue(value), value));
-                    onPrimed(indexKey, values);
+
+                    // Rows deleted since the last prime would otherwise linger in L1 forever.
+                    Set<K> current = new HashSet<>(keys);
+                    List<K> removed = previous.stream().filter(key -> !current.contains(key)).toList();
+                    removed.forEach(key -> cache.synchronous().invalidate(key));
+
+                    onPrimed(indexKey, removed, values);
                     return values;
                 });
     }
 
     /**
      * Hook for subclasses maintaining additional indexes (e.g. a player→island index) to react to a
-     * completed prime. Default: no-op. Called after the primary slice and L1 are populated.
+     * completed prime. Called after the primary slice and L1 are populated, with the keys the slice
+     * held before and no longer does — so a subclass only touches this slice, never its whole map.
+     * Default: no-op.
      */
-    protected void onPrimed(I indexKey, List<V> values) {
+    protected void onPrimed(I indexKey, List<K> removed, List<V> values) {
     }
 
     /**

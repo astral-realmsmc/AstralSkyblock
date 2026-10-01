@@ -18,10 +18,15 @@ public abstract class UUIDSyncedRepository<V extends Unique> extends SyncedRepos
         this.repository = new CrudRepository<>(plugin.database(), valueClass);
         this.plugin.messaging().registerExchange(exchangeChannel, packet -> {
             if (packet instanceof UniqueObjectUpdatePacket updatePacket)
-                cache.synchronous().refresh(updatePacket.uniqueId());
+                onRemoteUpdate(updatePacket.uniqueId());
             else if (packet instanceof UniqueObjectDeletePacket deletePacket)
                 invalidateLocally(deletePacket.uniqueId());
         });
+    }
+
+    /** Another server changed {@code key}. Default: reload it through the cache loader. */
+    protected void onRemoteUpdate(UUID key) {
+        cache.synchronous().refresh(key);
     }
 
     @Override

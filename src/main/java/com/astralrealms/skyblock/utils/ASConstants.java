@@ -6,7 +6,9 @@ import lombok.experimental.UtilityClass;
 public class ASConstants {
 
     // Cache keys
-    public static final String ISLAND_CACHE_KEY = "skyblock:islands";
+    // Versioned: bump it whenever Island gains a field, or entries cached by the previous build
+    // (islands have no TTL) would keep deserialising without it.
+    public static final String ISLAND_CACHE_KEY = "skyblock:islands:v2";
     public static final String ISLAND_SERVER_KEY = "skyblock:islands:server";
     public static final String ISLAND_LOCK_KEY = "skyblock:islands:lock";
     public static final String PLAYER_CACHE_KEY = "skyblock:players";
@@ -22,6 +24,8 @@ public class ASConstants {
 
     // Warmup
     public static final int ISLAND_WARMUP_PAGE_SIZE = 500;
+    // Islands cascading at once during warmup; each holds a pool connection per query.
+    public static final int ISLAND_WARMUP_CONCURRENCY = 16;
 
     // Messaging channels
     public static final String ISLAND_UPDATE_CHANNEL = "skyblock.island.update";

@@ -84,11 +84,22 @@ public abstract class SyncedRepository<K, V> {
      */
     public @Nullable V invalidateGlobally(K key) {
         V value = invalidateLocally(key);
-        if (sharedCacheEnabled())
-            this.plugin.cache()
-                    .del(cacheKey(key))
-                    .exceptionally(throwable -> logCacheFailure("delete", key, throwable));
-        publishInvalidation(key);
+        if (!sharedCacheEnabled()) {
+            publishInvalidation(key);
+            return value;
+        }
+
+        // Published only once the shared copy is gone: a server reacting to the packet straight
+        // away would otherwise read the stale L2 entry and cache it again (a deleted island coming
+        // back to life there).
+        this.plugin.cache()
+                .del(cacheKey(key))
+                .handle((deleted, throwable) -> {
+                    if (throwable != null)
+                        logCacheFailure("delete", key, throwable);
+                    publishInvalidation(key);
+                    return null;
+                });
         return value;
     }
 
@@ -179,10 +190,23 @@ public abstract class SyncedRepository<K, V> {
         CompletableFuture<String> result = ttl == null
                 ? this.plugin.cache().set(cacheKey(key), json)
                 : this.plugin.cache().set(cacheKey(key), json, ttl);
+        // A failed write must not leave the previous value in L2: other servers prefer L2 to the
+        // database, so they would reload the old value on the update packet and keep it. Dropping
+        // the key makes them fall through to the database instead.
         return result
-                .exceptionally(throwable -> logCacheFailure("write", key, throwable))
-                .thenAccept(_ -> {
-                });
+                .<CompletableFuture<Void>>handle((ignored, throwable) -> {
+                    if (throwable == null)
+                        return CompletableFuture.completedFuture(null);
+                    logCacheFailure("write", key, throwable);
+                    return this.plugin.cache()
+                            .del(cacheKey(key))
+                            .<Void>handle((deleted, deleteError) -> {
+                                if (deleteError != null)
+                                    logCacheFailure("delete", key, deleteError);
+                                return null;
+                            });
+                })
+                .thenCompose(future -> future);
     }
 
     private <T> T logCacheFailure(String operation, K key, Throwable throwable) {
