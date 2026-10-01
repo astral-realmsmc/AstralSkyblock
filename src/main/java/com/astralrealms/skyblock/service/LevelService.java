@@ -20,6 +20,7 @@ import org.bukkit.block.CreatureSpawner;
 import org.jetbrains.annotations.Unmodifiable;
 
 import com.astralrealms.skyblock.AstralSkyblock;
+import com.astralrealms.skyblock.event.island.IslandLevelChangedEvent;
 import com.astralrealms.skyblock.model.island.Island;
 import com.astralrealms.skyblock.model.upgrade.UpgradeType;
 
@@ -358,12 +359,14 @@ public class LevelService {
         if (island.value() == value && island.level() == level)
             return CompletableFuture.completedFuture(null); // nothing changed: no write, no network-wide refresh
 
+        long previousLevel = island.level();
         return this.plugin.islands()
                 .repository()
                 .updateColumns(island.uniqueId(), Map.of("value", value, "level", level), cached -> {
                     cached.value(value);
                     cached.level(level);
-                });
+                })
+                .thenRun(() -> new IslandLevelChangedEvent(island, previousLevel, level, value).callEvent());
     }
 
     /**

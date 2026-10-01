@@ -1,0 +1,27 @@
+id: "island-confirm-transfer"
+title: "%img_internal:neg_8%<white>%img_guis:generic_27%%img_internal:neg_176%%img_title%%img_internal:neg_118%<font:alphabet:alphabet>validation"
+size: 54
+use-player-inventory: true
+
+items:
+  confirm:
+    slot: 14
+    copy-from: "%stacksuppliers_ce_icons:check%"
+    name: "<bold><red>Donner l'île à %parameters_member_player_name%"
+    lore:
+      - ""
+      - "  <text_color>Vous deviendrez <secondary_color>administrateur<text_color> de l'île."
+    item-flags:
+      - HIDE_ATTRIBUTES
+    actions:
+      - "[transfer-ownership] %parameters_island% %parameters_member%"
+      - "[open-menu] island-members:island=%parameters_island% <delay=10>"
+
+  cancel:
+    slot: 12
+    copy-from: "%stacksuppliers_ce_icons:cross%"
+    name: "<bold><primary_color>Annuler"
+    item-flags:
+      - HIDE_ATTRIBUTES
+    actions:
+      - "[open-menu] island-member-manage:island=%parameters_island%:member=%parameters_member%"

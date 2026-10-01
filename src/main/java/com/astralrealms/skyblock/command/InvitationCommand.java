@@ -6,6 +6,8 @@ import org.bukkit.entity.Player;
 import org.jetbrains.annotations.Nullable;
 
 import com.astralrealms.core.model.player.MinecraftPlayer;
+import com.astralrealms.core.paper.placeholder.MinecraftPlayerPlaceholder;
+import com.astralrealms.core.paper.AstralPaperAPI;
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.configuration.ASMessages;
 import com.astralrealms.skyblock.model.island.Island;
@@ -57,6 +59,27 @@ public class InvitationCommand extends BaseCommand {
         }
         this.plugin.invitations()
                 .create(island, player, target, InvitationType.COOP);
+    }
+
+    @Subcommand("invites|invitations")
+    @Description("Lists your pending island invitations")
+    public void onInvites(Player player) {
+        this.plugin.invitations()
+                .findByRecipient(player.getUniqueId())
+                .thenAccept(invites -> {
+                    List<IslandInvitation> pending = invites.stream().filter(invite -> !invite.expired()).toList();
+                    if (pending.isEmpty()) {
+                        ASMessages.NO_PENDING_INVITATION.message(player);
+                        return;
+                    }
+                    ASMessages.INVITATIONS_HEADER.message(player, AstralPaperAPI.createPlaceholderContainer(player)
+                            .registerDirect("count", pending.size()));
+                    for (IslandInvitation invite : pending)
+                        (invite.type() == InvitationType.MEMBER ? ASMessages.INVITATION_ENTRY_MEMBER : ASMessages.INVITATION_ENTRY_COOP)
+                                .message(player, AstralPaperAPI.createPlaceholderContainer(player)
+                                        .registerDirect("sender", new MinecraftPlayerPlaceholder(invite.senderId())));
+                })
+                .exceptionally(throwable -> lookupFailed(player, throwable));
     }
 
     @Subcommand("accept")

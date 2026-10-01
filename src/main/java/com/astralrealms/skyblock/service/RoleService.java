@@ -2,8 +2,11 @@ package com.astralrealms.skyblock.service;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
 
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.Material;
 
 import com.astralrealms.core.paper.AstralPaperAPI;
 import com.astralrealms.core.placeholder.container.PlaceholderContainer;
@@ -33,6 +36,25 @@ public class RoleService {
     public RoleService(AstralSkyblock plugin) {
         this.plugin = plugin;
         this.repository = new RoleRepository(plugin);
+    }
+
+    /**
+     * The icon a role is shown with: the {@code icon} of the roles.yml entry it was seeded from
+     * (matched by kind for the Visitor and Co-Op roles, by name otherwise), or a player head for a
+     * role created in game.
+     */
+    public ItemStack iconFor(IslandRole role, Function<String, Object> function) {
+        RolesConfiguration configuration = this.plugin.rolesConfiguration();
+        if (configuration != null && configuration.roles() != null) {
+            for (RolesConfiguration.Entry entry : configuration.roles().values()) {
+                boolean matches = role.kind() == IslandRole.Type.MEMBER
+                        ? entry.type() == IslandRole.Type.MEMBER && entry.name() != null && entry.name().equalsIgnoreCase(role.name())
+                        : entry.type() == role.kind();
+                if (matches && entry.icon() != null)
+                    return entry.icon().get(function);
+            }
+        }
+        return new ItemStack(Material.PLAYER_HEAD);
     }
 
     public RoleRepository repository() {
@@ -100,6 +122,10 @@ public class RoleService {
      * (or every visitor) powers they were never trusted with.
      */
     public boolean mayGrant(Player editor, Island island, IslandRole role, IslandPermission permission) {
+        return grantAllowed(editor, island, role, permission);
+    }
+
+    static boolean grantAllowed(Player editor, Island island, IslandRole role, IslandPermission permission) {
         if (OWNER_ONLY_GRANTS.contains(permission))
             return role.kind() == IslandRole.Type.MEMBER && island.isOwnerOrStaff(editor);
         return island.hasPermission(editor, permission);
@@ -242,6 +268,84 @@ public class RoleService {
                     }
 
                     ASMessages.ROLE_UPDATED.message(player, placeholders);
+                    return null;
+                });
+    }
+
+    /**
+     * Deletes a member role. Its holders move to the island's default role. The default role and
+     * the Visitor and Co-Op roles cannot be deleted; the editor must hold SET_ROLE and outrank it.
+     */
+    public CompletableFuture<Void> delete(Island island, Player player, IslandRole role) {
+        PlaceholderContainer placeholders = AstralPaperAPI.createPlaceholderContainer(player)
+                .registerPlaceholder(island)
+                .registerPlaceholder(role);
+
+        if (!island.hasPermission(player, IslandPermission.SET_ROLE)) {
+            ASMessages.NO_PERMISSION.message(player);
+            return CompletableFuture.completedFuture(null);
+        }
+        if (!island.canEditRole(player, role)) {
+            ASMessages.ROLE_PERMISSION_HIGHER.message(player, placeholders);
+            return CompletableFuture.completedFuture(null);
+        }
+        if (role.kind() != IslandRole.Type.MEMBER || role.isDefault()) {
+            ASMessages.ROLE_NOT_DELETABLE.message(player, placeholders);
+            return CompletableFuture.completedFuture(null);
+        }
+        IslandRole fallback = island.roles().stream()
+                .filter(IslandRole::isDefault)
+                .findFirst()
+                .orElse(null);
+        if (fallback == null) {
+            ASMessages.UNEXPECTED_ERROR.message(player, placeholders);
+            return CompletableFuture.completedFuture(null);
+        }
+
+        return this.repository.delete(island.uniqueId(), role.id(), fallback.id())
+                .handle((deleted, exception) -> {
+                    if (exception != null || !Boolean.TRUE.equals(deleted)) {
+                        ASMessages.UNEXPECTED_ERROR.message(player, placeholders);
+                        this.plugin.getSLF4JLogger().error("Failed to delete role {} of island {}", role.id(), island.uniqueId(), exception);
+                        return null;
+                    }
+                    ASMessages.ROLE_DELETED.message(player, placeholders);
+                    return null;
+                });
+    }
+
+    /**
+     * Makes a member role the one new members receive. The editor must hold SET_ROLE and outrank
+     * the role — otherwise they could make every newcomer join at a rank they may not hand out.
+     */
+    public CompletableFuture<Void> setDefault(Island island, Player player, IslandRole role) {
+        PlaceholderContainer placeholders = AstralPaperAPI.createPlaceholderContainer(player)
+                .registerPlaceholder(island)
+                .registerPlaceholder(role);
+
+        if (!island.hasPermission(player, IslandPermission.SET_ROLE)) {
+            ASMessages.NO_PERMISSION.message(player);
+            return CompletableFuture.completedFuture(null);
+        }
+        if (!island.canEditRole(player, role)) {
+            ASMessages.ROLE_PERMISSION_HIGHER.message(player, placeholders);
+            return CompletableFuture.completedFuture(null);
+        }
+        if (role.kind() != IslandRole.Type.MEMBER) {
+            ASMessages.ROLE_NOT_EDITABLE.message(player, placeholders);
+            return CompletableFuture.completedFuture(null);
+        }
+        if (role.isDefault())
+            return CompletableFuture.completedFuture(null);
+
+        return this.repository.setDefault(island.uniqueId(), role.id())
+                .handle((updated, exception) -> {
+                    if (exception != null || !Boolean.TRUE.equals(updated)) {
+                        ASMessages.UNEXPECTED_ERROR.message(player, placeholders);
+                        this.plugin.getSLF4JLogger().error("Failed to make role {} the default of island {}", role.id(), island.uniqueId(), exception);
+                        return null;
+                    }
+                    ASMessages.ROLE_DEFAULT_SET.message(player, placeholders);
                     return null;
                 });
     }

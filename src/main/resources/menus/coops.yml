@@ -26,6 +26,16 @@ items:
       - "[uncoop-player] %parameters_island% %parameter_coop_playerId%"
       - "[refresh]"
 
+  add:
+    slot: 48
+    copy-from: "%stacksuppliers_ce_icons:addition%"
+    name: "<bold><primary_color>Ajouter un coopérateur"
+    view-requirements:
+      - "[compare] %parameters_island_hasPermission_COOP_MEMBER% == true"
+    actions:
+      - "[close]"
+      - "[open-dialog] island-coop:island=%parameters_island%"
+
   back:
     slot: 49
     copy-from: "%stacksuppliers_ce_icons:back%"

@@ -53,6 +53,38 @@ public class InvitationService {
      * <p>No permission check is performed here — the caller (command handler / GUI action)
      * is responsible for verifying the sender has the right to invite.
      */
+    /**
+     * Invites a player typed by name (the menus' invite and coop dialogs): resolves them through
+     * the network player directory, then goes through {@link #create}. Checks the sender may send
+     * this kind of invitation first.
+     */
+    public CompletableFuture<Void> inviteByName(Island island, Player sender, String name, InvitationType type) {
+        IslandPermission required = type == InvitationType.MEMBER ? IslandPermission.INVITE_MEMBER : IslandPermission.COOP_MEMBER;
+        if (!island.hasPermission(sender, required)) {
+            ASMessages.NO_PERMISSION.message(sender);
+            return CompletableFuture.completedFuture(null);
+        }
+        if (name == null || name.isBlank()) {
+            ASMessages.PLAYER_NOT_FOUND.message(sender);
+            return CompletableFuture.completedFuture(null);
+        }
+
+        return AstralPaperAPI.players()
+                .findOrLoad(name.strip())
+                .thenCompose(found -> {
+                    if (found.isEmpty()) {
+                        ASMessages.PLAYER_NOT_FOUND.message(sender, AstralPaperAPI.createPlaceholderContainer(sender).registerDirect("name", name.strip()));
+                        return CompletableFuture.completedFuture(null);
+                    }
+                    return create(island, sender, found.get(), type);
+                })
+                .exceptionally(throwable -> {
+                    ASMessages.UNEXPECTED_ERROR.message(sender);
+                    plugin.getSLF4JLogger().error("Failed to look up player {} to invite", name, throwable);
+                    return null;
+                });
+    }
+
     public CompletableFuture<Void> create(Island island, Player sender, MinecraftPlayer recipient, InvitationType type) {
         PlaceholderContainer placeholders = AstralPaperAPI.createPlaceholderContainer(sender)
                 .registerPlaceholder(island)

@@ -451,25 +451,6 @@ public class WorldService {
         return propertyMap;
     }
 
-    public CompletableFuture<Void> save(UUID uniqueId) {
-        CompletableFuture<Void> future = new CompletableFuture<>();
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-            SlimeWorldInstance instance = this.loadedWorlds.get(uniqueId);
-            if (instance == null) {
-                future.completeExceptionally(new IllegalStateException("World instance not loaded for island with UUID: " + uniqueId));
-                return;
-            }
-
-            try {
-                asp.saveWorld(instance);
-                future.complete(null);
-            } catch (IOException e) {
-                future.completeExceptionally(new CompletionException("Failed to save world for island with UUID: " + uniqueId, e));
-            }
-        });
-        return future;
-    }
-
     public CompletableFuture<Void> unload(UUID uniqueId) {
         return this.unload(uniqueId, true);
     }

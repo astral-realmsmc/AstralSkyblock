@@ -21,9 +21,11 @@ import com.astralrealms.core.paper.AstralPaperAPI;
 import com.astralrealms.core.placeholder.container.PlaceholderContainer;
 import com.astralrealms.core.service.impl.EconomyService;
 import com.astralrealms.skyblock.AstralSkyblock;
+import com.astralrealms.skyblock.event.island.IslandUpgradePurchasedEvent;
 import com.astralrealms.skyblock.configuration.ASMessages;
 import com.astralrealms.skyblock.configuration.GeneratorConfiguration;
 import com.astralrealms.skyblock.model.island.Island;
+import com.astralrealms.skyblock.model.island.IslandUpgradeLevel;
 import com.astralrealms.skyblock.model.role.IslandPermission;
 import com.astralrealms.skyblock.model.upgrade.IslandUpgrade;
 import com.astralrealms.skyblock.model.upgrade.UpgradeType;
@@ -81,7 +83,7 @@ public class UpgradeService {
         return this.repository.findByIsland(islandId)
                 .thenApply(upgrades -> {
                     Map<UpgradeType, Integer> levels = new EnumMap<>(UpgradeType.class);
-                    for (com.astralrealms.skyblock.model.island.IslandUpgrade upgrade : upgrades)
+                    for (IslandUpgradeLevel upgrade : upgrades)
                         parseType(upgrade.upgrade()).ifPresent(type -> levels.put(type, upgrade.level()));
                     return levels;
                 });
@@ -257,6 +259,7 @@ public class UpgradeService {
                             if (level.unlockActions() != null)
                                 runUnlockActions(level, player);
                             ASMessages.UPGRADE_PURCHASED.message(player, placeholders);
+                            new IslandUpgradePurchasedEvent(island, player, type, nextLevel).callEvent();
                         });
                     } catch (Exception exception) {
                         this.plugin.getSLF4JLogger().warn("Upgrade {} bought for island {}, but its effects could not be scheduled", type, island.uniqueId(), exception);
@@ -351,7 +354,7 @@ public class UpgradeService {
     }
 
     /** The exact level's entry, or else the highest configured level below it; {@code null} if none. */
-    private static IslandUpgrade.Level levelAtOrBelow(IslandUpgrade blueprint, int level) {
+    static IslandUpgrade.Level levelAtOrBelow(IslandUpgrade blueprint, int level) {
         IslandUpgrade.Level configured = blueprint.levels().get(level);
         if (configured != null)
             return configured;

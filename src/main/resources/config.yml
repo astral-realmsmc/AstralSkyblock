@@ -22,7 +22,7 @@ owner-role-name: "Propriétaire"
 defaults:
   member-limit: 5
   coop-limit: 5
-  world-border-size: 100
+  world-border-size: 1000
   hopper-limit: 32
   minecart-limit: 16
   # Multipliers. 1.0 is vanilla behaviour; these are what an island gets before any upgrade.
@@ -56,7 +56,11 @@ generators:
 # every overworld biome; nether, end and void biomes are only allowed when listed here.
 allowed-biomes: []
 
-# Settings
+# Players falling into the void on an island are sent back to its spawn instead of dying.
+void-teleport: true
+
+# Settings every new island starts with. CREEPER_EXPLOSION is left out on purpose: creepers
+# wandering onto an island would otherwise blow holes in it while nobody is around.
 default-settings:
   - CROPS_GROWTH
   - EGG_LAY

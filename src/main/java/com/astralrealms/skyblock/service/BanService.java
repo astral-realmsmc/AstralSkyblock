@@ -15,6 +15,8 @@ import com.astralrealms.core.placeholder.container.PlaceholderContainer;
 import com.astralrealms.core.service.impl.ChatService;
 import com.astralrealms.core.service.impl.TeleportationService;
 import com.astralrealms.skyblock.AstralSkyblock;
+import com.astralrealms.skyblock.event.ban.IslandUnbanEvent;
+import com.astralrealms.skyblock.event.ban.IslandBanEvent;
 import com.astralrealms.skyblock.configuration.ASMessages;
 import com.astralrealms.skyblock.event.member.IslandMemberLeaveEvent;
 import com.astralrealms.skyblock.messaging.packet.island.IslandEvictPacket;
@@ -112,6 +114,7 @@ public class BanService {
 
                     placeholders.registerPlaceholder(ban);
                     evict(island.uniqueId(), targetUuid);
+                    new IslandBanEvent(island, targetUuid, executor.getUniqueId(), reason).callEvent();
 
                     // Notify executor
                     ASMessages.PLAYER_BANNED_SENDER.message(executor, placeholders);
@@ -150,6 +153,8 @@ public class BanService {
                         this.plugin.getSLF4JLogger().error("Failed to unban {} from island {}", targetUuid, island.uniqueId(), throwable);
                         return null;
                     }
+
+                    new IslandUnbanEvent(island, targetUuid, executor.getUniqueId()).callEvent();
 
                     // Notify executor
                     ASMessages.PLAYER_UNBANNED_SENDER.message(executor, placeholders);

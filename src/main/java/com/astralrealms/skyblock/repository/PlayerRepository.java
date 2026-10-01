@@ -34,14 +34,6 @@ public class PlayerRepository extends UUIDSyncedRepository<SkyblockPlayer> {
     }
 
     /**
-     * Resolves the most recently seen player carrying the given name (case-insensitive via the
-     * column collation). Players who have since renamed away from it are not returned.
-     */
-    public CompletableFuture<Optional<SkyblockPlayer>> findByName(String name) {
-        return this.repository.findByColumn("name", name);
-    }
-
-    /**
      * Upserts the player on join: inserts a fresh row, or refreshes the stored name and bumps
      * {@code last_seen} for a returning player — without disturbing {@code first_seen}. Nothing
      * else: no read-back and no invalidation broadcast, which every join used to pay for although

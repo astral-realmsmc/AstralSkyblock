@@ -5,6 +5,9 @@
 # Only the mob's own drops are multiplied — equipment it was carrying is left alone, and dropped
 # experience is untouched.
 type: MOB_DROPS
+name: "Butin des monstres"
+icon:
+  material: ROTTEN_FLESH
 levels:
   0:
     level: 0
@@ -14,17 +17,17 @@ levels:
     level: 1
     price: 15000
     currency: "default"
-    currency-display: "coins"
+    currency-display: "pièces"
     value: 1.25
   2:
     level: 2
     price: 50000
     currency: "default"
-    currency-display: "coins"
+    currency-display: "pièces"
     value: 1.5
   3:
     level: 3
     price: 130000
     currency: "default"
-    currency-display: "coins"
+    currency-display: "pièces"
     value: 2

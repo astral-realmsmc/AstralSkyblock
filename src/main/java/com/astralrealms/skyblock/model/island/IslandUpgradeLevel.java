@@ -14,7 +14,7 @@ import lombok.NoArgsConstructor;
 @Entity("island_upgrades")
 @NoArgsConstructor
 @AllArgsConstructor
-public class IslandUpgrade implements ComplexPlaceholder {
+public class IslandUpgradeLevel implements ComplexPlaceholder {
 
     private UUID islandId;
     private String upgrade;

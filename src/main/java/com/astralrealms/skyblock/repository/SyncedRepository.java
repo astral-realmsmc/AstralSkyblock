@@ -23,9 +23,10 @@ import lombok.Getter;
  *     <li><b>L3</b> – the backing database (the source of truth).</li>
  * </ul>
  * <p>
- * Coherency across servers is maintained with Redis pub/sub: {@link #publishUpdate(Object, Object)}
- * and {@link #publishInvalidation(Object)} notify other instances, whose subscribers are expected to
- * call {@link #invalidateLocally(Object)} (L1 only — L2 is shared and already up to date).
+ * Coherency across servers goes through AstralCore's messaging (RabbitMQ fanout exchanges):
+ * {@link #publishUpdate(Object, Object)} and {@link #publishInvalidation(Object)} notify the other
+ * instances, which reload or drop their L1 copy ({@link #invalidateLocally(Object)}) — L2 is shared
+ * and already up to date.
  */
 public abstract class SyncedRepository<K, V> {
 

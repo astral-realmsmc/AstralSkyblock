@@ -29,7 +29,7 @@ public class IslandMember implements ComplexPlaceholder {
     @Column(type = SQLAccessor.LONG_TIMESTAMP)
     private long joinedAt;
 
-    // Relationships — resolved from the island's roles by IslandService#hydrate (owner holds no role).
+    // Relationships — resolved from the island's roles by IslandRepository#cascade (owner holds no role).
     @Setter
     private transient IslandRole role;
 

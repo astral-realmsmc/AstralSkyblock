@@ -1,5 +1,9 @@
 package com.astralrealms.skyblock.placeholder.upgrade;
 
+import org.bukkit.Material;
+import org.bukkit.inventory.ItemStack;
+
+import com.astralrealms.core.paper.placeholder.itemstack.ItemStackPlaceholder;
 import com.astralrealms.core.placeholder.PlaceholderContext;
 import com.astralrealms.core.placeholder.impl.system.ComplexPlaceholder;
 import com.astralrealms.skyblock.model.island.Island;
@@ -28,6 +32,11 @@ public class IslandUpgradePlaceholder implements ComplexPlaceholder {
 
         return switch (context.next()) {
             case "type" -> blueprint.type().name();
+            case "name" -> blueprint.displayName();
+            // The configured icon, or an experience bottle for an upgrade that has none.
+            case "item" -> new ItemStackPlaceholder(blueprint.icon() == null
+                    ? new ItemStack(Material.EXPERIENCE_BOTTLE)
+                    : blueprint.icon().get(context.function()));
             case "blueprint" -> blueprint;
             case "level" -> current;
             case "maxLevel" -> blueprint.maxLevel();

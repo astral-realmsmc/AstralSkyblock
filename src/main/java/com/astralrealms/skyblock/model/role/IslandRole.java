@@ -7,6 +7,8 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 import com.astralrealms.core.placeholder.PlaceholderContext;
+import com.astralrealms.skyblock.AstralSkyblock;
+import com.astralrealms.core.paper.placeholder.itemstack.ItemStackPlaceholder;
 import com.astralrealms.core.placeholder.impl.system.ComplexPlaceholder;
 import com.astralrealms.core.storage.annotation.Column;
 import com.astralrealms.core.storage.annotation.CreatedAt;
@@ -36,7 +38,7 @@ public class IslandRole implements ComplexPlaceholder {
     @Column(type = SQLAccessor.LONG_TIMESTAMP)
     private long createdAt;
 
-    // Relationships — permission loading is deferred (see PermissionRepository follow-up).
+    // Granted permissions, loaded with the role by RoleRepository (island_role_permissions).
     @Setter
     private transient volatile EnumSet<IslandPermission> permissions = EnumSet.noneOf(IslandPermission.class);
     // Unsaved permissions-menu edits, per editor. Enforcement never reads them: an edit only takes
@@ -114,6 +116,7 @@ public class IslandRole implements ComplexPlaceholder {
             case "name" -> name;
             case "weight" -> weight;
             case "permissions" -> new IslandPermissionsItemProvider(this);
+            case "item" -> new ItemStackPlaceholder(AstralSkyblock.get().roles().iconFor(this, context.function()));
             case "default" -> isDefault;
             case "createdAt" -> createdAt;
             default -> null;

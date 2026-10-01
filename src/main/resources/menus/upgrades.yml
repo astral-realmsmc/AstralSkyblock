@@ -11,32 +11,11 @@ layouts:
 items:
   upgrade:
     slots: [10,11,12,13,14,15,16,19,20,21,22,23,24,25,28,29,30,31,32,33,34]
-    material: "EXPERIENCE_BOTTLE"
-    name: "<primary_color><bold>%parameter_upgrade_type%"
-    lore-modifiers:
-      progress:
-        type: conditional
-        entries:
-          maxed:
-            priority: 10
-            requirements:
-              - "[compare] %parameter_upgrade_isMax% == true"
-            content:
-              - "  <text_color>Niveau : <secondary_color>%parameter_upgrade_level%<text_color>/<secondary_color>%parameter_upgrade_maxLevel%"
-              - "  <text_color>Valeur : <secondary_color>%parameter_upgrade_value%"
-              - ""
-              - "<green>Niveau maximum atteint."
-          upgradable:
-            priority: 0
-            content:
-              - "  <text_color>Niveau : <secondary_color>%parameter_upgrade_level%<text_color>/<secondary_color>%parameter_upgrade_maxLevel%"
-              - "  <text_color>Valeur : <secondary_color>%parameter_upgrade_value% <text_color>➜ <secondary_color>%parameter_upgrade_nextValue%"
-              - "  <text_color>Prix : <secondary_color>%parameter_upgrade_price% %parameter_upgrade_currencyDisplay%"
-              - ""
-              - "<white>%img_icons:left-click% <information_color>Améliorer au niveau %parameter_upgrade_nextLevel%"
+    copy-from: "%parameter_upgrade_item%"
+    name: "<primary_color><bold>%parameter_upgrade_name%"
     lore:
       - ""
-      - "%lore-modifiers_progress%"
+      - "$apply-transformer(upgrade-progress)"
     taints:
       - "upgrade"
     click-requirements:

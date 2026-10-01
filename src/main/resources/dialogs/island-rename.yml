@@ -1,0 +1,18 @@
+id: "island-rename"
+title: "<bold><primary_color>Renommer l'île"
+close-with-escape: true
+
+inputs:
+  name:
+    type: TEXT
+    id: name
+    label: "<gray>Nouveau nom (un seul mot)"
+    max-length: 32
+    initial: "%parameters_island_name%"
+
+yes-button:
+  label: "<green>Renommer"
+  actions:
+    - "[player] is rename %input_name%"
+no-button:
+  label: "<gray>Annuler"

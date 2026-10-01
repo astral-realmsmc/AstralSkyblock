@@ -6,6 +6,8 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 
 import com.astralrealms.skyblock.AstralSkyblock;
+import com.astralrealms.core.paper.AstralPaperAPI;
+import com.astralrealms.core.placeholder.container.PlaceholderContainer;
 import com.astralrealms.skyblock.configuration.ASMessages;
 import com.astralrealms.skyblock.model.island.Island;
 import com.astralrealms.skyblock.model.upgrade.IslandUpgrade;
@@ -13,7 +15,6 @@ import com.astralrealms.skyblock.model.upgrade.UpgradeType;
 
 import co.aikar.commands.BaseCommand;
 import co.aikar.commands.annotation.*;
-import net.kyori.adventure.text.Component;
 
 @CommandAlias("skyblock|is|island")
 @Description("Base command for all skyblock commands")
@@ -59,8 +60,12 @@ public class UpgradeCommand extends BaseCommand {
     @Syntax("<island> <upgrade> <level>")
     @CommandCompletion("@islands @islandUpgrades @nothing")
     public void onUpgradeSet(CommandSender sender, Island island, UpgradeType type, int level) {
+        PlaceholderContainer placeholders = AstralPaperAPI.createPlaceholderContainer(sender instanceof Player player ? player : null)
+                .registerPlaceholder(island)
+                .registerDirect("upgrade", type.name())
+                .registerDirect("level", level);
         if (level < 0) {
-            sender.sendMessage(Component.text("Level must be zero or greater."));
+            ASMessages.UPGRADE_SET_NEGATIVE.message(sender, placeholders);
             return;
         }
 
@@ -68,11 +73,11 @@ public class UpgradeCommand extends BaseCommand {
         // back to the highest one that does — set what actually exists instead.
         IslandUpgrade blueprint = this.plugin.upgrades().findByType(type).orElse(null);
         if (blueprint == null) {
-            sender.sendMessage(Component.text("No blueprint is configured for " + type.name() + "."));
+            ASMessages.UPGRADE_NOT_CONFIGURED.message(sender, placeholders);
             return;
         }
         if (level > blueprint.maxLevel()) {
-            sender.sendMessage(Component.text(type.name() + " only goes up to level " + blueprint.maxLevel() + "."));
+            ASMessages.UPGRADE_SET_TOO_HIGH.message(sender, placeholders.registerDirect("maximum", blueprint.maxLevel()));
             return;
         }
 
@@ -80,12 +85,12 @@ public class UpgradeCommand extends BaseCommand {
                 .setLevel(island.uniqueId(), type, level)
                 .whenComplete((saved, throwable) -> {
                     if (throwable != null) {
-                        sender.sendMessage(Component.text("Failed to set upgrade level: " + throwable.getMessage()));
+                        ASMessages.UNEXPECTED_ERROR.message(sender, placeholders);
                         this.plugin.getSLF4JLogger().error("Failed to set upgrade {} of island {} to {}", type, island.uniqueId(), level, throwable);
                         return;
                     }
                     this.plugin.upgrades().applyEffects(island.uniqueId());
-                    sender.sendMessage(Component.text(type.name() + " of " + island.name() + " is now level " + saved + "."));
+                    ASMessages.UPGRADE_SET.message(sender, placeholders);
                 });
     }
 }

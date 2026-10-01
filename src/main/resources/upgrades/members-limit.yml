@@ -1,6 +1,9 @@
 # Maximum number of members an island may hold. `value` is the cap itself; level 0 is the
 # starting cap every island gets for free.
 type: MEMBERS_LIMIT
+name: "Limite de membres"
+icon:
+  material: PLAYER_HEAD
 levels:
   0:
     level: 0
@@ -10,17 +13,17 @@ levels:
     level: 1
     price: 5000
     currency: "default"
-    currency-display: "coins"
+    currency-display: "pièces"
     value: 7
   2:
     level: 2
     price: 15000
     currency: "default"
-    currency-display: "coins"
+    currency-display: "pièces"
     value: 10
   3:
     level: 3
     price: 40000
     currency: "default"
-    currency-display: "coins"
+    currency-display: "pièces"
     value: 15

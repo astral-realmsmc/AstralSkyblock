@@ -12,7 +12,12 @@ import com.astralrealms.core.placeholder.wrapper.impl.component.ComponentWrapper
 import com.astralrealms.core.provider.ItemProvider;
 
 @ConfigSerializable
-public record IslandUpgrade(UpgradeType type, ItemStackWrapper icon, Map<Integer, Level> levels) implements ComplexPlaceholder {
+public record IslandUpgrade(UpgradeType type, String name, ItemStackWrapper icon, Map<Integer, Level> levels) implements ComplexPlaceholder {
+
+    /** The name shown in menus; the upgrade type when none is configured. */
+    public String displayName() {
+        return this.name == null || this.name.isBlank() ? this.type.name() : this.name;
+    }
 
     public int maxLevel() {
         return levels.keySet()
@@ -29,6 +34,7 @@ public record IslandUpgrade(UpgradeType type, ItemStackWrapper icon, Map<Integer
 
         return switch (context.next()) {
             case "type" -> type;
+            case "name" -> displayName();
             case "icon" -> icon;
             case "levels" -> ItemProvider.of(levels.values());
             case "level" -> {

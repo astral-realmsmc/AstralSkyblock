@@ -5,3 +5,10 @@ api-version: '1.21'
 load: POSTWORLD
 depend:
   - AstralCore
+permissions:
+  skyblock.admin:
+    description: Bypasses every island permission and cooldown, and allows the admin commands (/is upgrade set).
+    default: op
+  skyblock.reload:
+    description: Allows /skyblock reload.
+    default: op

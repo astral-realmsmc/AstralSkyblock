@@ -2,11 +2,13 @@ package com.astralrealms.skyblock.listener;
 
 import org.bukkit.Bukkit;
 import org.bukkit.World;
+import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 
@@ -81,6 +83,30 @@ public class IslandListener implements Listener {
 
         event.setCancelled(true);
         denial.message(player, AstralPaperAPI.createPlaceholderContainer(player).registerPlaceholder(island));
+    }
+
+    /**
+     * Falling into the void on an island sends the player back to its spawn instead of killing
+     * them (and dropping their inventory into it).
+     */
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onVoidDamage(EntityDamageEvent event) {
+        if (event.getCause() != EntityDamageEvent.DamageCause.VOID
+            || !(event.getEntity() instanceof Player player)
+            || !this.plugin.configuration().voidTeleport())
+            return;
+
+        World world = player.getWorld();
+        if (this.plugin.worlds().findIslandIdByWorld(world).isEmpty())
+            return;
+
+        event.setCancelled(true);
+        Location spawn = this.plugin.worlds()
+                .findByWorld(world)
+                .map(island -> new Location(world, island.spawnX(), island.spawnY(), island.spawnZ(), island.spawnYaw(), island.spawnPitch()))
+                .orElse(world.getSpawnLocation());
+        player.setFallDistance(0);
+        player.teleportAsync(spawn);
     }
 
     /**

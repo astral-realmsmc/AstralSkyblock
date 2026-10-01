@@ -1,4 +1,4 @@
-id: "island-confirm-ban"
+id: "island-confirm-delete-role"
 title: "%img_internal:neg_8%<white>%img_guis:generic_27%%img_internal:neg_176%%img_title%%img_internal:neg_118%<font:alphabet:alphabet>validation"
 size: 54
 use-player-inventory: true
@@ -7,12 +7,15 @@ items:
   confirm:
     slot: 14
     copy-from: "%stacksuppliers_ce_icons:check%"
-    name: "<bold><primary_color>Bannir le membre"
+    name: "<bold><red>Supprimer le rôle %parameters_role_name%"
+    lore:
+      - ""
+      - "  <text_color>Ses membres recevront le <secondary_color>rôle par défaut<text_color>."
     item-flags:
       - HIDE_ATTRIBUTES
     actions:
-      - "[ban-member] %parameters_island% %parameters_member_playerId%"
-      - "[open-menu] island-members:island=%parameters_island% <delay=10>"
+      - "[delete-role] %parameters_island% %parameters_role%"
+      - "[open-menu] island-roles:island=%parameters_island% <delay=10>"
 
   cancel:
     slot: 12
@@ -21,4 +24,4 @@ items:
     item-flags:
       - HIDE_ATTRIBUTES
     actions:
-      - "[open-menu] island-member-manage:island=%parameters_island%:member=%parameters_member%"
+      - "[open-menu] island-roles:island=%parameters_island%"

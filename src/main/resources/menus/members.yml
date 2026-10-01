@@ -23,6 +23,16 @@ items:
     actions:
       - "[open-menu] island-member-manage:island=%parameters_island%:member=%parameter_member%"
 
+  invite:
+    slot: 48
+    copy-from: "%stacksuppliers_ce_icons:addition%"
+    name: "<bold><primary_color>Inviter un joueur"
+    view-requirements:
+      - "[compare] %parameters_island_hasPermission_INVITE_MEMBER% == true"
+    actions:
+      - "[close]"
+      - "[open-dialog] island-invite:island=%parameters_island%"
+
   bans:
     slot: 50
     copy-from: "%stacksuppliers_ce_icons:ban%"

@@ -21,6 +21,8 @@ import com.astralrealms.core.placeholder.container.PlaceholderContainer;
 import com.astralrealms.core.service.impl.TeleportationService;
 import com.astralrealms.core.service.impl.ChatService;
 import com.astralrealms.skyblock.AstralSkyblock;
+import com.astralrealms.skyblock.event.island.IslandLockChangedEvent;
+import com.astralrealms.skyblock.event.island.IslandRenamedEvent;
 import com.astralrealms.skyblock.configuration.ASMessages;
 import com.astralrealms.skyblock.event.island.IslandCreateEvent;
 import com.astralrealms.skyblock.event.island.IslandDeletedEvent;
@@ -268,7 +270,7 @@ public class IslandService {
      * Whether {@code name} can name an island: not blank, short enough, and a single word — a name
      * with spaces could never be typed as one command argument ({@code /is go <island>}).
      */
-    private static boolean isValidIslandName(String name) {
+    static boolean isValidIslandName(String name) {
         return name != null && !name.isBlank()
                && PlayerText.withinLimit(name, PlayerText.ISLAND_NAME_LIMIT)
                && name.strip().chars().noneMatch(Character::isWhitespace);
@@ -495,6 +497,7 @@ public class IslandService {
                         return CompletableFuture.completedFuture(null);
                     }
 
+                    String previous = island.name();
                     return this.repository.updateColumns(island.uniqueId(), Map.of("name", sanitised), cached -> cached.name(sanitised))
                             .<Void>handle((ignored, throwable) -> {
                                 if (throwable != null) {
@@ -505,6 +508,7 @@ public class IslandService {
                                     return null;
                                 }
                                 ASMessages.ISLAND_RENAMED.message(player, placeholders);
+                                new IslandRenamedEvent(island, player, previous, sanitised).callEvent();
                                 return null;
                             });
                 })
@@ -588,6 +592,7 @@ public class IslandService {
                     }
 
                     (locked ? ASMessages.ISLAND_CLOSED : ASMessages.ISLAND_OPENED).message(player, placeholders);
+                    new IslandLockChangedEvent(island, player, locked).callEvent();
 
                     // Closing only bars visitors who have yet to arrive; the ones already standing on
                     // the island are sent away by whichever server hosts its world.

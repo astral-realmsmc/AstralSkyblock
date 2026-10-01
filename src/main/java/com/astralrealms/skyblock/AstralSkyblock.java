@@ -22,6 +22,8 @@ import com.astralrealms.skyblock.action.island.member.KickMemberAction;
 import com.astralrealms.skyblock.action.island.member.PromoteMemberAction;
 import com.astralrealms.skyblock.action.island.member.TransferOwnershipAction;
 import com.astralrealms.skyblock.action.island.role.CreateRoleAction;
+import com.astralrealms.skyblock.action.island.role.DeleteRoleAction;
+import com.astralrealms.skyblock.action.island.role.SetDefaultRoleAction;
 import com.astralrealms.skyblock.action.island.role.EditRoleAction;
 import com.astralrealms.skyblock.action.island.role.SetMemberRoleAction;
 import com.astralrealms.skyblock.action.island.role.ToggleRolePermissionAction;
@@ -113,6 +115,8 @@ public final class AstralSkyblock extends AstralPaperPlugin {
         this.registerAction("create-role", CreateRoleAction.class);
         this.registerAction("edit-role", EditRoleAction.class);
         this.registerAction("set-member-role", SetMemberRoleAction.class);
+        this.registerAction("delete-role", DeleteRoleAction.class);
+        this.registerAction("set-default-role", SetDefaultRoleAction.class);
         // -- Roles Permissions
         this.registerAction("toggle-role-permission", ToggleRolePermissionAction.class);
         this.registerAction("update-role-permissions", UpdateRolePermissionsAction.class);
@@ -205,7 +209,8 @@ public final class AstralSkyblock extends AstralPaperPlugin {
         // Listeners
         this.registerListeners(
                 new PlayerConnectionListener(this),
-                new IslandListener(this)
+                new IslandListener(this),
+                new CoopExpiryListener(this)
         );
 
         // Island group specific listeners
@@ -279,6 +284,9 @@ public final class AstralSkyblock extends AstralPaperPlugin {
         // exchange), so on the first enable pass its constructor loads the blueprints itself.
         if (this.upgrades != null)
             this.upgrades.load();
+
+        // Lore transformers used by the menus (transformers/ folder)
+        this.transformers().load();
     }
 
     public static AstralSkyblock get() {

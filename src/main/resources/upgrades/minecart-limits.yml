@@ -1,6 +1,9 @@
 # Maximum number of minecarts that may exist in the island's world. `value` is the cap itself.
 # Counted live from the world's entities, so a minecart that is destroyed frees its slot at once.
 type: MINECART_LIMITS
+name: "Limite de wagonnets"
+icon:
+  material: MINECART
 levels:
   0:
     level: 0
@@ -10,11 +13,11 @@ levels:
     level: 1
     price: 7500
     currency: "default"
-    currency-display: "coins"
+    currency-display: "pièces"
     value: 32
   2:
     level: 2
     price: 25000
     currency: "default"
-    currency-display: "coins"
+    currency-display: "pièces"
     value: 64

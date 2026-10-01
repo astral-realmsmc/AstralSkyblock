@@ -143,6 +143,108 @@ items:
       - ""
       - "<red>Vous n'avez pas la permission"
       - "<red>d'accéder à ce menu."
+  # Open / close to visitors
+  close:
+    slot: 31
+    material: "IRON_DOOR"
+    priority: 2
+    name: "<bold><primary_color>Fermer l'île"
+    lore:
+      - ""
+      - "  <text_color>Empêche les <secondary_color>visiteurs <text_color>d'entrer sur l'île."
+      - ""
+      - "<white>%img_icons:left-click% <information_color>Fermer l'île"
+    view-requirements:
+      - "[compare] %parameters_island_locked% == false"
+      - "[compare] %parameters_island_hasPermission_CLOSE_ISLAND% == true"
+    actions:
+      - "[player] is close"
+      - "[refresh] <delay=10>"
+  open:
+    slot: 31
+    material: "OAK_DOOR"
+    priority: 2
+    name: "<bold><primary_color>Ouvrir l'île"
+    lore:
+      - ""
+      - "  <text_color>Autorise de nouveau les <secondary_color>visiteurs<text_color>."
+      - ""
+      - "<white>%img_icons:left-click% <information_color>Ouvrir l'île"
+    view-requirements:
+      - "[compare] %parameters_island_locked% == true"
+      - "[compare] %parameters_island_hasPermission_OPEN_ISLAND% == true"
+    actions:
+      - "[player] is open"
+      - "[refresh] <delay=10>"
+  # Rename
+  rename:
+    slot: 38
+    material: "NAME_TAG"
+    priority: 2
+    name: "<bold><primary_color>Renommer l'île"
+    lore:
+      - ""
+      - "<white>%img_icons:left-click% <information_color>Choisir un nouveau nom"
+    view-requirements:
+      - "[compare] %parameters_island_hasPermission_CHANGE_NAME% == true"
+    actions:
+      - "[close]"
+      - "[open-dialog] island-rename:island=%parameters_island%"
+  # Home
+  sethome:
+    slot: 39
+    material: "RED_BED"
+    priority: 2
+    name: "<bold><primary_color>Définir le point d'apparition"
+    lore:
+      - ""
+      - "  <text_color>Place le <secondary_color>spawn <text_color>de l'île là où vous êtes."
+      - ""
+      - "<white>%img_icons:left-click% <information_color>Définir ici"
+    view-requirements:
+      - "[compare] %parameters_island_hasPermission_SET_HOME% == true"
+    actions:
+      - "[close]"
+      - "[player] is sethome"
+  # Leaderboard
+  top:
+    slot: 40
+    material: "GOLD_INGOT"
+    priority: 2
+    name: "<bold><primary_color>Classement"
+    lore:
+      - ""
+      - "<white>%img_icons:left-click% <information_color>Voir les meilleures îles"
+    actions:
+      - "[player] is top"
+  # Level
+  level:
+    slot: 41
+    material: "EXPERIENCE_BOTTLE"
+    priority: 2
+    name: "<bold><primary_color>Recalculer le niveau"
+    lore:
+      - ""
+      - "  <text_color>Niveau actuel : <secondary_color>%parameters_island_level%"
+      - ""
+      - "<white>%img_icons:left-click% <information_color>Recalculer"
+    actions:
+      - "[close]"
+      - "[player] is calc"
+  # Biome
+  biome:
+    slot: 42
+    material: "GRASS_BLOCK"
+    priority: 2
+    name: "<bold><primary_color>Changer le biome"
+    lore:
+      - ""
+      - "<white>%img_icons:left-click% <information_color>Choisir un biome"
+    view-requirements:
+      - "[compare] %parameters_island_hasPermission_SET_BIOME% == true"
+    actions:
+      - "[close]"
+      - "[open-dialog] island-biome:island=%parameters_island%"
   # Leave
   leave:
     slot: 29

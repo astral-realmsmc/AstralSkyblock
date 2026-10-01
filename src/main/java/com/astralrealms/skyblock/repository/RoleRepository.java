@@ -75,11 +75,6 @@ public class RoleRepository extends IndexedSyncedRepository<Long, IslandRole, UU
         });
     }
 
-    @Unmodifiable
-    public Collection<Long> getIslandRoleIds(UUID islandId) {
-        return keysIn(islandId);
-    }
-
     // Domain queries
 
     /**
@@ -87,31 +82,6 @@ public class RoleRepository extends IndexedSyncedRepository<Long, IslandRole, UU
      */
     public CompletableFuture<List<IslandRole>> findByIsland(UUID islandId) {
         return prime(islandId);
-    }
-
-    /**
-     * The island's default member role, or {@code null} if none is configured.
-     */
-    public CompletableFuture<IslandRole> findDefault(UUID islandId) {
-        return findRoleId("SELECT id FROM island_roles WHERE default_guard = ?", islandId)
-                .thenCompose(this::resolve);
-    }
-
-    /**
-     * A system role of the island ({@code VISITOR}/{@code COOP}), resolved via {@code sys_kind}.
-     */
-    public CompletableFuture<IslandRole> findSystemRole(UUID islandId, IslandRole.Type type) {
-        return this.plugin.database()
-                .supply(connection -> {
-                    try (PreparedStatement statement = connection.prepareStatement("SELECT id FROM island_roles WHERE island_id = ? AND sys_kind = ?")) {
-                        statement.setObject(1, islandId);
-                        statement.setInt(2, type.ordinal());
-                        try (ResultSet resultSet = statement.executeQuery()) {
-                            return resultSet.next() ? resultSet.getLong(1) : null;
-                        }
-                    }
-                })
-                .thenCompose(this::resolve);
     }
 
     /**
@@ -138,28 +108,6 @@ public class RoleRepository extends IndexedSyncedRepository<Long, IslandRole, UU
     }
 
     /**
-     * Renames a role.
-     */
-    public CompletableFuture<Void> rename(long roleId, String name) {
-        return update("UPDATE island_roles SET name = ? WHERE id = ?", name, roleId);
-    }
-
-    /**
-     * Re-weights a role (higher = more senior).
-     */
-    public CompletableFuture<Void> setWeight(long roleId, int weight) {
-        return this.plugin.database()
-                .run(connection -> {
-                    try (PreparedStatement statement = connection.prepareStatement("UPDATE island_roles SET weight = ? WHERE id = ?")) {
-                        statement.setInt(1, weight);
-                        statement.setLong(2, roleId);
-                        statement.executeUpdate();
-                    }
-                })
-                .thenRun(() -> invalidateGlobally(roleId));
-    }
-
-    /**
      * Switches the island's default member role (transactional). The current default is cleared
      * first because {@code uq_role_default} forbids two defaults existing at once.
      */
@@ -170,9 +118,12 @@ public class RoleRepository extends IndexedSyncedRepository<Long, IslandRole, UU
                         clear.setObject(1, islandId);
                         clear.executeUpdate();
                     }
-                    try (PreparedStatement set = connection.prepareStatement("UPDATE island_roles SET is_default = TRUE WHERE id = ?")) {
+                    // Only a member role of this island can become its default; anything else rolls back.
+                    try (PreparedStatement set = connection.prepareStatement("UPDATE island_roles SET is_default = TRUE WHERE id = ? AND island_id = ? AND kind = 0")) {
                         set.setLong(1, newRoleId);
-                        set.executeUpdate();
+                        set.setObject(2, islandId);
+                        if (set.executeUpdate() != 1)
+                            throw new SQLException("Role " + newRoleId + " is not a member role of island " + islandId);
                     }
                 })
                 .thenCompose(success -> {
@@ -198,31 +149,18 @@ public class RoleRepository extends IndexedSyncedRepository<Long, IslandRole, UU
                         reassign.setLong(3, doomedRoleId);
                         reassign.executeUpdate();
                     }
-                    try (PreparedStatement delete = connection.prepareStatement("DELETE FROM island_roles WHERE id = ?")) {
+                    // Never the default nor a system role, and only this island's: anything else rolls back.
+                    try (PreparedStatement delete = connection.prepareStatement("DELETE FROM island_roles WHERE id = ? AND island_id = ? AND kind = 0 AND is_default = FALSE")) {
                         delete.setLong(1, doomedRoleId);
-                        delete.executeUpdate();
+                        delete.setObject(2, islandId);
+                        if (delete.executeUpdate() != 1)
+                            throw new SQLException("Role " + doomedRoleId + " cannot be deleted from island " + islandId);
                     }
                 })
                 .thenCompose(success -> {
                     invalidateGlobally(doomedRoleId);
                     return this.plugin.islands().refreshRelationships(islandId)
                             .thenApply(ignored -> success);
-                });
-    }
-
-    /**
-     * Number of members holding a role (e.g. before deleting it).
-     */
-    public CompletableFuture<Long> countHolders(UUID islandId, long roleId) {
-        return this.plugin.database()
-                .supply(connection -> {
-                    try (PreparedStatement statement = connection.prepareStatement("SELECT COUNT(*) FROM island_members WHERE island_id = ? AND role_id = ?")) {
-                        statement.setObject(1, islandId);
-                        statement.setLong(2, roleId);
-                        try (ResultSet resultSet = statement.executeQuery()) {
-                            return resultSet.next() ? resultSet.getLong(1) : 0L;
-                        }
-                    }
                 });
     }
 

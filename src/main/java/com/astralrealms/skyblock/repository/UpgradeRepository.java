@@ -13,7 +13,7 @@ import org.intellij.lang.annotations.Language;
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.messaging.packet.repository.IslandStringKeyDeletePacket;
 import com.astralrealms.skyblock.messaging.packet.repository.IslandStringKeyUpdatePacket;
-import com.astralrealms.skyblock.model.island.IslandUpgrade;
+import com.astralrealms.skyblock.model.island.IslandUpgradeLevel;
 import com.astralrealms.skyblock.model.island.UpgradeKey;
 import com.astralrealms.skyblock.utils.ASConstants;
 
@@ -26,14 +26,14 @@ import com.astralrealms.skyblock.utils.ASConstants;
  * {@link IslandStringKeyUpdatePacket}/{@link IslandStringKeyDeletePacket} on the upgrade channel;
  * there is no shared L2 cache, so an update refreshes the entry from the database.
  */
-public class UpgradeRepository extends IndexedSyncedRepository<UpgradeKey, IslandUpgrade, UUID> {
+public class UpgradeRepository extends IndexedSyncedRepository<UpgradeKey, IslandUpgradeLevel, UUID> {
 
     public UpgradeRepository(AstralSkyblock plugin) {
         super(
                 plugin,
                 ASConstants.UPGRADE_CACHE_KEY,
                 ASConstants.UPGRADE_UPDATE_CHANNEL,
-                IslandUpgrade.class
+                IslandUpgradeLevel.class
         );
         this.plugin.messaging().registerExchange(exchangeChannel, packet -> {
             // Packets can arrive while the plugin is still enabling. Nothing is cached yet then, so
@@ -71,7 +71,7 @@ public class UpgradeRepository extends IndexedSyncedRepository<UpgradeKey, Islan
      * All stored upgrade levels of an island. Primes the per-entry cache and the island's index
      * slice, which makes {@link #level(UUID, String)} accurate for that island.
      */
-    public CompletableFuture<List<IslandUpgrade>> findByIsland(UUID islandId) {
+    public CompletableFuture<List<IslandUpgradeLevel>> findByIsland(UUID islandId) {
         return prime(islandId);
     }
 
@@ -82,25 +82,16 @@ public class UpgradeRepository extends IndexedSyncedRepository<UpgradeKey, Islan
      */
     public int level(UUID islandId, String upgrade) {
         return findCachedById(new UpgradeKey(islandId, upgrade))
-                .map(IslandUpgrade::level)
+                .map(IslandUpgradeLevel::level)
                 .orElse(0);
-    }
-
-    /**
-     * Reads an island's level for {@code upgrade} through the cache, falling back to the database
-     * on a miss; an absent row resolves to 0.
-     */
-    public CompletableFuture<Integer> findLevel(UUID islandId, String upgrade) {
-        return findById(new UpgradeKey(islandId, upgrade))
-                .thenApply(value -> value == null ? 0 : value.level());
     }
 
     /**
      * Upserts an island's level for {@code upgrade}, writes it through the local cache, and
      * publishes the update so other servers refresh their copy.
      */
-    public CompletableFuture<IslandUpgrade> setLevel(UUID islandId, String upgrade, int level) {
-        return save(new IslandUpgrade(islandId, upgrade, level));
+    public CompletableFuture<IslandUpgradeLevel> setLevel(UUID islandId, String upgrade, int level) {
+        return save(new IslandUpgradeLevel(islandId, upgrade, level));
     }
 
     /**
@@ -140,7 +131,7 @@ public class UpgradeRepository extends IndexedSyncedRepository<UpgradeKey, Islan
                 })
                 .thenApply(advanced -> {
                     if (Boolean.TRUE.equals(advanced)) {
-                        IslandUpgrade value = new IslandUpgrade(islandId, upgrade, expectedLevel + 1);
+                        IslandUpgradeLevel value = new IslandUpgradeLevel(islandId, upgrade, expectedLevel + 1);
                         cacheLocally(value);
                         publishUpdate(new UpgradeKey(islandId, upgrade), value);
                     }
@@ -158,7 +149,7 @@ public class UpgradeRepository extends IndexedSyncedRepository<UpgradeKey, Islan
     }
 
     @Override
-    protected UpgradeKey keyFromValue(IslandUpgrade value) {
+    protected UpgradeKey keyFromValue(IslandUpgradeLevel value) {
         return new UpgradeKey(value.islandId(), value.upgrade());
     }
 
@@ -168,7 +159,7 @@ public class UpgradeRepository extends IndexedSyncedRepository<UpgradeKey, Islan
     }
 
     @Override
-    protected CompletableFuture<IslandUpgrade> loadById(UpgradeKey key) {
+    protected CompletableFuture<IslandUpgradeLevel> loadById(UpgradeKey key) {
         @Language("SQL") String query = """
                 SELECT island_id, upgrade, level
                 FROM island_upgrades WHERE island_id = ? AND upgrade = ?
@@ -186,7 +177,7 @@ public class UpgradeRepository extends IndexedSyncedRepository<UpgradeKey, Islan
     }
 
     @Override
-    protected CompletableFuture<IslandUpgrade> saveToDatabase(IslandUpgrade value) {
+    protected CompletableFuture<IslandUpgradeLevel> saveToDatabase(IslandUpgradeLevel value) {
         @Language("SQL") String query = """
                 INSERT INTO island_upgrades (island_id, upgrade, level)
                 VALUES (?, ?, ?)
@@ -218,14 +209,14 @@ public class UpgradeRepository extends IndexedSyncedRepository<UpgradeKey, Islan
     }
 
     @Override
-    protected CompletableFuture<List<IslandUpgrade>> loadByIndex(UUID islandId) {
+    protected CompletableFuture<List<IslandUpgradeLevel>> loadByIndex(UUID islandId) {
         @Language("SQL") String query = """
                 SELECT island_id, upgrade, level
                 FROM island_upgrades WHERE island_id = ?
                 """;
         return this.plugin.database()
                 .supply(connection -> {
-                    List<IslandUpgrade> upgrades = new ArrayList<>();
+                    List<IslandUpgradeLevel> upgrades = new ArrayList<>();
                     try (PreparedStatement statement = connection.prepareStatement(query)) {
                         statement.setObject(1, islandId);
                         try (ResultSet resultSet = statement.executeQuery()) {
@@ -238,12 +229,12 @@ public class UpgradeRepository extends IndexedSyncedRepository<UpgradeKey, Islan
     }
 
     @Override
-    protected UUID indexKeyOf(IslandUpgrade value) {
+    protected UUID indexKeyOf(IslandUpgradeLevel value) {
         return value.islandId();
     }
 
     @Override
-    protected void publishUpdate(UpgradeKey key, IslandUpgrade value) {
+    protected void publishUpdate(UpgradeKey key, IslandUpgradeLevel value) {
         this.plugin.messaging().send(exchangeChannel, new IslandStringKeyUpdatePacket(key.islandId(), key.upgrade()));
     }
 
@@ -256,8 +247,8 @@ public class UpgradeRepository extends IndexedSyncedRepository<UpgradeKey, Islan
     //  Internals
     // =====================================================================================
 
-    private IslandUpgrade map(ResultSet resultSet) throws SQLException {
-        return new IslandUpgrade(
+    private IslandUpgradeLevel map(ResultSet resultSet) throws SQLException {
+        return new IslandUpgradeLevel(
                 resultSet.getObject("island_id", UUID.class),
                 resultSet.getString("upgrade"),
                 resultSet.getInt("level")

@@ -1,6 +1,7 @@
 package com.astralrealms.skyblock.command.context;
 
 import com.astralrealms.skyblock.AstralSkyblock;
+import com.astralrealms.skyblock.configuration.ASMessages;
 import com.astralrealms.skyblock.model.IslandBlueprint;
 
 import co.aikar.commands.BukkitCommandExecutionContext;
@@ -18,7 +19,7 @@ public class IslandBlueprintContextResolver implements ContextResolver<IslandBlu
         String name = context.popFirstArg();
         return this.plugin.blueprints()
                 .findById(name)
-                .orElseThrow(() -> new InvalidCommandArgument("Island blueprint not found: " + name));
+                .orElseThrow(() -> IslandContextResolver.fail(context, ASMessages.BLUEPRINT_NOT_FOUND, name));
     }
 
 }

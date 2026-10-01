@@ -1,0 +1,25 @@
+id: "island-ban"
+title: "<bold><red>Bannir %parameters_member_player_name%"
+close-with-escape: true
+
+body:
+  intro:
+    content: "<gray>Le joueur sera expulsé de l'île et ne pourra plus y revenir tant qu'il est banni."
+    width: 320
+
+inputs:
+  reason:
+    type: TEXT
+    id: reason
+    label: "<gray>Raison (facultative)"
+    max-length: 120
+
+yes-button:
+  label: "<red>Bannir"
+  actions:
+    - "[ban-member] %parameters_island% %parameters_member_playerId% %input_reason%"
+    - "[open-menu] island-members:island=%parameters_island% <delay=10>"
+no-button:
+  label: "<gray>Annuler"
+  actions:
+    - "[open-menu] island-member-manage:island=%parameters_island%:member=%parameters_member%"

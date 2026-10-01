@@ -13,7 +13,7 @@ import com.astralrealms.skyblock.model.island.IslandSettings;
 public record SkyblockConfiguration(int maximumIslands, String islandsGroup, int worldIdleUnloadSeconds,
                                     String fallbackGroup, int maximumWarps, int maximumRoles, Defaults defaults, Level level,
                                     Set<IslandSettings> defaultSettings, Generators generators, List<String> allowedBiomes,
-                                    String ownerRoleName) {
+                                    String ownerRoleName, Boolean voidTeleport) {
 
     /** Biomes refused by /is biome unless listed in {@code allowed-biomes}: they change what spawns. */
     private static final Set<String> NON_OVERWORLD_BIOMES = Set.of(
@@ -63,6 +63,12 @@ public record SkyblockConfiguration(int maximumIslands, String islandsGroup, int
     @Override
     public int maximumRoles() {
         return this.maximumRoles <= 0 ? 10 : this.maximumRoles;
+    }
+
+    /** Whether players falling into the void on an island are sent back to its spawn. Defaults to on. */
+    @Override
+    public Boolean voidTeleport() {
+        return this.voidTeleport == null || this.voidTeleport;
     }
 
     /** Rank shown for an island's owner in member menus — the owner holds no role. */

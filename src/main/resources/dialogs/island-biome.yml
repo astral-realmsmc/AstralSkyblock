@@ -1,0 +1,22 @@
+id: "island-biome"
+title: "<bold><primary_color>Changer le biome"
+close-with-escape: true
+
+body:
+  intro:
+    content: "<gray>Exemples : <white>plains</white>, <white>desert</white>, <white>jungle</white>, <white>snowy_plains</white>, <white>mushroom_fields</white>."
+    width: 320
+
+inputs:
+  biome:
+    type: TEXT
+    id: biome
+    label: "<gray>Biome"
+    max-length: 48
+
+yes-button:
+  label: "<green>Appliquer"
+  actions:
+    - "[player] is biome %input_biome%"
+no-button:
+  label: "<gray>Annuler"

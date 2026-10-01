@@ -12,6 +12,7 @@ import com.astralrealms.core.paper.placeholder.MinecraftPlayerPlaceholder;
 import com.astralrealms.core.placeholder.container.PlaceholderContainer;
 import com.astralrealms.core.service.impl.ChatService;
 import com.astralrealms.skyblock.AstralSkyblock;
+import com.astralrealms.skyblock.event.island.IslandOwnershipTransferredEvent;
 import com.astralrealms.skyblock.configuration.ASMessages;
 import com.astralrealms.skyblock.event.member.IslandMemberJoinEvent;
 import com.astralrealms.skyblock.event.member.IslandMemberLeaveEvent;
@@ -495,6 +496,8 @@ public class MemberService {
                                 island.uniqueId(), newOwner.playerUuid(), ex != null ? ex.getMessage() : "transaction returned " + success, ex);
                         return;
                     }
+
+                    new IslandOwnershipTransferredEvent(island, currentOwner.getUniqueId(), newOwner.playerUuid()).callEvent();
 
                     // Notify ex-owner
                     ASMessages.OWNERSHIP_TRANSFERRED_SENDER.message(currentOwner, placeholders);

@@ -1,0 +1,18 @@
+id: "island-invite"
+title: "<bold><primary_color>Inviter un joueur"
+close-with-escape: true
+
+inputs:
+  name:
+    type: TEXT
+    id: name
+    label: "<gray>Pseudo du joueur"
+    max-length: 32
+
+yes-button:
+  label: "<green>Inviter"
+  tooltip: "<gray>Envoie une invitation à rejoindre l'île"
+  actions:
+    - "[invite-member] %parameters_island% %input_name%"
+no-button:
+  label: "<gray>Annuler"

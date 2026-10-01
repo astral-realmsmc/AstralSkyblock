@@ -12,6 +12,9 @@ import com.astralrealms.core.paper.placeholder.MinecraftPlayerPlaceholder;
 import com.astralrealms.core.placeholder.container.PlaceholderContainer;
 import com.astralrealms.core.service.impl.ChatService;
 import com.astralrealms.skyblock.AstralSkyblock;
+import com.astralrealms.skyblock.model.member.IslandMember;
+import org.jetbrains.annotations.Nullable;
+import io.lettuce.core.SetArgs;
 import com.astralrealms.skyblock.configuration.ASMessages;
 import com.astralrealms.skyblock.event.coop.IslandCoopAddEvent;
 import com.astralrealms.skyblock.event.coop.IslandCoopRemoveEvent;
@@ -26,6 +29,11 @@ import com.astralrealms.skyblock.utils.ASConstants;
 
 public class CoopService {
 
+    private static final String COOP_EXPIRY_LOCK_PREFIX = "skyblock:coop-expiry:";
+    private static final long COOP_EXPIRY_LOCK_MILLIS = 10_000;
+    private static final String COOP_SWEEP_LOCK = "skyblock:coop-sweep";
+    private static final long COOP_SWEEP_INTERVAL_TICKS = 20L * 60 * 5;
+
     private final AstralSkyblock plugin;
     private final CoopRepository repository;
 
@@ -38,10 +46,73 @@ public class CoopService {
             else if (packet instanceof CoopRemovePacket coopRemovePacket)
                 handleCoopRemovePacket(coopRemovePacket);
         });
+        Bukkit.getScheduler().runTaskTimer(plugin, this::sweepExpiredCoops, COOP_SWEEP_INTERVAL_TICKS, COOP_SWEEP_INTERVAL_TICKS);
     }
 
     public CoopRepository repository() {
         return this.repository;
+    }
+
+    // =========================================================================
+    //  Expiry
+    // =========================================================================
+
+    /**
+     * Coops are temporary trust: they last while somebody from the island is around. Once no
+     * member of an island is online anywhere on the network, its coops are cleared — by one server
+     * only (a short Redis lock per island), since every server hears of a network quit.
+     *
+     * @param leaving a member who is on their way out and must not count as online, or {@code null}
+     */
+    public void clearIfIslandEmpty(Island island, @Nullable UUID leaving) {
+        if (island.coops().isEmpty())
+            return;
+        boolean someoneOnline = island.members().stream()
+                .map(IslandMember::playerUuid)
+                .filter(member -> !member.equals(leaving))
+                .anyMatch(member -> AstralPaperAPI.players().isOnline(member));
+        if (someoneOnline)
+            return;
+
+        plugin.cache()
+                .runAsync(commands -> commands
+                        .set(COOP_EXPIRY_LOCK_PREFIX + island.uniqueId(), "1", SetArgs.Builder.nx().px(COOP_EXPIRY_LOCK_MILLIS))
+                        .toCompletableFuture())
+                .thenAccept(reply -> {
+                    if (!"OK".equals(reply))
+                        return; // another server is clearing them
+                    for (IslandCoop coop : List.copyOf(island.coops()))
+                        removeSilently(island, coop.playerUuid())
+                                .thenRun(() -> plugin.bans().evictIfClosed(island, coop.playerUuid()))
+                                .exceptionally(throwable -> {
+                                    plugin.getSLF4JLogger().error("Failed to expire coop {} of island {}", coop.playerUuid(), island.uniqueId(), throwable);
+                                    return null;
+                                });
+                })
+                .exceptionally(throwable -> {
+                    plugin.getSLF4JLogger().warn("Failed to check coop expiry for island {}", island.uniqueId(), throwable);
+                    return null;
+                });
+    }
+
+    /**
+     * Catches islands whose last member left while no server could react — a crash, a network
+     * restart. Every five minutes, run by whichever server takes the sweep lock.
+     */
+    private void sweepExpiredCoops() {
+        plugin.cache()
+                .runAsync(commands -> commands
+                        .set(COOP_SWEEP_LOCK, "1", SetArgs.Builder.nx().px(COOP_SWEEP_INTERVAL_TICKS * 50 - 5_000))
+                        .toCompletableFuture())
+                .thenAccept(reply -> {
+                    if ("OK".equals(reply))
+                        Bukkit.getScheduler().runTask(plugin, () -> plugin.islands().islands()
+                                .forEach(island -> clearIfIslandEmpty(island, null)));
+                })
+                .exceptionally(throwable -> {
+                    plugin.getSLF4JLogger().warn("Failed to sweep expired coops", throwable);
+                    return null;
+                });
     }
 
     // =========================================================================
@@ -169,7 +240,7 @@ public class CoopService {
      * secondary index up to date so that {@link #isCoop} remains accurate, and appends the entry to
      * the in-memory island snapshot if the island is cached on this server.
      *
-     * <p>Does NOT fire an event (already fired on the originating server) and does NOT persist to DB.
+     * <p>Fires {@link IslandCoopAddEvent} here too; does NOT persist to DB.
      */
     private void handleCoopAddPacket(CoopAddPacket packet) {
         if (plugin.islands() == null) return;
@@ -182,6 +253,10 @@ public class CoopService {
                     // database before the packet arrived): replace it rather than list it twice.
                     island.coops().removeIf(existing -> existing.playerUuid().equals(coop.playerUuid()));
                     island.coops().add(coop);
+                    // As member events are: listeners on every server hear about it, not only the
+                    // one the coop was granted on.
+                    Bukkit.getScheduler().runTask(plugin, () ->
+                            Bukkit.getPluginManager().callEvent(new IslandCoopAddEvent(island, packet.playerId(), packet.addedBy())));
                 });
     }
 
@@ -190,13 +265,17 @@ public class CoopService {
      * local repository cache and removes it from the in-memory island snapshot if the island is
      * cached on this server.
      *
-     * <p>Does NOT fire an event and does NOT touch the database.
+     * <p>Fires {@link IslandCoopRemoveEvent} here too; does NOT touch the database.
      */
     private void handleCoopRemovePacket(CoopRemovePacket packet) {
         if (plugin.islands() == null) return;
         repository.invalidateLocally(new IslandPlayerKey(packet.islandId(), packet.playerId()));
         plugin.islands().repository()
                 .findCachedById(packet.islandId())
-                .ifPresent(island -> island.coops().removeIf(c -> c.playerUuid().equals(packet.playerId())));
+                .ifPresent(island -> {
+                    island.coops().removeIf(c -> c.playerUuid().equals(packet.playerId()));
+                    Bukkit.getScheduler().runTask(plugin, () ->
+                            Bukkit.getPluginManager().callEvent(new IslandCoopRemoveEvent(island, packet.playerId())));
+                });
     }
 }

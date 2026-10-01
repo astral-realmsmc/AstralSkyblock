@@ -20,7 +20,6 @@ import com.astralrealms.skyblock.model.island.Island;
 
 import co.aikar.commands.BaseCommand;
 import co.aikar.commands.annotation.*;
-import net.kyori.adventure.text.Component;
 
 @CommandAlias("skyblock|is|island")
 @Description("Base command for all skyblock commands")
@@ -85,7 +84,7 @@ public class SkyblockCommand extends BaseCommand {
                 });
     }
 
-    @Subcommand("go")
+    @Subcommand("go|visit")
     @Description("Teleports you to your island")
     @CommandCompletion("@islands")
     @Syntax("<island>")
@@ -179,12 +178,12 @@ public class SkyblockCommand extends BaseCommand {
     @CommandPermission("skyblock.reload")
     @Description("Reloads the plugin configuration")
     public void onReload(CommandSender sender) {
-        sender.sendMessage(Component.text("Reloading configuration..."));
         try {
             plugin.loadConfiguration();
-            sender.sendMessage(Component.text("Configuration reloaded successfully."));
+            ASMessages.RELOAD_SUCCESS.message(sender);
         } catch (Exception e) {
-            sender.sendMessage(Component.text("An error occurred while reloading the configuration: " + e.getMessage()));
+            ASMessages.RELOAD_FAILURE.message(sender);
+            this.plugin.getSLF4JLogger().error("Failed to reload the configuration", e);
         }
     }
 }

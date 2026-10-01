@@ -1,6 +1,8 @@
 package com.astralrealms.skyblock.listener;
 
+import java.util.Map;
 import java.util.UUID;
+import java.util.WeakHashMap;
 
 import org.bukkit.GameMode;
 import org.bukkit.Material;
@@ -63,6 +65,7 @@ import org.bukkit.inventory.ItemStack;
 
 import com.astralrealms.core.paper.utils.ItemStackUtils;
 import com.astralrealms.skyblock.AstralSkyblock;
+import com.astralrealms.skyblock.configuration.ASMessages;
 import com.astralrealms.skyblock.model.island.Island;
 import com.astralrealms.skyblock.model.role.IslandPermission;
 import com.astralrealms.skyblock.utils.SkyblockTags;
@@ -75,7 +78,11 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class IslandPermissionsListener implements Listener {
 
+    private static final long DENIAL_NOTICE_INTERVAL_MILLIS = 2_000;
+
     private final AstralSkyblock plugin;
+    // Last denial notice per player. Weak keys: a player who quits drops out on their own.
+    private final Map<Player, Long> lastDenial = new WeakHashMap<>();
 
     @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
     public void onVillagerTrade(PlayerTradeEvent e) {
@@ -195,14 +202,18 @@ public class IslandPermissionsListener implements Listener {
             blockPermission = IslandPermission.BUILD;
         else if (SkyblockTags.INTERACTABLE.isTagged(type))
             blockPermission = IslandPermission.INTERACT_BLOCK;
-        if (blockPermission != null && isDenied(player, block.getWorld(), blockPermission))
+        if (blockPermission != null && isDenied(player, block.getWorld(), blockPermission)) {
             event.setUseInteractedBlock(Event.Result.DENY);
+            notifyDenied(player);
+        }
 
         // ...and what the held item does to it: none of these fire a place or break event.
         ItemStack item = event.getItem();
         if (!ItemStackUtils.isAirOrNull(item) && reshapesBlock(item.getType(), type)
-            && isDenied(player, block.getWorld(), IslandPermission.BUILD))
+            && isDenied(player, block.getWorld(), IslandPermission.BUILD)) {
             event.setUseItemInHand(Event.Result.DENY);
+            notifyDenied(player);
+        }
     }
 
     /**
@@ -451,7 +462,22 @@ public class IslandPermissionsListener implements Listener {
             return false;
 
         event.setCancelled(true);
+        notifyDenied(player);
         return true;
+    }
+
+    /**
+     * Tells the player why nothing happened, on the action bar — at most every couple of seconds,
+     * since a held click or a walk across pressure plates denies many times a second. Silently
+     * undone actions (a block popping back) used to leave players guessing.
+     */
+    private void notifyDenied(Player player) {
+        long now = System.currentTimeMillis();
+        Long last = this.lastDenial.get(player);
+        if (last != null && now - last < DENIAL_NOTICE_INTERVAL_MILLIS)
+            return;
+        this.lastDenial.put(player, now);
+        player.sendActionBar(ASMessages.ACTION_DENIED.component());
     }
 
     /** Whether {@code world} is an island on which {@code player} lacks {@code permission}. */

@@ -97,21 +97,6 @@ public class MemberRepository extends IndexedSyncedRepository<MemberKey, IslandM
     }
 
     /**
-     * The owner of an island (via the {@code owner_guard} unique virtual column), or {@code null}.
-     */
-    public CompletableFuture<UUID> findOwner(UUID islandId) {
-        return this.plugin.database()
-                .supply(connection -> {
-                    try (PreparedStatement statement = connection.prepareStatement("SELECT player_uuid FROM island_members WHERE owner_guard = ?")) {
-                        statement.setObject(1, islandId);
-                        try (ResultSet resultSet = statement.executeQuery()) {
-                            return resultSet.next() ? resultSet.getObject("player_uuid", UUID.class) : null;
-                        }
-                    }
-                });
-    }
-
-    /**
      * Adds a member with a role, as long as the island holds fewer than {@code limit} members.
      * The island row is locked while counting, so two joins racing on two servers cannot both
      * take the last slot. Fails with {@link IslandFullException} when the island is full, and on
@@ -214,21 +199,6 @@ public class MemberRepository extends IndexedSyncedRepository<MemberKey, IslandM
     private static void requireRow(int rows, UUID islandId, UUID playerUuid) {
         if (rows == 0)
             throw new MemberNotFoundException(islandId, playerUuid);
-    }
-
-    /**
-     * Number of members on an island (member-limit enforcement).
-     */
-    public CompletableFuture<Long> count(UUID islandId) {
-        return this.plugin.database()
-                .supply(connection -> {
-                    try (PreparedStatement statement = connection.prepareStatement("SELECT COUNT(*) FROM island_members WHERE island_id = ?")) {
-                        statement.setObject(1, islandId);
-                        try (ResultSet resultSet = statement.executeQuery()) {
-                            return resultSet.next() ? resultSet.getLong(1) : 0L;
-                        }
-                    }
-                });
     }
 
     /**

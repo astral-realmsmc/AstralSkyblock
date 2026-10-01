@@ -15,6 +15,8 @@ import com.astralrealms.skyblock.model.island.Island;
 import com.astralrealms.skyblock.model.island.IslandSettings;
 import com.astralrealms.skyblock.model.island.IslandWarp;
 import com.astralrealms.skyblock.model.role.IslandPermission;
+import com.astralrealms.skyblock.model.member.IslandMember;
+import com.astralrealms.skyblock.model.role.IslandRole;
 import com.astralrealms.skyblock.model.upgrade.UpgradeType;
 
 import lombok.experimental.UtilityClass;
@@ -28,6 +30,13 @@ import lombok.experimental.UtilityClass;
  *
  * <p>An island is only resolvable by world on the server hosting it; on a lobby, use the
  * player-based and id-based lookups instead.
+ *
+ * <p>Changes are announced through Bukkit events in {@code com.astralrealms.skyblock.event}:
+ * island creation, deletion, rename, lock and ownership transfer; members joining and leaving;
+ * coops added and removed; bans; upgrade purchases; level changes; island worlds loading and
+ * unloading. Member and coop events are also fired on the other servers of the network.
+ *
+ * <p>Call {@link #isAvailable()} before using the API from a plugin that may enable first.
  */
 @UtilityClass
 public class SkyblockAPI {
@@ -36,6 +45,11 @@ public class SkyblockAPI {
 
     static void initialize(AstralSkyblock plugin) {
         SkyblockAPI.plugin = plugin;
+    }
+
+    /** Whether the plugin is enabled and the API usable. */
+    public static boolean isAvailable() {
+        return plugin != null && plugin.isEnabled();
     }
 
     // =========================================================================
@@ -59,11 +73,29 @@ public class SkyblockAPI {
                 .findById(uniqueId);
     }
 
-    /** The island answering to this name, case-sensitively, when it is cached on this server. */
+    /** The island answering to this name (case-insensitively), when it is cached on this server. */
     public static Optional<Island> findIslandByName(String name) {
         return plugin.islands()
                 .repository()
                 .findByName(name);
+    }
+
+    /** The island answering to this name (case-insensitively), loading it when it is not cached here. */
+    public static CompletableFuture<Optional<Island>> loadIslandByName(String name) {
+        Optional<UUID> islandId = plugin.islands().repository().findIdByName(name);
+        if (islandId.isEmpty())
+            return CompletableFuture.completedFuture(Optional.empty());
+        return loadIslandByUniqueId(islandId.get()).thenApply(Optional::ofNullable);
+    }
+
+    /** Whether this world is an island's, on the server hosting it. */
+    public static boolean isIslandWorld(World world) {
+        return plugin.worlds().findIslandIdByWorld(world).isPresent();
+    }
+
+    /** Whether the island is closed to visitors; {@code false} when it is not cached here. */
+    public static boolean isLocked(UUID islandId) {
+        return findIslandByUniqueId(islandId).map(Island::locked).orElse(false);
     }
 
     /** The island this player is a member of — the owner counts as one. */
@@ -108,11 +140,36 @@ public class SkyblockAPI {
     //  Membership
     // =========================================================================
 
-    /** Whether the player is a member of this island — the owner counts as one. */
+    /**
+     * Whether the player is a member of this island — the owner counts as one. Answered from the
+     * membership index, so it agrees with {@link #findIslandByPlayer(UUID)} even when the island
+     * itself is not cached here.
+     */
     public static boolean isMember(UUID islandId, UUID playerUuid) {
-        return findIslandByUniqueId(islandId)
-                .flatMap(island -> island.findMember(playerUuid))
+        return plugin.members()
+                .repository()
+                .findPlayerIsland(playerUuid)
+                .filter(islandId::equals)
                 .isPresent();
+    }
+
+    /** Whether the player owns this island; {@code false} when it is not cached here. */
+    public static boolean isOwner(UUID islandId, UUID playerUuid) {
+        return findIslandByUniqueId(islandId)
+                .map(island -> island.owner() != null && island.owner().playerUuid().equals(playerUuid))
+                .orElse(false);
+    }
+
+    /**
+     * The role the player holds on the island: their member role, the Co-Op role for a coop, the
+     * Visitor role for anyone else. Empty for the owner, who holds none and bypasses every check.
+     */
+    public static Optional<IslandRole> findRole(Island island, UUID playerUuid) {
+        Optional<IslandMember> member = island.findMember(playerUuid);
+        if (member.isPresent())
+            return Optional.ofNullable(member.get().role());
+        IslandRole.Type kind = island.findCoop(playerUuid).isPresent() ? IslandRole.Type.COOP : IslandRole.Type.VISITOR;
+        return island.roles().stream().filter(role -> role.kind() == kind).findFirst();
     }
 
     /** Whether the player is cooped on this island. */

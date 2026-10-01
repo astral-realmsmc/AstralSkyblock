@@ -218,8 +218,8 @@ CREATE TABLE IF NOT EXISTS island_bans
 -- -------------------------------------------------------------------------------------
 --  island_coops — temporary access; a coop player keeps their own membership elsewhere,
 --  so this is a separate many-to-many (no UNIQUE on player_uuid). Coop players resolve
---  to the island's COOP role for permissions. Make ephemeral (Redis) later if you prefer
---  coop to clear on owner-offline / restart.
+--  to the island's COOP role for permissions. Rows are cleared once no member of the
+--  island is online anywhere on the network (CoopService#clearIfIslandEmpty).
 -- -------------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS island_coops
 (

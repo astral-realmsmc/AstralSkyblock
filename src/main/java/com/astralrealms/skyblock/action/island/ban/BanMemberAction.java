@@ -11,10 +11,14 @@ import com.astralrealms.core.platform.executable.exception.ExecutableRunExceptio
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.model.island.Island;
 
-/** Menu action: {@code [ban-member] <island> <target>}. Permission checks live in the service. */
+/**
+ * Dialog action: {@code [ban-member] <island> <target> [reason...]}. The reason is optional and takes
+ * the rest of the line. Permission checks live in the service.
+ */
 public record BanMemberAction(
         PlaceholderWrapper<Island> island,
-        PlaceholderWrapper<UUID> targetUuid
+        PlaceholderWrapper<UUID> targetUuid,
+        PlaceholderWrapper<String> reason
 ) implements PaperAction {
 
     @Override
@@ -22,6 +26,7 @@ public record BanMemberAction(
         Player player = context.executor();
         Island island = context.parseWrapper(this.island);
         UUID target = context.parseWrapper(this.targetUuid);
-        AstralSkyblock.get().bans().ban(island, player, target, null);
+        String reason = this.reason == null ? null : context.parseWrapper(this.reason);
+        AstralSkyblock.get().bans().ban(island, player, target, reason == null || reason.isBlank() ? null : reason);
     }
 }
