@@ -1,5 +1,5 @@
 id: "island-member-manage"
-title: "%img_internal:neg_8%<white>%img_guis:generic_27%%img_internal:neg_176%%img_title%%img_internal:neg_111%<font:alphabet:alphabet>membre"
+title: "Gestion du membre"
 size: 54
 use-player-inventory: true
 
@@ -20,7 +20,7 @@ items:
       - ""
       - "  <text_color>Permet d'attribuer un <secondary_color>rôle <text_color>à ce membre."
       - ""
-      - "<white>%img_icons:left-click% <information_color>Ouvrir le sélecteur de rôle"
+      - "<white>Clic gauche <information_color>Ouvrir le sélecteur de rôle"
     view-requirements:
       - "[compare] %parameters_island_hasPermission_SET_ROLE% == true"
     actions:
@@ -34,7 +34,7 @@ items:
       - ""
       - "  <text_color>Permet d'<secondary_color>expulser <text_color>ce membre de l'île."
       - ""
-      - "<white>%img_icons:left-click% <information_color>Expulser ce membre"
+      - "<white>Clic gauche <information_color>Expulser ce membre"
     view-requirements:
       - "[compare] %parameters_island_hasPermission_KICK_MEMBER% == true"
     actions:
@@ -42,7 +42,7 @@ items:
 
   ban:
     slot: 24
-    copy-from: "%stacksuppliers_ce_icons:ban%"
+    material: "IRON_BARS"
     name: "<bold><red>Bannir"
     item-flags:
       - HIDE_ATTRIBUTES
@@ -50,7 +50,7 @@ items:
       - ""
       - "  <text_color>Permet de <secondary_color>bannir <text_color>ce membre de l'île."
       - ""
-      - "<white>%img_icons:left-click% <information_color>Bannir ce membre"
+      - "<white>Clic gauche <information_color>Bannir ce membre"
     view-requirements:
       - "[compare] %parameters_island_hasPermission_BAN_MEMBER% == true"
     actions:
@@ -65,7 +65,7 @@ items:
       - ""
       - "  <text_color>Donne à ce membre le <secondary_color>rôle suivant<text_color>."
       - ""
-      - "<white>%img_icons:left-click% <information_color>Promouvoir ce membre"
+      - "<white>Clic gauche <information_color>Promouvoir ce membre"
     view-requirements:
       - "[compare] %parameters_island_hasPermission_PROMOTE_MEMBERS% == true"
     actions:
@@ -80,7 +80,7 @@ items:
       - ""
       - "  <text_color>Donne à ce membre le <secondary_color>rôle précédent<text_color>."
       - ""
-      - "<white>%img_icons:left-click% <information_color>Rétrograder ce membre"
+      - "<white>Clic gauche <information_color>Rétrograder ce membre"
     view-requirements:
       - "[compare] %parameters_island_hasPermission_DEMOTE_MEMBERS% == true"
     actions:
@@ -95,7 +95,7 @@ items:
       - ""
       - "  <text_color>Fait de ce membre le <secondary_color>chef <text_color>de l'île."
       - ""
-      - "<white>%img_icons:left-click% <information_color>Transférer la propriété"
+      - "<white>Clic gauche <information_color>Transférer la propriété"
     item-flags:
       - HIDE_ATTRIBUTES
     view-requirements:
@@ -105,7 +105,7 @@ items:
 
   back:
     slot: 49
-    copy-from: "%stacksuppliers_ce_icons:back%"
+    material: "ARROW"
     name: "<bold><primary_color>Retour"
     item-flags:
       - HIDE_ATTRIBUTES

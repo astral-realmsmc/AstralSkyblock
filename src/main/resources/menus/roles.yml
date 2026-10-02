@@ -1,5 +1,5 @@
 id: "island-roles"
-title: "%img_internal:neg_8%<white>%img_guis:generic_list%%img_internal:neg_103%<font:alphabet:shift_1>roles"
+title: "Rôles"
 size: 54
 use-player-inventory: true
 
@@ -18,8 +18,8 @@ items:
       - ""
       - "  <text_color>Poids : <secondary_color>%parameter_role_weight%"
       - ""
-      - "<white>%img_icons:left-click% <gray>Modifier les permissions"
-      - "<white>%img_icons:right-click% <gray>Modifier le rôle"
+      - "<white>Clic gauche <gray>Modifier les permissions"
+      - "<white>Clic droit <gray>Modifier le rôle"
       - "<warning>Rôle par défaut : il ne peut pas être supprimé"
     taints:
       - "role"
@@ -39,10 +39,10 @@ items:
       - ""
       - "  <text_color>Poids : <secondary_color>%parameter_role_weight%"
       - ""
-      - "<white>%img_icons:left-click% <gray>Modifier les permissions"
-      - "<white>%img_icons:right-click% <gray>Modifier le rôle"
-      - "<white>Maj + %img_icons:left-click% <gray>Supprimer le rôle"
-      - "<white>Maj + %img_icons:right-click% <gray>Définir comme rôle par défaut"
+      - "<white>Clic gauche <gray>Modifier les permissions"
+      - "<white>Clic droit <gray>Modifier le rôle"
+      - "<white>Maj + clic gauche <gray>Supprimer le rôle"
+      - "<white>Maj + clic droit <gray>Définir comme rôle par défaut"
     taints:
       - "role"
     left-click-actions:
@@ -57,7 +57,7 @@ items:
 
   create:
     slot: 48
-    copy-from: "%stacksuppliers_ce_icons:addition%"
+    material: "LIME_DYE"
     name: "<bold><primary_color>Créer un nouveau rôle"
     actions:
       - "[close]"
@@ -65,7 +65,7 @@ items:
 
   back:
     slot: 49
-    copy-from: "%stacksuppliers_ce_icons:back%"
+    material: "ARROW"
     name: "<bold><primary_color>Retour"
     item-flags:
       - HIDE_ATTRIBUTES

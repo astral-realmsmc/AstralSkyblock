@@ -1,5 +1,5 @@
 id: "island-coops"
-title: "%img_internal:neg_8%<white>%img_guis:generic_list%%img_internal:neg_100%<font:alphabet:shift_1>coops"
+title: "Coopérateurs"
 size: 54
 use-player-inventory: true
 
@@ -17,7 +17,7 @@ items:
       - ""
       - "  <text_color>Ajouté par : <secondary_color>%parameter_coop_executor_name%"
       - ""
-      - "<white>%img_icons:left-click% <gray>Retirer ce coopérateur"
+      - "<white>Clic gauche <gray>Retirer ce coopérateur"
     taints:
       - "coop"
     view-requirements:
@@ -28,7 +28,7 @@ items:
 
   add:
     slot: 48
-    copy-from: "%stacksuppliers_ce_icons:addition%"
+    material: "LIME_DYE"
     name: "<bold><primary_color>Ajouter un coopérateur"
     view-requirements:
       - "[compare] %parameters_island_hasPermission_COOP_MEMBER% == true"
@@ -38,7 +38,7 @@ items:
 
   back:
     slot: 49
-    copy-from: "%stacksuppliers_ce_icons:back%"
+    material: "ARROW"
     name: "<bold><primary_color>Retour"
     item-flags:
       - HIDE_ATTRIBUTES
@@ -47,7 +47,7 @@ items:
 
   previous-page:
     slot: 46
-    copy-from: "%stacksuppliers_ce_icons:thin_back%"
+    material: "SPECTRAL_ARROW"
     name: "<primary_color><bold>Page précédente"
     actions:
       - "[previous-page] coop"
@@ -58,7 +58,7 @@ items:
 
   next-page:
     slot: 52
-    copy-from: "%stacksuppliers_ce_icons:thin_next%"
+    material: "SPECTRAL_ARROW"
     name: "<primary_color><bold>Page suivante"
     actions:
       - "[next-page] coop"

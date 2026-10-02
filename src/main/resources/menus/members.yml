@@ -1,5 +1,5 @@
 id: "island-members"
-title: "%img_internal:neg_8%<white>%img_guis:generic_list%%img_internal:neg_107%<font:alphabet:shift_1>membres"
+title: "Membres"
 size: 54
 use-player-inventory: true
 
@@ -17,7 +17,7 @@ items:
       - ""
       - "  <text_color>Rôle : <secondary_color>%parameter_member_role_name%"
       - ""
-      - "<white>%img_icons:left-click% <gray>Pour gérer ce membre"
+      - "<white>Clic gauche <gray>Pour gérer ce membre"
     taints:
       - "member"
     actions:
@@ -25,7 +25,7 @@ items:
 
   invite:
     slot: 48
-    copy-from: "%stacksuppliers_ce_icons:addition%"
+    material: "LIME_DYE"
     name: "<bold><primary_color>Inviter un joueur"
     view-requirements:
       - "[compare] %parameters_island_hasPermission_INVITE_MEMBER% == true"
@@ -35,7 +35,7 @@ items:
 
   bans:
     slot: 50
-    copy-from: "%stacksuppliers_ce_icons:ban%"
+    material: "IRON_BARS"
     name: "<bold><primary_color>Joueurs bannis"
     item-flags:
       - HIDE_ATTRIBUTES
@@ -44,7 +44,7 @@ items:
 
   back:
     slot: 49
-    copy-from: "%stacksuppliers_ce_icons:back%"
+    material: "ARROW"
     name: "<bold><primary_color>Retour"
     item-flags:
       - HIDE_ATTRIBUTES
@@ -53,7 +53,7 @@ items:
 
   previous-page:
     slot: 46
-    copy-from: "%stacksuppliers_ce_icons:thin_back%"
+    material: "SPECTRAL_ARROW"
     name: "<primary_color><bold>Page précédente"
     actions:
       - "[previous-page] member"
@@ -64,7 +64,7 @@ items:
 
   next-page:
     slot: 52
-    copy-from: "%stacksuppliers_ce_icons:thin_next%"
+    material: "SPECTRAL_ARROW"
     name: "<primary_color><bold>Page suivante"
     actions:
       - "[next-page] member"

@@ -1,5 +1,5 @@
 id: "island-creation"
-title: "%img_internal:neg_8%<white>%img_guis:generic_list%%img_internal:neg_98%<font:alphabet:shift_1>creation"
+title: "Création d'île"
 size: 54
 use-player-inventory: true
 
@@ -18,7 +18,7 @@ items:
       - "  <text_color>Crée une nouvelle <secondary_color>île"
       - "  <text_color>à partir de ce <secondary_color>modèle<text_color>."
       - ""
-      - "<white>%img_icons:left-click% <information_color>Créer cette île"
+      - "<white>Clic gauche <information_color>Créer cette île"
     taints:
       - "blueprint"
     actions:

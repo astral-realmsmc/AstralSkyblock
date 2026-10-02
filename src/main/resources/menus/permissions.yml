@@ -1,5 +1,5 @@
 id: "island-permissions"
-title: "%img_internal:neg_8%<white>%img_guis:generic_list%%img_internal:neg_116%<font:alphabet:shift_1>permissions"
+title: "Permissions"
 size: 54
 use-player-inventory: true
 
@@ -21,7 +21,7 @@ items:
       - ""
       - "<secondary_color>[Statut] <information_color>: <green>Activé"
       - ""
-      - "<white>%img_icons:left-click% <information_color>pour désactiver"
+      - "<white>Clic gauche <information_color>pour désactiver"
     taints:
       - "permission"
     view-requirements:
@@ -38,7 +38,7 @@ items:
       - ""
       - "<secondary_color>[Statut] <information_color>: <red>Désactivé"
       - ""
-      - "<white>%img_icons:left-click% <information_color>pour activer"
+      - "<white>Clic gauche <information_color>pour activer"
     taints:
       - "permission"
     view-requirements:
@@ -49,7 +49,7 @@ items:
 
   previous-page:
     slot: 46
-    copy-from: "%stacksuppliers_ce_icons:thin_back%"
+    material: "SPECTRAL_ARROW"
     name: "<primary_color><bold>Page précédente"
     actions:
       - "[previous-page] permission"
@@ -60,7 +60,7 @@ items:
 
   next-page:
     slot: 52
-    copy-from: "%stacksuppliers_ce_icons:thin_next%"
+    material: "SPECTRAL_ARROW"
     name: "<primary_color><bold>Page suivante"
     actions:
       - "[next-page] permission"
@@ -71,7 +71,7 @@ items:
 
   back:
     slot: 49
-    copy-from: "%stacksuppliers_ce_icons:back%"
+    material: "ARROW"
     name: "<bold><primary_color>Retour"
     item-flags:
       - HIDE_ATTRIBUTES

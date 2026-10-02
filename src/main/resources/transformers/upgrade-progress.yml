@@ -18,4 +18,4 @@ transformer:
     - "  <text_color>Valeur : <secondary_color>%parameter_upgrade_value% <text_color>➜ <secondary_color>%parameter_upgrade_nextValue%"
     - "  <text_color>Prix : <secondary_color>%parameter_upgrade_price% %parameter_upgrade_currencyDisplay%"
     - ""
-    - "<white>%img_icons:left-click% <information_color>Améliorer au niveau %parameter_upgrade_nextLevel%"
+    - "<white>Clic gauche <information_color>Améliorer au niveau %parameter_upgrade_nextLevel%"

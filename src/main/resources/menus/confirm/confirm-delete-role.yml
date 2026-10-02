@@ -1,12 +1,12 @@
 id: "island-confirm-delete-role"
-title: "%img_internal:neg_8%<white>%img_guis:generic_27%%img_internal:neg_176%%img_title%%img_internal:neg_118%<font:alphabet:alphabet>validation"
+title: "Supprimer le rôle ?"
 size: 54
 use-player-inventory: true
 
 items:
   confirm:
     slot: 14
-    copy-from: "%stacksuppliers_ce_icons:check%"
+    material: "LIME_CONCRETE"
     name: "<bold><red>Supprimer le rôle %parameters_role_name%"
     lore:
       - ""
@@ -19,7 +19,7 @@ items:
 
   cancel:
     slot: 12
-    copy-from: "%stacksuppliers_ce_icons:cross%"
+    material: "RED_CONCRETE"
     name: "<bold><primary_color>Annuler"
     item-flags:
       - HIDE_ATTRIBUTES

@@ -1,5 +1,5 @@
 id: "island-upgrades"
-title: "%img_internal:neg_8%<white>%img_guis:generic_list%%img_internal:neg_112%<font:alphabet:shift_1>ameliorations"
+title: "Améliorations"
 size: 54
 use-player-inventory: true
 
@@ -26,7 +26,7 @@ items:
 
   back:
     slot: 49
-    copy-from: "%stacksuppliers_ce_icons:back%"
+    material: "ARROW"
     name: "<bold><primary_color>Retour"
     item-flags:
       - HIDE_ATTRIBUTES
@@ -35,7 +35,7 @@ items:
 
   previous-page:
     slot: 46
-    copy-from: "%stacksuppliers_ce_icons:thin_back%"
+    material: "SPECTRAL_ARROW"
     name: "<primary_color><bold>Page précédente"
     actions:
       - "[previous-page] upgrade"
@@ -46,7 +46,7 @@ items:
 
   next-page:
     slot: 52
-    copy-from: "%stacksuppliers_ce_icons:thin_next%"
+    material: "SPECTRAL_ARROW"
     name: "<primary_color><bold>Page suivante"
     actions:
       - "[next-page] upgrade"

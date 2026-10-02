@@ -1,5 +1,5 @@
 id: "island-settings"
-title: "%img_internal:neg_8%<white>%img_guis:generic_list%%img_internal:neg_117%<font:alphabet:shift_1>parametres"
+title: "Paramètres de l'île"
 size: 54
 use-player-inventory: true
 
@@ -20,7 +20,7 @@ items:
       - ""
       - "<secondary_color>[Statut] <information_color>: <green>Activé"
       - ""
-      - "<white>%img_icons:right-click% <information_color>pour désactiver"
+      - "<white>Clic droit <information_color>pour désactiver"
     taints:
       - "setting"
     view-requirements:
@@ -36,7 +36,7 @@ items:
       - ""
       - "<secondary_color>[Statut] <information_color>: <red>Désactivé"
       - ""
-      - "<white>%img_icons:right-click% <information_color>pour activer"
+      - "<white>Clic droit <information_color>pour activer"
     taints:
       - "setting"
     view-requirements:
@@ -47,7 +47,7 @@ items:
 
   previous-page:
     slot: 46
-    copy-from: "%stacksuppliers_ce_icons:thin_back%"
+    material: "SPECTRAL_ARROW"
     name: "<primary_color><bold>Page précédente"
     actions:
       - "[previous-page] setting"
@@ -58,7 +58,7 @@ items:
 
   next-page:
     slot: 52
-    copy-from: "%stacksuppliers_ce_icons:thin_next%"
+    material: "SPECTRAL_ARROW"
     name: "<primary_color><bold>Page suivante"
     actions:
       - "[next-page] setting"
@@ -69,7 +69,7 @@ items:
 
   back:
     slot: 49
-    copy-from: "%stacksuppliers_ce_icons:back%"
+    material: "ARROW"
     name: "<bold><primary_color>Retour"
     item-flags:
       - HIDE_ATTRIBUTES

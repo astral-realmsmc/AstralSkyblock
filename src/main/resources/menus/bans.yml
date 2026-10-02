@@ -1,5 +1,5 @@
 id: "island-bans"
-title: "%img_internal:neg_8%<white>%img_guis:generic_list%%img_internal:neg_100%<font:alphabet:shift_1>bans"
+title: "Joueurs bannis"
 size: 54
 use-player-inventory: true
 
@@ -18,7 +18,7 @@ items:
       - "  <text_color>Raison : <secondary_color>%parameter_ban_reason%"
       - "  <text_color>Banni par : <secondary_color>%parameter_ban_executor_name%"
       - ""
-      - "<white>%img_icons:left-click% <gray>Débannir ce joueur"
+      - "<white>Clic gauche <gray>Débannir ce joueur"
     taints:
       - "ban"
     view-requirements:
@@ -29,7 +29,7 @@ items:
 
   back:
     slot: 49
-    copy-from: "%stacksuppliers_ce_icons:back%"
+    material: "ARROW"
     name: "<bold><primary_color>Retour"
     item-flags:
       - HIDE_ATTRIBUTES
@@ -38,7 +38,7 @@ items:
 
   previous-page:
     slot: 46
-    copy-from: "%stacksuppliers_ce_icons:thin_back%"
+    material: "SPECTRAL_ARROW"
     name: "<primary_color><bold>Page précédente"
     actions:
       - "[previous-page] ban"
@@ -49,7 +49,7 @@ items:
 
   next-page:
     slot: 52
-    copy-from: "%stacksuppliers_ce_icons:thin_next%"
+    material: "SPECTRAL_ARROW"
     name: "<primary_color><bold>Page suivante"
     actions:
       - "[next-page] ban"

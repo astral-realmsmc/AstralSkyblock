@@ -1,5 +1,5 @@
 id: "island-member-role"
-title: "%img_internal:neg_8%<white>%img_guis:generic_list%%img_internal:neg_103%<font:alphabet:shift_1>roles"
+title: "Choisir un rôle"
 size: 54
 use-player-inventory: true
 
@@ -17,7 +17,7 @@ items:
       - ""
       - "  <text_color>Poids : <secondary_color>%parameter_role_weight%"
       - ""
-      - "<white>%img_icons:left-click% <gray>Attribuer ce rôle"
+      - "<white>Clic gauche <gray>Attribuer ce rôle"
     taints:
       - "role"
     actions:
@@ -27,7 +27,7 @@ items:
 
   back:
     slot: 49
-    copy-from: "%stacksuppliers_ce_icons:back%"
+    material: "ARROW"
     name: "<bold><primary_color>Retour"
     item-flags:
       - HIDE_ATTRIBUTES

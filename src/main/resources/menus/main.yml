@@ -1,5 +1,5 @@
 id: "island-main"
-title: "%img_internal:neg_8%<white>%img_guis:towns%"
+title: "Votre île"
 size: 54
 use-player-inventory: true
 
@@ -16,7 +16,7 @@ items:
       - "  <gray>- <#e3dbcc>Niveau : <secondary_color>%parameters_island_level%"
       - "  <gray>- <#e3dbcc>Membres : <secondary_color>%parameters_island_members_size%"
       - ""
-      - "<white>%img_icons:left-click% <information_color>Pour vous téléporter"
+      - "<white>Clic gauche <information_color>Pour vous téléporter"
       - "<secondary_color><italic>Raccourci</italic> <information_color>: /is go"
     actions:
       - "[player] is go"
@@ -31,7 +31,7 @@ items:
       - "  <text_color>Permet de voir les <secondary_color>membres"
       - "  <text_color>présents sur l'<secondary_color>île<text_color>."
       - ""
-      - "<white>%img_icons:left-click% <information_color>Ouvrir le menu des membres"
+      - "<white>Clic gauche <information_color>Ouvrir le menu des membres"
     actions:
       - "[open-menu] island-members:island=%parameters_island%"
   # Roles
@@ -45,7 +45,7 @@ items:
       - "  <text_color>Permet de modifier les <secondary_color>rôles"
       - "  <text_color>de l'<secondary_color>île<text_color>."
       - ""
-      - "<white>%img_icons:left-click% <information_color>Ouvrir le menu des rôles"
+      - "<white>Clic gauche <information_color>Ouvrir le menu des rôles"
     view-requirements:
       - "[compare] %parameters_island_hasPermission_SET_ROLE% == true"
     actions:
@@ -68,7 +68,7 @@ items:
       - ""
       - "  <text_color>Permet de modifier les <secondary_color>paramètres <text_color>de l'<secondary_color>île."
       - ""
-      - "<white>%img_icons:left-click% <information_color>Ouvrir le menu de paramètres"
+      - "<white>Clic gauche <information_color>Ouvrir le menu de paramètres"
     view-requirements:
       - "[compare] %parameters_island_hasPermission_SET_SETTINGS% == true"
     actions:
@@ -92,7 +92,7 @@ items:
       - "  <text_color>Permet de gérer les <secondary_color>coopérateurs"
       - "  <text_color>de l'<secondary_color>île<text_color>."
       - ""
-      - "<white>%img_icons:left-click% <information_color>Ouvrir le menu des coopérateurs"
+      - "<white>Clic gauche <information_color>Ouvrir le menu des coopérateurs"
     view-requirements:
       - "[compare] %parameters_island_hasPermission_COOP_MEMBER% == true"
     actions:
@@ -116,7 +116,7 @@ items:
       - "  <text_color>Permet de gérer les <secondary_color>warps"
       - "  <text_color>de l'<secondary_color>île<text_color>."
       - ""
-      - "<white>%img_icons:left-click% <information_color>Ouvrir le menu des warps"
+      - "<white>Clic gauche <information_color>Ouvrir le menu des warps"
     actions:
       - "[open-menu] island-warps:island=%parameters_island%"
   # Upgrades
@@ -130,7 +130,7 @@ items:
       - "  <text_color>Permet d'améliorer les <secondary_color>capacités"
       - "  <text_color>de l'<secondary_color>île<text_color>."
       - ""
-      - "<white>%img_icons:left-click% <information_color>Ouvrir le menu des améliorations"
+      - "<white>Clic gauche <information_color>Ouvrir le menu des améliorations"
     view-requirements:
       - "[compare] %parameters_island_hasPermission_RANKUP% == true"
     actions:
@@ -153,7 +153,7 @@ items:
       - ""
       - "  <text_color>Empêche les <secondary_color>visiteurs <text_color>d'entrer sur l'île."
       - ""
-      - "<white>%img_icons:left-click% <information_color>Fermer l'île"
+      - "<white>Clic gauche <information_color>Fermer l'île"
     view-requirements:
       - "[compare] %parameters_island_locked% == false"
       - "[compare] %parameters_island_hasPermission_CLOSE_ISLAND% == true"
@@ -169,7 +169,7 @@ items:
       - ""
       - "  <text_color>Autorise de nouveau les <secondary_color>visiteurs<text_color>."
       - ""
-      - "<white>%img_icons:left-click% <information_color>Ouvrir l'île"
+      - "<white>Clic gauche <information_color>Ouvrir l'île"
     view-requirements:
       - "[compare] %parameters_island_locked% == true"
       - "[compare] %parameters_island_hasPermission_OPEN_ISLAND% == true"
@@ -184,7 +184,7 @@ items:
     name: "<bold><primary_color>Renommer l'île"
     lore:
       - ""
-      - "<white>%img_icons:left-click% <information_color>Choisir un nouveau nom"
+      - "<white>Clic gauche <information_color>Choisir un nouveau nom"
     view-requirements:
       - "[compare] %parameters_island_hasPermission_CHANGE_NAME% == true"
     actions:
@@ -200,7 +200,7 @@ items:
       - ""
       - "  <text_color>Place le <secondary_color>spawn <text_color>de l'île là où vous êtes."
       - ""
-      - "<white>%img_icons:left-click% <information_color>Définir ici"
+      - "<white>Clic gauche <information_color>Définir ici"
     view-requirements:
       - "[compare] %parameters_island_hasPermission_SET_HOME% == true"
     actions:
@@ -214,7 +214,7 @@ items:
     name: "<bold><primary_color>Classement"
     lore:
       - ""
-      - "<white>%img_icons:left-click% <information_color>Voir les meilleures îles"
+      - "<white>Clic gauche <information_color>Voir les meilleures îles"
     actions:
       - "[player] is top"
   # Level
@@ -227,7 +227,7 @@ items:
       - ""
       - "  <text_color>Niveau actuel : <secondary_color>%parameters_island_level%"
       - ""
-      - "<white>%img_icons:left-click% <information_color>Recalculer"
+      - "<white>Clic gauche <information_color>Recalculer"
     actions:
       - "[close]"
       - "[player] is calc"
@@ -239,7 +239,7 @@ items:
     name: "<bold><primary_color>Changer le biome"
     lore:
       - ""
-      - "<white>%img_icons:left-click% <information_color>Choisir un biome"
+      - "<white>Clic gauche <information_color>Choisir un biome"
     view-requirements:
       - "[compare] %parameters_island_hasPermission_SET_BIOME% == true"
     actions:
@@ -255,7 +255,7 @@ items:
       - ""
       - "  <text_color>Permet de <secondary_color>quitter <text_color>l'île."
       - ""
-      - "<white>%img_icons:left-click% <information_color>Quitter l'île"
+      - "<white>Clic gauche <information_color>Quitter l'île"
     view-requirements:
       - "[compare] %parameters_island_isOwner% == false"
     actions:
@@ -271,7 +271,7 @@ items:
       - "  <text_color>Permet de <red>supprimer <text_color>l'île"
       - "  <text_color>et tout ce qu'elle contient."
       - ""
-      - "<white>%img_icons:left-click% <information_color>Supprimer l'île"
+      - "<white>Clic gauche <information_color>Supprimer l'île"
     view-requirements:
       - "[compare] %parameters_island_isOwner% == true"
     actions:
@@ -279,7 +279,7 @@ items:
   # Bans
   bans:
     slot: 24
-    copy-from: "%stacksuppliers_ce_icons:ban%"
+    material: "IRON_BARS"
     priority: 2
     name: "<bold><primary_color>Joueurs bannis"
     item-flags:
@@ -289,7 +289,7 @@ items:
       - "  <text_color>Permet de gérer les <secondary_color>joueurs bannis"
       - "  <text_color>de l'<secondary_color>île<text_color>."
       - ""
-      - "<white>%img_icons:left-click% <information_color>Ouvrir le menu des bannis"
+      - "<white>Clic gauche <information_color>Ouvrir le menu des bannis"
     view-requirements:
       - "[compare] %parameters_island_hasPermission_BAN_MEMBER% == true"
     actions:

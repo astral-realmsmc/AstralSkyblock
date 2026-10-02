@@ -1,5 +1,5 @@
 id: "island-warps"
-title: "%img_internal:neg_8%<white>%img_guis:generic_list%%img_internal:neg_100%<font:alphabet:shift_1>warps"
+title: "Warps"
 size: 54
 use-player-inventory: true
 
@@ -18,10 +18,10 @@ items:
       - "$apply-transformer(warp-description)"
       - "$apply-transformer(warp-visibility)"
       - ""
-      - "<white>%img_icons:left-click% <information_color>Se téléporter"
-      - "<white>%img_icons:right-click% <information_color>Rendre privée / publique"
-      - "<white>Shift + %img_icons:left-click% <information_color>Utiliser l'objet en main comme icône"
-      - "<white>Shift + %img_icons:right-click% <information_color>Supprimer ce warp"
+      - "<white>Clic gauche <information_color>Se téléporter"
+      - "<white>Clic droit <information_color>Rendre privée / publique"
+      - "<white>Maj + clic gauche <information_color>Utiliser l'objet en main comme icône"
+      - "<white>Maj + clic droit <information_color>Supprimer ce warp"
     taints:
       - "warp"
     actions:
@@ -59,7 +59,7 @@ items:
 
   back:
     slot: 49
-    copy-from: "%stacksuppliers_ce_icons:back%"
+    material: "ARROW"
     name: "<bold><primary_color>Retour"
     item-flags:
       - HIDE_ATTRIBUTES
@@ -68,7 +68,7 @@ items:
 
   previous-page:
     slot: 46
-    copy-from: "%stacksuppliers_ce_icons:thin_back%"
+    material: "SPECTRAL_ARROW"
     name: "<primary_color><bold>Page précédente"
     actions:
       - "[previous-page] warp"
@@ -79,7 +79,7 @@ items:
 
   next-page:
     slot: 52
-    copy-from: "%stacksuppliers_ce_icons:thin_next%"
+    material: "SPECTRAL_ARROW"
     name: "<primary_color><bold>Page suivante"
     actions:
       - "[next-page] warp"

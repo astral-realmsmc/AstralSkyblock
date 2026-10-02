@@ -1,5 +1,5 @@
 id: "island-top"
-title: "%img_internal:neg_8%<white>%img_guis:generic_list%%img_internal:neg_86%<font:alphabet:shift_1>top"
+title: "Classement des îles"
 size: 54
 use-player-inventory: true
 
@@ -20,7 +20,7 @@ items:
       - "  <text_color>Valeur : <secondary_color>%parameter_entry_island_value%"
       - "  <text_color>Membres : <secondary_color>%parameter_entry_island_members_size%"
       - ""
-      - "<white>%img_icons:left-click% <information_color>Voir les warps de cette île"
+      - "<white>Clic gauche <information_color>Voir les warps de cette île"
     taints:
       - "entry"
     actions:
@@ -28,7 +28,7 @@ items:
 
   back:
     slot: 49
-    copy-from: "%stacksuppliers_ce_icons:back%"
+    material: "ARROW"
     name: "<bold><primary_color>Retour"
     item-flags:
       - HIDE_ATTRIBUTES
@@ -37,7 +37,7 @@ items:
 
   previous-page:
     slot: 46
-    copy-from: "%stacksuppliers_ce_icons:thin_back%"
+    material: "SPECTRAL_ARROW"
     name: "<primary_color><bold>Page précédente"
     actions:
       - "[previous-page] entry"
@@ -48,7 +48,7 @@ items:
 
   next-page:
     slot: 52
-    copy-from: "%stacksuppliers_ce_icons:thin_next%"
+    material: "SPECTRAL_ARROW"
     name: "<primary_color><bold>Page suivante"
     actions:
       - "[next-page] entry"
