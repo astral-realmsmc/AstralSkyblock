@@ -53,7 +53,7 @@ items:
       - ""
       - "  <text_color>Warps : <secondary_color>%parameters_island_warpCount%"
       - ""
-      - "<secondary_color><italic>Commande</italic> <information_color>: /is setwarp <nom>"
+      - "<secondary_color><italic>Commande</italic> <information_color>: /is warp set <nom>"
     view-requirements:
       - "[compare] %parameters_island_hasPermission_SET_WARP% == true"
 

@@ -3,6 +3,7 @@ package com.astralrealms.skyblock.service;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.regex.Pattern;
@@ -41,6 +42,10 @@ public class WarpService {
 
     /** Warp names are used as identifiers in commands and menus, so keep them simple. */
     private static final Pattern NAME_PATTERN = Pattern.compile("^[a-zA-Z0-9_-]{1,32}$");
+
+    /** Actions of {@code /is warp}: a warp named after one could not be reached by {@code /is warp <warp>}. */
+    private static final Set<String> RESERVED_NAMES = Set.of(
+            "set", "create", "delete", "del", "remove", "move", "icon", "name", "rename", "description", "desc", "private");
 
     private final AstralSkyblock plugin;
     private final WarpRepository repository;
@@ -386,8 +391,8 @@ public class WarpService {
         return player.getWorld().getName().equals(island.uniqueId().toString());
     }
 
-    private boolean isValidName(String name) {
-        return name != null && NAME_PATTERN.matcher(name).matches();
+    static boolean isValidName(String name) {
+        return name != null && NAME_PATTERN.matcher(name).matches() && !RESERVED_NAMES.contains(name.toLowerCase(Locale.ROOT));
     }
 
     /** The material name of the item in the player's main hand, if they are holding anything. */

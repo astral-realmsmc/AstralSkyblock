@@ -55,7 +55,10 @@ equals `islands-group` in `config.yml` host island worlds; the others only route
 `/is` opens the island menu (or the creation menu). Main subcommands: `create`, `go`/`visit`, `delete`,
 `rename`, `sethome`, `close`/`open`, `expel`, `biome`, `invite`, `coop`, `invites`, `accept`, `decline`,
 `cancel`, `kick`, `leave`, `promote`, `demote`, `transfer`, `ban`, `unban`, `bans`, `uncoop`, `warp`,
-`warps`, `setwarp`, `delwarp`, `calc`, `top`, `upgrades`. Staff: `/is upgrade set` and `/skyblock reload`.
+`warps`, `calc`, `top`, `upgrades`. Staff: `/is upgrade set` and `/skyblock reload`.
+
+Warps: `/is warp <warp> [island]` teleports and `/is warps [island]` opens the menu; your own island's
+warps are managed with `/is warp set|delete|move|icon|name|description|private <warp> ...`.
 
 Permissions: `skyblock.admin` bypasses island permissions and cooldowns; `skyblock.reload` allows the
 reload command.

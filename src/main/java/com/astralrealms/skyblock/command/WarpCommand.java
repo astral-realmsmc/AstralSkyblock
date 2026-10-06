@@ -12,8 +12,9 @@ import co.aikar.commands.BaseCommand;
 import co.aikar.commands.annotation.*;
 
 /**
- * Warp management. Every subcommand operates on the sender's own island except {@code /is warp},
- * which accepts an island so players can warp to someone else's public warps.
+ * Warp management under {@code /is warp}. Every action operates on the sender's own island except
+ * {@code /is warp <warp> [island]} and {@code /is warps [island]}, which accept an island so players
+ * can use someone else's public warps.
  */
 @CommandAlias("skyblock|is|island")
 @Description("Base command for all skyblock commands")
@@ -51,7 +52,7 @@ public class WarpCommand extends BaseCommand {
                 });
     }
 
-    @Subcommand("setwarp")
+    @Subcommand("warp set|create")
     @Description("Creates a warp at your position, using the item in your hand as its icon")
     @Syntax("<name>")
     public void onSetWarp(Player player, String name) {
@@ -61,7 +62,7 @@ public class WarpCommand extends BaseCommand {
         this.plugin.warps().create(island, player, name);
     }
 
-    @Subcommand("delwarp")
+    @Subcommand("warp delete|del|remove")
     @Description("Deletes one of your island's warps")
     @Syntax("<warp>")
     @CommandCompletion("@islandWarps")
@@ -72,7 +73,7 @@ public class WarpCommand extends BaseCommand {
         this.plugin.warps().delete(island, player, warp);
     }
 
-    @Subcommand("movewarp")
+    @Subcommand("warp move")
     @Description("Moves one of your island's warps to your position")
     @Syntax("<warp>")
     @CommandCompletion("@islandWarps")
@@ -83,7 +84,7 @@ public class WarpCommand extends BaseCommand {
         this.plugin.warps().relocate(island, player, warp);
     }
 
-    @Subcommand("warpicon")
+    @Subcommand("warp icon")
     @Description("Uses the item in your hand as a warp's icon")
     @Syntax("<warp>")
     @CommandCompletion("@islandWarps")
@@ -94,7 +95,7 @@ public class WarpCommand extends BaseCommand {
         this.plugin.warps().setIcon(island, player, warp);
     }
 
-    @Subcommand("warpname")
+    @Subcommand("warp name|rename")
     @Description("Sets the display name of a warp; omit the name to clear it")
     @Syntax("<warp> [display name]")
     @CommandCompletion("@islandWarps")
@@ -105,7 +106,7 @@ public class WarpCommand extends BaseCommand {
         this.plugin.warps().setDisplayName(island, player, warp, displayName);
     }
 
-    @Subcommand("warpdescription|warpdesc")
+    @Subcommand("warp description|desc")
     @Description("Sets the description of a warp; separate lines with '|'. Omit it to clear.")
     @Syntax("<warp> [description]")
     @CommandCompletion("@islandWarps")
@@ -116,7 +117,7 @@ public class WarpCommand extends BaseCommand {
         this.plugin.warps().setDescription(island, player, warp, description);
     }
 
-    @Subcommand("warpprivate")
+    @Subcommand("warp private")
     @Description("Toggles a warp between public and members-only")
     @Syntax("<warp>")
     @CommandCompletion("@islandWarps")
