@@ -1,6 +1,9 @@
 package com.astralrealms.skyblock.service;
 
 import java.util.ArrayList;
+import java.util.ConcurrentModificationException;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -8,6 +11,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -16,22 +20,35 @@ import org.bukkit.Chunk;
 import org.bukkit.ChunkSnapshot;
 import org.bukkit.Material;
 import org.bukkit.World;
+import org.bukkit.block.BlockState;
 import org.bukkit.block.CreatureSpawner;
+import org.bukkit.block.Hopper;
+import org.bukkit.entity.EntityType;
+import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.event.island.IslandLevelChangedEvent;
 import com.astralrealms.skyblock.model.island.Island;
 import com.astralrealms.skyblock.model.upgrade.UpgradeType;
+import com.infernalsuite.asp.api.world.SlimeChunk;
+import com.infernalsuite.asp.api.world.SlimeWorld;
+import com.infernalsuite.asp.api.world.SlimeWorldInstance;
 
 /**
  * Scores islands: sums the value of every block inside an island's border (from
  * {@code block-values.yml}) into the island's {@code value}, and derives its {@code level} from
  * the configured points per level.
  *
- * <p>Scanning is deliberately incremental. Chunks are pulled a batch at a time, each batch snapshots
- * on the main thread and is summed off it, and the next batch is scheduled a tick later — a large
- * island therefore costs a slice of several ticks instead of a freeze. Only the server hosting the
+ * <p>Scans only read chunks the island actually has — the slime world's chunk storage plus whatever
+ * is loaded — never the empty void filling the rest of the border box. Each island keeps an
+ * {@link IslandScore}: the value of every chunk it scanned and the chunks whose blocks changed
+ * since. A full scan ({@code /is calc}, or the first rescan after the world loads) reads every
+ * chunk; the periodic rescan afterwards reads only the dirty ones and adds the rest from cache.
+ * Loading a world scans nothing: the stored value stands until something changes.
+ *
+ * <p>Chunks are captured on the main thread within a per-tick time budget and summed off it, so a
+ * large island costs a slice of several ticks instead of a freeze. Only the server hosting the
  * island world can scan it, which is also the server that runs the periodic rescan.
  */
 public class LevelService {
@@ -44,25 +61,17 @@ public class LevelService {
     private static final int MAX_CHUNK_RADIUS = 160;
     /** Rescan intervals a pass may span before the timer assumes it is stuck and takes the latch back. */
     private static final int STUCK_PASS_INTERVALS = 4;
-    /**
-     * Ungenerated chunks a single batch may walk past before it yields. Skipping costs only a
-     * chunk-exists check, but a wide border over empty terrain would otherwise walk thousands of
-     * them in one tick looking for a chunk worth snapshotting.
-     */
-    private static final int MAX_SKIPS_PER_BATCH = 256;
 
     private final AstralSkyblock plugin;
     // Islands with a scan in flight, so a second /is calc cannot start a parallel scan.
     private final Set<UUID> scanning = ConcurrentHashMap.newKeySet();
-    // islandId -> epoch millis of its last completed scan, for the /is calc cooldown.
     // Summing runs on Bukkit's async pool rather than the JVM-wide ForkJoin common pool, which
     // every plugin on the server shares.
     private final Executor asyncExecutor = this::runAsync;
+    // islandId -> epoch millis of its last completed full scan, for the /is calc cooldown.
     private final Map<UUID, Long> lastScan = new ConcurrentHashMap<>();
-    // Islands whose blocks changed since their last scan. The periodic pass only rescans these: an
-    // island nobody touched scores the same, and walking its whole border box again for nothing
-    // was most of what the timer cost.
-    private final Set<UUID> dirty = ConcurrentHashMap.newKeySet();
+    // Scoring state of the islands hosted here; dropped when their world unloads.
+    private final Map<UUID, IslandScore> scores = new ConcurrentHashMap<>();
     private volatile List<Island> top = List.of();
     // Whether a rescan pass is walking the hosted islands, so the timer cannot start a second one.
     private final AtomicBoolean rescanning = new AtomicBoolean();
@@ -96,153 +105,201 @@ public class LevelService {
         Bukkit.getScheduler().runTaskAsynchronously(this.plugin, task);
     }
 
-    /** Notes that blocks of an island changed, so the next periodic pass rescans it. */
-    public void markDirty(UUID islandId) {
-        this.dirty.add(islandId);
+    /** Notes that blocks of an island changed in a chunk, so the next periodic pass rescans it. */
+    public void markDirty(UUID islandId, int chunkX, int chunkZ) {
+        score(islandId).markDirty(chunkKey(chunkX, chunkZ));
     }
 
     /** Forgets an island's scan bookkeeping. Called when its world unloads here. */
     public void forget(UUID islandId) {
         this.lastScan.remove(islandId);
-        this.dirty.remove(islandId);
+        this.scores.remove(islandId);
+    }
+
+    private IslandScore score(UUID islandId) {
+        return this.scores.computeIfAbsent(islandId, ignored -> new IslandScore());
     }
 
     /**
-     * Rescans an island and persists its new value and level. Fails when the island world is not
-     * loaded on this server (only its host can read its blocks) or when a scan is already running
-     * for it.
+     * Fully rescans an island and persists its new value and level. Fails when the island world is
+     * not loaded on this server (only its host can read its blocks) or when a scan is already
+     * running for it.
      */
     public CompletableFuture<Long> calculate(Island island) {
-        World world = this.plugin.worlds()
-                .findByIslandId(island.uniqueId())
-                .map(instance -> instance.getBukkitWorld())
-                .orElse(null);
+        return scan(island, true);
+    }
+
+    /**
+     * Scans an island: every chunk it has when {@code full}, otherwise only the chunks changed since
+     * the last scan. Runs a full scan anyway when there is no baseline to add a partial one to.
+     */
+    private CompletableFuture<Long> scan(Island island, boolean full) {
+        SlimeWorldInstance instance = this.plugin.worlds().findByIslandId(island.uniqueId()).orElse(null);
+        World world = instance == null ? null : instance.getBukkitWorld();
         if (world == null)
             return CompletableFuture.failedFuture(new NotHostedException(island.uniqueId()));
         if (!this.scanning.add(island.uniqueId()))
             return CompletableFuture.failedFuture(new ScanInProgressException(island.uniqueId()));
-        // Changes from here on are the next scan's business.
-        this.dirty.remove(island.uniqueId());
 
-        CompletableFuture<Long> result = new CompletableFuture<>();
+        Scan scan;
         try {
-            Scan scan = new Scan(island.uniqueId(), world, chunkCoordinates(island, world));
-            this.plugin.blockLimits().beginScan(island.uniqueId());
-            Bukkit.getScheduler().runTask(this.plugin, () -> processBatch(scan, result));
+            IslandScore score = score(island.uniqueId());
+            boolean fullScan = full || !score.hasBaseline();
+            BorderBox border = borderBox(island);
+
+            Set<Long> candidates = fullScan ? existingChunks(instance, score) : score.dirtyChunks();
+            List<Long> chunks = new ArrayList<>(candidates.size());
+            List<Long> outside = new ArrayList<>();
+            for (long chunk : candidates)
+                (border.contains(chunk) ? chunks : outside).add(chunk);
+            // Changes outside the border can never be scored; keeping them dirty would only make the
+            // island look changed forever.
+            score.discardDirty(outside);
+
+            scan = new Scan(island.uniqueId(), world, score, chunks, fullScan);
         } catch (Exception exception) {
-            // Nothing has been chained onto `result` yet, so the slot has to be released here or the
-            // island can never be scanned again for the rest of this server's life.
+            // Nothing has been chained yet, so the slot has to be released here or the island can
+            // never be scanned again for the rest of this server's life.
             this.scanning.remove(island.uniqueId());
             return CompletableFuture.failedFuture(exception);
         }
 
+        CompletableFuture<Long> result = new CompletableFuture<>();
+        resume(result, () -> processBatch(scan, result));
         return result
                 .thenCompose(value -> persist(island, value).thenApply(ignored -> value))
                 .whenComplete((value, throwable) -> {
                     this.scanning.remove(island.uniqueId());
-                    if (throwable != null) {
-                        this.plugin.blockLimits().endScan(island.uniqueId());
-                        this.dirty.add(island.uniqueId()); // not scored: try again next pass
-                    }
-                    if (throwable == null)
+                    if (throwable == null && scan.full)
                         this.lastScan.put(island.uniqueId(), System.currentTimeMillis());
                 });
     }
 
     /**
-     * Processes the next batch of chunks and schedules itself for the following tick until the scan
-     * runs out of chunks. Runs on the main thread; only the block summing happens off it.
+     * Captures the next chunks — as many as the tick's time budget allows, with at most
+     * {@code chunks-per-batch} chunk loads in flight — and schedules itself once they are summed,
+     * until the scan runs out of chunks. Runs on the main thread; only the block summing happens off
+     * it.
      */
     private void processBatch(Scan scan, CompletableFuture<Long> result) {
         // The idle sweep (or a delete) can unload the world under a running scan; abort rather than
         // read blocks out of a world that is no longer there. The island simply keeps its old score.
         if (Bukkit.getWorld(scan.world.getName()) == null) {
-            result.completeExceptionally(new NotHostedException(scan.islandId));
+            fail(scan, result, new NotHostedException(scan.islandId));
             return;
         }
 
         if (scan.cursor >= scan.chunks.size()) {
-            // The walk just saw every block inside the border, which makes this the one moment the
-            // hopper count is known to be exact. Seed it before handing the value back.
-            this.plugin.blockLimits().seed(scan.islandId, scan.hoppers);
-            result.complete(scan.value);
+            scan.score.apply(scan.values, scan.full);
+            this.plugin.getSLF4JLogger().debug("Scanned island {}: {} chunk(s), full = {}, {} ms",
+                    scan.islandId, scan.chunks.size(), scan.full, (System.nanoTime() - scan.startedAt) / 1_000_000);
+            // Only when the load-time hopper census failed: a full scan has seen every chunk.
+            if (scan.full && !this.plugin.blockLimits().isCounted(scan.islandId))
+                this.plugin.blockLimits().seed(scan.islandId, scan.hoppers);
+            result.complete(scan.score.total());
             return;
         }
 
-        // A batch is `chunks-per-batch` chunks that actually hold something. Chunks that were never
-        // generated are skipped here without a disk read, and do not consume a slot — most of an
-        // island's border box is void, so counting them as batch members would stretch a scan over
-        // far more ticks than it needs.
-        int batchSize = this.plugin.configuration().level().chunksPerBatch();
-        int examined = 0;
-        List<CompletableFuture<ChunkSnapshot>> snapshots = new ArrayList<>();
-        while (scan.cursor < scan.chunks.size()
-               && snapshots.size() < batchSize
-               && examined < batchSize + MAX_SKIPS_PER_BATCH) {
-            long coordinate = scan.chunks.get(scan.cursor++);
-            examined++;
-            int chunkX = (int) (coordinate >> 32);
-            int chunkZ = (int) coordinate;
-            // Never generated: nothing to score. `gen = false` below would hand back null for it
-            // anyway, but only after an async round trip this check avoids entirely.
-            if (!scan.world.isChunkGenerated(chunkX, chunkZ))
+        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(this.plugin.configuration().level().scanBudgetMillis());
+        int maxLoads = this.plugin.configuration().level().chunksPerBatch();
+        List<Captured> ready = new ArrayList<>();
+        List<CompletableFuture<Captured>> loading = new ArrayList<>();
+        do {
+            long key = scan.chunks.get(scan.cursor++);
+            int chunkX = chunkX(key);
+            int chunkZ = chunkZ(key);
+            if (scan.world.isChunkLoaded(chunkX, chunkZ)) {
+                ready.add(capture(scan, key, scan.world.getChunkAt(chunkX, chunkZ)));
                 continue;
+            }
 
-            // gen = false: an island's unexplored chunks hold nothing and must not be generated.
-            // Paper completes this future on the main thread, which is where a snapshot must be taken.
-            snapshots.add(scan.world.getChunkAtAsync(chunkX, chunkZ, false)
-                    .thenApply(chunk -> {
-                        if (chunk == null)
-                            return null;
-                        // From here on, hopper changes in this chunk are the scan's blind spot.
-                        this.plugin.blockLimits().chunkCaptured(scan.islandId, chunkX, chunkZ);
-                        return snapshot(chunk);
-                    })
+            // gen = false: a chunk the island does not have holds nothing and must not be generated.
+            // Paper completes this future on the main thread, which is where a capture must happen.
+            loading.add(scan.world.getChunkAtAsync(chunkX, chunkZ, false)
+                    .thenApply(chunk -> capture(scan, key, chunk))
                     .exceptionally(throwable -> {
-                        // One unreadable chunk must not void the whole scan.
+                        // One unreadable chunk must not void the whole scan; it stays dirty instead.
                         this.plugin.getSLF4JLogger().warn("Skipped chunk {},{} while scanning island {}",
                                 chunkX, chunkZ, scan.islandId, throwable);
+                        scan.score.restoreDirty(List.of(key));
                         return null;
                     }));
-        }
+        } while (scan.cursor < scan.chunks.size() && loading.size() < maxLoads && System.nanoTime() < deadline);
 
-        CompletableFuture.allOf(snapshots.toArray(CompletableFuture[]::new))
+        CompletableFuture.allOf(loading.toArray(CompletableFuture[]::new))
                 .thenApplyAsync(ignored -> {
-                    Tally tally = new Tally();
-                    for (CompletableFuture<ChunkSnapshot> future : snapshots) {
-                        ChunkSnapshot chunkSnapshot = future.join();
-                        if (chunkSnapshot != null)
-                            sum(chunkSnapshot, scan.world, tally);
+                    Map<Long, Long> values = new HashMap<>();
+                    Map<Material, Integer> materialValues = this.plugin.blockValuesConfiguration().materialValues();
+                    for (Captured captured : ready)
+                        values.put(captured.chunk, captured.value(scan.world, materialValues));
+                    for (CompletableFuture<Captured> future : loading) {
+                        Captured captured = future.join();
+                        if (captured != null)
+                            values.put(captured.chunk, captured.value(scan.world, materialValues));
                     }
-                    scan.spawners.addAll(tally.spawners);
-                    scan.hoppers += tally.hoppers;
-                    return tally.value;
+                    return values;
                 }, this.asyncExecutor)
-                .whenComplete((batchValue, throwable) -> resume(result, () -> {
+                .whenComplete((values, throwable) -> resume(result, () -> {
                     if (throwable != null) {
-                        result.completeExceptionally(throwable);
+                        fail(scan, result, throwable);
                         return;
                     }
 
-                    // Anything thrown here (a world unloaded between batches, say) would otherwise be
-                    // swallowed by the scheduler and leave `result` — and every latch waiting on it —
-                    // hanging forever, so the scan is failed explicitly instead.
+                    // Anything thrown here would otherwise be swallowed by the scheduler and leave
+                    // `result` — and every latch waiting on it — hanging forever.
                     try {
-                        scan.value += batchValue;
-                        // Spawners carry their entity type in a block state the snapshot cannot see,
-                        // so the few positions found are resolved here, on the main thread.
-                        scan.value += resolveSpawners(scan);
+                        scan.values.putAll(values);
                         processBatch(scan, result);
                     } catch (Exception exception) {
-                        result.completeExceptionally(exception);
+                        fail(scan, result, exception);
                     }
                 }));
     }
 
     /**
-     * Hands the rest of a batch back to the main thread. Scheduling itself throws once the plugin is
-     * disabling, and that throw would land in a discarded completion stage — leaving the scan's
-     * future, and everything waiting on it, hanging forever. It fails the scan instead.
+     * Takes what a scan needs from a chunk while on the main thread: its block snapshot, the value of
+     * its spawners (their entity type lives in a block state the snapshot cannot see) and its exact
+     * hopper count, which reconciles {@link BlockLimitService} for this chunk. Both come from the
+     * chunk's block entities, so no block walk is involved. A {@code null} chunk is one the island
+     * does not have: it scores nothing.
+     */
+    private Captured capture(Scan scan, long key, @Nullable Chunk chunk) {
+        scan.captured.add(key);
+        // From here on, changes in this chunk are the next scan's business.
+        scan.score.captured(key);
+        if (chunk == null) {
+            scan.hoppers.remove(key);
+            this.plugin.blockLimits().reconcile(scan.islandId, chunkX(key), chunkZ(key), 0);
+            return new Captured(key, null, 0);
+        }
+
+        Map<EntityType, Integer> spawnerValues = this.plugin.blockValuesConfiguration().spawnerValues();
+        int hoppers = 0;
+        long spawners = 0;
+        for (BlockState state : chunk.getTileEntities(false)) {
+            if (state instanceof Hopper)
+                hoppers++;
+            else if (state instanceof CreatureSpawner spawner && spawner.getSpawnedType() != null) {
+                Integer value = spawnerValues.get(spawner.getSpawnedType());
+                if (value != null)
+                    spawners += value;
+            }
+        }
+        scan.hoppers.put(key, hoppers);
+        this.plugin.blockLimits().reconcile(scan.islandId, chunk.getX(), chunk.getZ(), hoppers);
+        return new Captured(key, chunk.getChunkSnapshot(false, false, false), spawners);
+    }
+
+    /** Fails a scan, handing the chunks it captured back to the next one. */
+    private void fail(Scan scan, CompletableFuture<Long> result, Throwable throwable) {
+        scan.score.restoreDirty(scan.captured);
+        result.completeExceptionally(throwable);
+    }
+
+    /**
+     * Hands work back to the main thread. Scheduling itself throws once the plugin is disabling, and
+     * that throw would land in a discarded completion stage — leaving the scan's future, and
+     * everything waiting on it, hanging forever. It fails the scan instead.
      */
     private void resume(CompletableFuture<Long> result, Runnable body) {
         try {
@@ -252,26 +309,14 @@ public class LevelService {
         }
     }
 
-    private ChunkSnapshot snapshot(Chunk chunk) {
-        return chunk.getChunkSnapshot(false, false, false);
-    }
-
     /**
-     * Adds a chunk's contribution to {@code tally}: the plain material values of its blocks, the
-     * positions of any spawners for the caller to resolve on the main thread, and how many hoppers
-     * it holds (which is what {@link BlockLimitService} seeds its cap counting from — the walk is
-     * already here, so counting them costs one comparison per block). Empty chunks and empty
-     * sections are skipped outright.
+     * The plain material value of a chunk's blocks. Spawners are skipped: they are valued by type,
+     * from their block state, when the chunk is captured. Empty sections are skipped outright.
      */
-    private void sum(ChunkSnapshot chunkSnapshot, World world, Tally tally) {
+    private static long sum(ChunkSnapshot chunkSnapshot, World world, Map<Material, Integer> values) {
         int minHeight = world.getMinHeight();
         int maxHeight = world.getMaxHeight();
-        // A generated but wholly empty chunk — the common case around an island — is worth nothing,
-        // and answering that from the section table costs a handful of checks instead of 98k.
-        if (isEmpty(chunkSnapshot, minHeight, maxHeight))
-            return;
-
-        Map<Material, Integer> values = this.plugin.blockValuesConfiguration().materialValues();
+        long total = 0;
         for (int y = minHeight; y < maxHeight; y++) {
             if (chunkSnapshot.isSectionEmpty((y - minHeight) >> 4)) {
                 y += 15 - ((y - minHeight) & 15); // jump to the end of the empty section
@@ -281,55 +326,51 @@ public class LevelService {
             for (int x = 0; x < 16; x++) {
                 for (int z = 0; z < 16; z++) {
                     Material material = chunkSnapshot.getBlockType(x, y, z);
-                    if (material == Material.AIR)
+                    if (material == Material.AIR || material == Material.SPAWNER)
                         continue;
-                    if (material == Material.HOPPER)
-                        tally.hoppers++;
-                    if (material == Material.SPAWNER) {
-                        tally.spawners.add(new int[]{(chunkSnapshot.getX() << 4) + x, y, (chunkSnapshot.getZ() << 4) + z});
-                        continue;
-                    }
-
                     Integer value = values.get(material);
                     if (value != null)
-                        tally.value += value;
+                        total += value;
                 }
             }
         }
-    }
-
-    /** Whether every section of the chunk is empty, i.e. the chunk holds nothing but air. */
-    private static boolean isEmpty(ChunkSnapshot chunkSnapshot, int minHeight, int maxHeight) {
-        int sections = ((maxHeight - minHeight) + 15) >> 4;
-        for (int section = 0; section < sections; section++)
-            if (!chunkSnapshot.isSectionEmpty(section))
-                return false;
-        return true;
-    }
-
-    /** Resolves and clears the spawner positions collected by the last batch. */
-    private long resolveSpawners(Scan scan) {
-        if (scan.spawners.isEmpty())
-            return 0;
-
-        Map<org.bukkit.entity.EntityType, Integer> values = this.plugin.blockValuesConfiguration().spawnerValues();
-        long total = 0;
-        for (int[] position : scan.spawners) {
-            if (!(scan.world.getBlockAt(position[0], position[1], position[2]).getState() instanceof CreatureSpawner spawner))
-                continue;
-            Integer value = spawner.getSpawnedType() == null ? null : values.get(spawner.getSpawnedType());
-            if (value != null)
-                total += value;
-        }
-        scan.spawners.clear();
         return total;
     }
 
     /**
-     * The chunks covered by an island's border, as packed {@code (x << 32) | z} coordinates. The
-     * border is the island's {@link UpgradeType#WORLDBORDER_SIZE} value, centred on its fixed centre.
+     * Every chunk the island may hold blocks in: the slime world's stored chunks, the chunks loaded
+     * right now (a chunk first generated this session may not be in storage yet) and any chunk the
+     * score already knows or has marked dirty.
      */
-    private List<Long> chunkCoordinates(Island island, World world) {
+    private static Set<Long> existingChunks(SlimeWorldInstance instance, IslandScore score) {
+        Set<Long> chunks = score.knownChunks();
+        for (SlimeChunk chunk : storedChunks(instance))
+            chunks.add(chunkKey(chunk.getX(), chunk.getZ()));
+        for (Chunk chunk : instance.getBukkitWorld().getLoadedChunks())
+            chunks.add(chunkKey(chunk.getX(), chunk.getZ()));
+        return chunks;
+    }
+
+    /**
+     * A copy of the slime world's chunk storage. ASP keeps it in a plain map that its chunk loading
+     * can touch while it is copied; a copy that trips over that is simply taken again.
+     */
+    static List<SlimeChunk> storedChunks(SlimeWorld world) {
+        for (int attempt = 1; ; attempt++) {
+            try {
+                return new ArrayList<>(world.getChunkStorage());
+            } catch (ConcurrentModificationException exception) {
+                if (attempt >= 5)
+                    throw exception;
+            }
+        }
+    }
+
+    /**
+     * The chunks covered by an island's border. The border is the island's
+     * {@link UpgradeType#WORLDBORDER_SIZE} value, centred on its fixed centre, plus one ring.
+     */
+    private BorderBox borderBox(Island island) {
         double size = this.plugin.upgrades()
                 .value(island, UpgradeType.WORLDBORDER_SIZE, this.plugin.configuration().defaultWorldBorderSize());
         int radius = (int) Math.ceil(size / 2 / 16) + 1;
@@ -338,15 +379,7 @@ public class LevelService {
                     island.uniqueId(), (int) size, MAX_CHUNK_RADIUS * 32);
             radius = MAX_CHUNK_RADIUS;
         }
-
-        int centerX = (int) Math.floor(island.centerX()) >> 4;
-        int centerZ = (int) Math.floor(island.centerZ()) >> 4;
-
-        List<Long> coordinates = new ArrayList<>();
-        for (int x = centerX - radius; x <= centerX + radius; x++)
-            for (int z = centerZ - radius; z <= centerZ + radius; z++)
-                coordinates.add(((long) x << 32) | (z & 0xFFFFFFFFL));
-        return coordinates;
+        return new BorderBox((int) Math.floor(island.centerX()) >> 4, (int) Math.floor(island.centerZ()) >> 4, radius);
     }
 
     /**
@@ -370,13 +403,12 @@ public class LevelService {
     }
 
     /**
-     * Rescans every island world hosted on this server, strictly one after another: each scan
-     * already spends {@code chunks-per-batch} chunk loads and snapshots per tick, so starting one
-     * per hosted world at once would multiply that by the number of islands on the server.
+     * Rescans the islands hosted on this server whose blocks changed, strictly one after another.
+     * Each rescan only reads the changed chunks, unless the island has had no full scan since its
+     * world loaded.
      *
-     * <p>A pass that outlives the timer interval is skipped rather than doubled up — with the scans
-     * serialised, a pass takes roughly {@code islands × scan duration}, and letting the timer start
-     * a second chain over the same list would put the per-tick cost right back where it was.
+     * <p>A pass that outlives the timer interval is skipped rather than doubled up, so two chains
+     * never walk the island list side by side.
      */
     private void rescanHostedIslands() {
         if (!this.rescanning.compareAndSet(false, true)) {
@@ -393,12 +425,14 @@ public class LevelService {
         }
 
         // Bumping the generation retires whatever the previous pass was doing: if it was merely slow
-        // rather than stuck, its next continuation sees a stale generation and stops, so the two
-        // chains can never walk the island list side by side.
+        // rather than stuck, its next continuation sees a stale generation and stops.
         int generation = this.rescanGeneration.incrementAndGet();
         this.rescanStartedAt = System.currentTimeMillis();
         List<UUID> changed = this.plugin.worlds().getLoadedWorlds().keySet().stream()
-                .filter(this.dirty::contains)
+                .filter(islandId -> {
+                    IslandScore score = this.scores.get(islandId);
+                    return score != null && score.isDirty();
+                })
                 .toList();
         rescanNext(changed, 0, generation);
     }
@@ -423,7 +457,7 @@ public class LevelService {
                 continue;
 
             int next = cursor + 1;
-            calculate(island).whenComplete((value, throwable) -> {
+            scan(island, false).whenComplete((value, throwable) -> {
                 if (throwable != null && !(unwrap(throwable) instanceof ScanInProgressException))
                     this.plugin.getSLF4JLogger().warn("Failed to rescan island {}: {}", islandId, unwrap(throwable).getMessage());
 
@@ -495,32 +529,56 @@ public class LevelService {
     //  Internals
     // =========================================================================
 
+    static long chunkKey(int chunkX, int chunkZ) {
+        return ((long) chunkX << 32) | (chunkZ & 0xFFFFFFFFL);
+    }
+
+    static int chunkX(long key) {
+        return (int) (key >> 32);
+    }
+
+    static int chunkZ(long key) {
+        return (int) key;
+    }
+
+    /** The square of chunks a scan covers around an island's centre. */
+    record BorderBox(int centerX, int centerZ, int radius) {
+        boolean contains(long chunk) {
+            return Math.abs(chunkX(chunk) - this.centerX) <= this.radius
+                   && Math.abs(chunkZ(chunk) - this.centerZ) <= this.radius;
+        }
+    }
+
     /** State of one island scan as it walks its chunks batch by batch. */
     private static final class Scan {
         private final UUID islandId;
         private final World world;
+        private final IslandScore score;
         private final List<Long> chunks;
-        private final List<int[]> spawners = new ArrayList<>();
+        private final boolean full;
+        /** Value of each chunk read so far. */
+        private final Map<Long, Long> values = new HashMap<>();
+        /** Chunks captured so far, handed back as dirty if the scan fails. */
+        private final Set<Long> captured = new HashSet<>();
+        /** Hoppers of each chunk read so far, in case the island's hoppers were never counted. */
+        private final Map<Long, Integer> hoppers = new HashMap<>();
+        private final long startedAt = System.nanoTime();
         private int cursor;
-        private long value;
-        /** Hoppers seen so far, seeding {@link BlockLimitService} when the scan completes. */
-        private int hoppers;
 
-        private Scan(UUID islandId, World world, List<Long> chunks) {
+        private Scan(UUID islandId, World world, IslandScore score, List<Long> chunks, boolean full) {
             this.islandId = islandId;
             this.world = world;
+            this.score = score;
             this.chunks = chunks;
+            this.full = full;
         }
     }
 
-    /**
-     * What one batch of chunks contributed, collected off the main thread and merged into the scan
-     * once the batch is done.
-     */
-    private static final class Tally {
-        private final List<int[]> spawners = new ArrayList<>();
-        private long value;
-        private int hoppers;
+    /** One chunk as captured on the main thread, summed later off it. */
+    private record Captured(long chunk, @Nullable ChunkSnapshot snapshot, long spawnerValue) {
+        long value(World world, Map<Material, Integer> materialValues) {
+            return this.spawnerValue + (this.snapshot == null ? 0 : sum(this.snapshot, world, materialValues));
+        }
     }
 
     /** The island's world is not loaded on this server, so its blocks cannot be read here. */

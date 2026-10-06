@@ -1,5 +1,7 @@
 package com.astralrealms.skyblock.listener;
 
+import java.util.UUID;
+
 import org.bukkit.Bukkit;
 import org.bukkit.World;
 import org.bukkit.Location;
@@ -32,20 +34,27 @@ public class IslandListener implements Listener {
 
     /**
      * Applies the island's world-state upgrades (currently its border) as soon as its world is
-     * loaded on this server.
+     * loaded on this server, and counts its hoppers so the cap applies from the first placement.
+     * Nothing is scanned: the stored level stands until a block changes or someone runs /is calc.
      */
     @EventHandler(priority = EventPriority.MONITOR)
     public void onIslandWorldLoaded(IslandWorldLoadedEvent event) {
         this.plugin.upgrades().applyEffects(event.island());
 
-        // First chance to score the island since it came up here; the periodic rescan takes over
-        // from now on. A scan already in flight (or a world unloaded meanwhile) is not an error.
-        this.plugin.levels()
-                .calculate(event.island())
-                .exceptionally(throwable -> {
-                    this.plugin.getSLF4JLogger().debug("Skipped the load-time level scan of island {}: {}",
-                            event.island().uniqueId(), throwable.getMessage());
-                    return null;
+        UUID islandId = event.island().uniqueId();
+        this.plugin.worlds()
+                .findByIslandId(islandId)
+                .ifPresent(instance -> {
+                    try {
+                        this.plugin.blockLimits().seed(islandId, instance);
+                    } catch (Exception exception) {
+                        // Hoppers stay refused until a full level scan has counted them instead.
+                        this.plugin.getSLF4JLogger().error("Failed to count the hoppers of island {}; scanning it instead", islandId, exception);
+                        this.plugin.levels().calculate(event.island()).exceptionally(throwable -> {
+                            this.plugin.getSLF4JLogger().warn("Failed to scan island {}: {}", islandId, throwable.getMessage());
+                            return null;
+                        });
+                    }
                 });
     }
 

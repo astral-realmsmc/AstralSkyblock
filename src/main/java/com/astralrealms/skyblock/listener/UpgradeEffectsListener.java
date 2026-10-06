@@ -84,7 +84,7 @@ public class UpgradeEffectsListener implements Listener {
 
         Player player = event.getPlayer();
         if (!this.plugin.blockLimits().isCounted(island.uniqueId())) {
-            // Right after the world loads, until its scan lands: the count is unknown.
+            // Only if the census at world load failed, until a full scan has counted them.
             event.setCancelled(true);
             ASMessages.HOPPER_COUNT_PENDING.message(player, AstralPaperAPI.createPlaceholderContainer(player).registerPlaceholder(island));
             return;
@@ -114,7 +114,7 @@ public class UpgradeEffectsListener implements Listener {
 
         Island island = island(event.getBlock().getWorld());
         if (island != null)
-            this.plugin.blockLimits().addHopper(island.uniqueId(), event.getBlockPlaced());
+            this.plugin.blockLimits().addHopper(island.uniqueId(), event.getBlockPlaced().getX(), event.getBlockPlaced().getZ());
     }
 
     /** Gives a broken hopper's slot back to the island's cap. */
@@ -125,7 +125,7 @@ public class UpgradeEffectsListener implements Listener {
 
         Island island = island(event.getBlock().getWorld());
         if (island != null)
-            this.plugin.blockLimits().removeHopper(island.uniqueId(), event.getBlock());
+            this.plugin.blockLimits().removeHopper(island.uniqueId(), event.getBlock().getX(), event.getBlock().getZ());
     }
 
     /** Gives back the slots of hoppers destroyed by an entity's explosion. */
@@ -152,7 +152,7 @@ public class UpgradeEffectsListener implements Listener {
 
         for (Block block : destroyed)
             if (block.getType() == Material.HOPPER)
-                this.plugin.blockLimits().removeHopper(island.uniqueId(), block);
+                this.plugin.blockLimits().removeHopper(island.uniqueId(), block.getX(), block.getZ());
     }
 
     // =========================================================================

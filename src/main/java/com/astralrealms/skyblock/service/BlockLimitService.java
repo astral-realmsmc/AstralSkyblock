@@ -1,79 +1,96 @@
 package com.astralrealms.skyblock.service;
 
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 
-import org.bukkit.block.Block;
+import org.bukkit.Chunk;
+import org.bukkit.Material;
+import org.bukkit.World;
 
 import com.astralrealms.skyblock.model.upgrade.UpgradeType;
+import com.infernalsuite.asp.api.world.SlimeChunk;
+import com.infernalsuite.asp.api.world.SlimeWorldInstance;
+
+import net.kyori.adventure.nbt.CompoundBinaryTag;
 
 /**
  * Counts the blocks an island is capped on — currently only hoppers, for
  * {@link UpgradeType#HOPPERS_LIMIT}.
  *
- * <p>Counting hoppers by scanning the island on every placement would be far too expensive, so the
- * count is held in memory instead: {@link LevelService}'s scan already walks every block inside the
- * border, so it tallies hoppers as it goes and {@link #seed(UUID, int) seeds} the count when it
- * finishes, and placements and breaks adjust it from there. That scan runs when the island world
- * loads here and again on the rescan timer, so any drift the event path misses — an explosion, a
- * piston, a WorldEdit paste — is reconciled within one rescan interval rather than accumulating.
+ * <p>Counts are kept per chunk. They are {@link #seed seeded} from the island's block entities the
+ * moment its world loads (hoppers are block entities, so that costs no block walk), adjusted by
+ * placements and breaks, and each chunk is {@link #reconcile reconciled} whenever the level scan
+ * captures it — which repairs whatever the event path missed (a piston, a WorldEdit paste) in that
+ * chunk without a blind spot, since capture and reconciliation happen in the same main-thread step.
  *
  * <p>The counts are per-server and only meaningful for islands hosted here, which is also the only
  * place hoppers can be placed. They are dropped when the island's world unloads.
  */
 public class BlockLimitService {
 
-    private final Map<UUID, AtomicInteger> hoppers = new ConcurrentHashMap<>();
-    // Running scans, by island. Main thread only: chunks are captured, and hoppers placed and
-    // broken, on the main thread.
-    private final Map<UUID, ScanTracker> scans = new ConcurrentHashMap<>();
+    private static final String HOPPER_ID = "minecraft:hopper";
 
-    /** Notes that a level scan of the island has started; see {@link #chunkCaptured}. */
-    public void beginScan(UUID islandId) {
-        this.scans.put(islandId, new ScanTracker());
-    }
+    // islandId -> chunk key -> hoppers in that chunk. Main thread only, like the events feeding it.
+    private final Map<UUID, Map<Long, Integer>> hoppers = new ConcurrentHashMap<>();
 
     /**
-     * Notes that the running scan has taken its snapshot of a chunk. Hoppers placed or broken there
-     * from now on are invisible to the scan's tally, so they are kept aside and added to it when it
-     * seeds the count.
+     * Counts an island's hoppers as its world comes up, before anyone can place one. Stored chunks
+     * are read from their block entity data; chunks already loaded are counted live instead, since
+     * their stored copy may be stale. Main thread.
      */
-    public void chunkCaptured(UUID islandId, int chunkX, int chunkZ) {
-        ScanTracker scan = this.scans.get(islandId);
-        if (scan != null)
-            scan.captured.add(chunkKey(chunkX, chunkZ));
+    public void seed(UUID islandId, SlimeWorldInstance instance) {
+        World world = instance.getBukkitWorld();
+        Map<Long, Integer> counts = new HashMap<>();
+        for (SlimeChunk chunk : LevelService.storedChunks(instance)) {
+            if (world.isChunkLoaded(chunk.getX(), chunk.getZ()))
+                continue;
+            int count = 0;
+            for (CompoundBinaryTag tileEntity : chunk.getTileEntities())
+                if (HOPPER_ID.equals(tileEntity.getString("id")))
+                    count++;
+            counts.put(chunkKey(chunk.getX(), chunk.getZ()), count);
+        }
+        for (Chunk chunk : world.getLoadedChunks())
+            counts.put(chunkKey(chunk.getX(), chunk.getZ()), countHoppers(chunk));
+        seed(islandId, counts);
     }
 
-    /** Forgets a scan that will never seed (it failed, or the world unloaded under it). */
-    public void endScan(UUID islandId) {
-        this.scans.remove(islandId);
+    /** The hoppers in a loaded chunk, from its block entities. */
+    static int countHoppers(Chunk chunk) {
+        return chunk.getTileEntities(block -> block.getType() == Material.HOPPER, false).size();
     }
 
-    /**
-     * Replaces an island's hopper count with a freshly scanned one, corrected by the hoppers placed
-     * or broken in chunks after the scan had already captured them. Called by the level scan, which
-     * is the only thing that sees every block inside the border at once.
-     */
-    public void seed(UUID islandId, int count) {
-        ScanTracker scan = this.scans.remove(islandId);
-        int corrected = Math.max(0, count + (scan == null ? 0 : scan.delta));
-        this.hoppers.computeIfAbsent(islandId, ignored -> new AtomicInteger()).set(corrected);
+    /** Replaces an island's counts with a freshly taken census, by chunk. */
+    public void seed(UUID islandId, Map<Long, Integer> perChunk) {
+        Map<Long, Integer> counts = new ConcurrentHashMap<>();
+        perChunk.forEach((chunk, count) -> {
+            if (count > 0)
+                counts.put(chunk, count);
+        });
+        this.hoppers.put(islandId, counts);
     }
 
-    /** Forgets an island's counts. Called when its world unloads; the next scan seeds it again. */
+    /** Replaces one chunk's count with an exact one. Ignored until the island has been seeded. */
+    public void reconcile(UUID islandId, int chunkX, int chunkZ, int count) {
+        Map<Long, Integer> counts = this.hoppers.get(islandId);
+        if (counts == null)
+            return;
+        if (count > 0)
+            counts.put(chunkKey(chunkX, chunkZ), count);
+        else
+            counts.remove(chunkKey(chunkX, chunkZ));
+    }
+
+    /** Forgets an island's counts. Called when its world unloads; the next load seeds it again. */
     public void forget(UUID islandId) {
         this.hoppers.remove(islandId);
-        this.scans.remove(islandId);
     }
 
     /**
      * Whether the island's hoppers have been counted since its world loaded. Until then the count
-     * is unknown, and placements are refused rather than measured against zero — an island at its
-     * cap could otherwise fill up again in the seconds after every load.
+     * is unknown, and placements are refused rather than measured against zero.
      */
     public boolean isCounted(UUID islandId) {
         return this.hoppers.containsKey(islandId);
@@ -81,8 +98,13 @@ public class BlockLimitService {
 
     /** The hoppers currently counted on an island; 0 when not counted yet (see {@link #isCounted}). */
     public int hoppers(UUID islandId) {
-        AtomicInteger count = this.hoppers.get(islandId);
-        return count == null ? 0 : count.get();
+        Map<Long, Integer> counts = this.hoppers.get(islandId);
+        if (counts == null)
+            return 0;
+        int total = 0;
+        for (int count : counts.values())
+            total += count;
+        return total;
     }
 
     /**
@@ -92,38 +114,31 @@ public class BlockLimitService {
      * one too high. Both run inside the same event dispatch on the main thread, so nothing can slip
      * a second placement between them.
      */
-    public void addHopper(UUID islandId, Block block) {
-        adjust(islandId, block, 1);
+    public void addHopper(UUID islandId, int blockX, int blockZ) {
+        adjust(islandId, blockX, blockZ, 1);
     }
 
-    /** Gives one hopper back to the island's cap. Never drops below zero. */
-    public void removeHopper(UUID islandId, Block block) {
-        adjust(islandId, block, -1);
+    /** Gives one hopper back to the island's cap. Never drops a chunk below zero. */
+    public void removeHopper(UUID islandId, int blockX, int blockZ) {
+        adjust(islandId, blockX, blockZ, -1);
     }
 
-    private void adjust(UUID islandId, Block block, int delta) {
-        ScanTracker scan = this.scans.get(islandId);
-        if (scan != null && scan.captured.contains(chunkKey(block.getX() >> 4, block.getZ() >> 4)))
-            scan.delta += delta;
-
-        AtomicInteger count = this.hoppers.get(islandId);
-        if (count == null)
-            return; // not counted yet: the coming scan sees the block as it is
-        count.updateAndGet(current -> Math.max(0, current + delta));
+    private void adjust(UUID islandId, int blockX, int blockZ, int delta) {
+        Map<Long, Integer> counts = this.hoppers.get(islandId);
+        if (counts == null)
+            return; // not counted yet: the coming census sees the block as it is
+        counts.compute(chunkKey(blockX >> 4, blockZ >> 4), (chunk, current) -> {
+            int next = (current == null ? 0 : current) + delta;
+            return next > 0 ? next : null;
+        });
     }
 
     /** Drops every count. Called on plugin disable. */
     public void clear() {
         this.hoppers.clear();
-        this.scans.clear();
     }
 
-    private static long chunkKey(int chunkX, int chunkZ) {
+    static long chunkKey(int chunkX, int chunkZ) {
         return ((long) chunkX << 32) | (chunkZ & 0xFFFFFFFFL);
-    }
-
-    private static final class ScanTracker {
-        private final Set<Long> captured = new HashSet<>();
-        private int delta;
     }
 }

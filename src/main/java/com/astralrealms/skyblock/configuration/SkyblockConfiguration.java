@@ -188,10 +188,10 @@ public record SkyblockConfiguration(int maximumIslands, String islandsGroup, int
      * {@code level} is that value divided by {@link #pointsPerLevel()}.
      */
     @ConfigSerializable
-    public record Level(int pointsPerLevel, int chunksPerBatch, int rescanIntervalSeconds,
+    public record Level(int pointsPerLevel, int chunksPerBatch, int scanBudgetMillis, int rescanIntervalSeconds,
                         int cooldownSeconds, int topSize, int topRefreshSeconds, int valuableThreshold) {
 
-        private static final Level FALLBACK = new Level(0, 0, 0, 0, 0, 0, 0);
+        private static final Level FALLBACK = new Level(0, 0, 0, 0, 0, 0, 0, 0);
 
         /**
          * Minimum block value that makes breaking a block need {@code VALUABLE_BREAK} rather than
@@ -209,15 +209,22 @@ public record SkyblockConfiguration(int maximumIslands, String islandsGroup, int
             return this.pointsPerLevel <= 0 ? 100 : this.pointsPerLevel;
         }
 
-        /** Chunks snapshotted per tick while scanning — higher scans faster but costs more per tick. */
+        /** Chunk loads a scan keeps in flight at once; chunks already loaded do not count. */
         @Override
         public int chunksPerBatch() {
-            return this.chunksPerBatch <= 0 ? 4 : this.chunksPerBatch;
+            return this.chunksPerBatch <= 0 ? 16 : this.chunksPerBatch;
+        }
+
+        /** Main-thread milliseconds a scan may spend capturing chunks per tick. */
+        @Override
+        public int scanBudgetMillis() {
+            return this.scanBudgetMillis <= 0 ? 5 : this.scanBudgetMillis;
         }
 
         /**
-         * Seconds between automatic rescans of the islands hosted by this server. A negative value
-         * disables them, leaving scoring to {@code /is calc} and island world loads.
+         * Seconds between automatic rescans of the islands hosted by this server; each only reads
+         * the chunks changed since the last one. A negative value disables them, leaving scoring to
+         * {@code /is calc}.
          */
         @Override
         public int rescanIntervalSeconds() {
