@@ -5,6 +5,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import org.bukkit.Location;
+import org.bukkit.World;
 import org.bukkit.entity.Player;
 
 import com.astralrealms.core.model.Unique;
@@ -13,6 +14,7 @@ import com.astralrealms.core.placeholder.impl.system.ComplexPlaceholder;
 import com.astralrealms.core.provider.ItemProvider;
 import com.astralrealms.core.storage.annotation.*;
 import com.astralrealms.core.storage.model.SQLAccessor;
+import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.model.member.IslandBan;
 import com.astralrealms.skyblock.model.member.IslandCoop;
 import com.astralrealms.skyblock.model.role.IslandPermission;
@@ -316,6 +318,11 @@ public class Island implements Unique, ComplexPlaceholder {
         this.spawnPitch = location.getPitch();
     }
 
+    /** The island spawn, in {@code world} — its overworld. */
+    public Location spawnLocation(World world) {
+        return new Location(world, this.spawnX, this.spawnY, this.spawnZ, this.spawnYaw, this.spawnPitch);
+    }
+
     // Placeholders
     @Override
     public Object get(PlaceholderContext context) {
@@ -357,6 +364,10 @@ public class Island implements Unique, ComplexPlaceholder {
             }
             case "warpCount" -> warps().size();
             case "upgrades" -> new IslandUpgradeItemProvider(this);
+            // %island_dimensionUnlocked_<id>%: whether the island has unlocked that dimension.
+            case "dimensionUnlocked" -> context.hasNext()
+                    ? AstralSkyblock.get().dimensions().isUnlocked(this, context.collapseRemaining())
+                    : null;
             case "upgradeLevel" -> {
                 if (!context.hasNext())
                     yield null;

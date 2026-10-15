@@ -1,0 +1,9 @@
+# Nether generator (dimensions.yml overrides), from GENERATOR level 0. In the nether it replaces
+# basalt generators as well as cobblestone ones.
+id: "nether"
+blocks:
+  NETHERRACK: 60
+  BASALT: 15
+  BLACKSTONE: 15
+  SOUL_SOIL: 5
+  NETHER_QUARTZ_ORE: 5

@@ -3,6 +3,7 @@ package com.astralrealms.skyblock.service;
 import java.io.IOException;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -22,15 +23,19 @@ import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitTask;
 import org.jetbrains.annotations.Unmodifiable;
 
+import com.astralrealms.core.model.location.MinecraftLocation;
 import com.astralrealms.core.paper.AstralPaperAPI;
 import com.astralrealms.core.service.impl.TeleportationService;
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.configuration.ASPLoaderConfiguration;
+import com.astralrealms.skyblock.event.island.world.IslandDimensionLoadedEvent;
 import com.astralrealms.skyblock.event.island.world.IslandWorldLoadedEvent;
 import com.astralrealms.skyblock.event.island.world.IslandWorldUnloadedEvent;
 import com.astralrealms.skyblock.listener.IslandSettingsListener;
 import com.astralrealms.skyblock.messaging.packet.island.IslandDeletePacket;
 import com.astralrealms.skyblock.model.IslandBlueprint;
+import com.astralrealms.skyblock.model.dimension.IslandDimension;
+import com.astralrealms.skyblock.model.dimension.IslandWorlds;
 import com.astralrealms.skyblock.model.island.Island;
 import com.astralrealms.skyblock.utils.ASConstants;
 import com.infernalsuite.asp.api.AdvancedSlimePaperAPI;
@@ -44,6 +49,16 @@ import com.infernalsuite.asp.api.world.properties.SlimePropertyMap;
 import com.infernalsuite.asp.loaders.file.FileLoader;
 import com.infernalsuite.asp.loaders.mysql.MysqlLoader;
 
+/**
+ * The slime worlds of the islands hosted here. An island has its overworld and, when dimensions are
+ * enabled, a world per dimension it has entered at least once ({@link IslandWorlds} names them).
+ *
+ * <p>An island's worlds live together: the dimensions it already has load with its overworld, are
+ * saved with it, idle out with it (the island is idle only when all of them are empty) and are
+ * deleted with it. A dimension it never had is cloned from its source world the first time someone
+ * enters it ({@link #loadDimension}), and only while the overworld is loaded here — the host claim
+ * covers every world of the island.
+ */
 public class WorldService {
 
     /** How long the shutdown host-server flush is allowed to block waiting on Redis. */
@@ -60,15 +75,26 @@ public class WorldService {
 
     private final AstralSkyblock plugin;
     private final AdvancedSlimePaperAPI asp = AdvancedSlimePaperAPI.instance();
+    // Island overworlds, one per hosted island: their count is the number of islands hosted here.
     private final Map<UUID, SlimeWorldInstance> loadedWorlds = new ConcurrentHashMap<>();
+    // Dimension worlds of the hosted islands, by island then dimension id.
+    private final Map<UUID, Map<String, SlimeWorldInstance>> dimensionWorlds = new ConcurrentHashMap<>();
+    // Every island world loaded here, overworld or dimension.
     private final Map<String, UUID> worldNameToIslandId = new ConcurrentHashMap<>();
+    // Dimension worlds only, to their dimension id.
+    private final Map<String, String> worldNameToDimension = new ConcurrentHashMap<>();
+    // Dimensions an island has in storage that are not loaded with it (a read that failed, an unload
+    // that stopped half-way). Its blocks cannot be seen, so its level is not rescanned meanwhile.
+    private final Map<UUID, Set<String>> missingDimensions = new ConcurrentHashMap<>();
 
     // Coalesces concurrent load() calls for the same island so a world is never loaded twice.
     private final Map<UUID, CompletableFuture<SlimeWorldInstance>> loading = new ConcurrentHashMap<>();
-    // First tick (millis) a loaded world was observed empty; cleared as soon as a player is present.
+    // The same for dimensions entered after their island loaded, by world name.
+    private final Map<String, CompletableFuture<SlimeWorldInstance>> loadingDimensions = new ConcurrentHashMap<>();
+    // First tick (millis) a loaded island was observed empty; cleared as soon as a player is present.
     private final Map<UUID, Long> emptySince = new ConcurrentHashMap<>();
-    // Islands whose row is gone. Their world must never be written back — not by an unload, not by
-    // the idle sweep, not by the shutdown flush, and it must never be loaded again.
+    // Islands whose row is gone. Their worlds must never be written back — not by an unload, not by
+    // the idle sweep, not by the shutdown flush, and they must never be loaded again.
     //
     // Entries are never removed while the server runs. Every attempt so far to release the mark at
     // some "safe" point has reopened the resurrection it prevents: releasing it when the world
@@ -80,10 +106,10 @@ public class WorldService {
     // not re-request a transfer for someone who is already on their way out.
     private final Map<UUID, Long> lastTransferRequest = new ConcurrentHashMap<>();
 
-    // World saves still writing to storage, by island. A load or delete of that island waits for
+    // World saves still writing to storage, by world name. A load or delete of that world waits for
     // it: reading before the write lands would bring back the previous state, and deleting before
     // it would let the write recreate the world.
-    private final Map<UUID, CompletableFuture<Void>> saving = new ConcurrentHashMap<>();
+    private final Map<String, CompletableFuture<Void>> saving = new ConcurrentHashMap<>();
     // Serialising and writing a world takes long enough to stall a tick; it never runs on the main
     // thread. A dedicated pool, because the Bukkit scheduler refuses new tasks during shutdown.
     private final ExecutorService saveExecutor = Executors.newFixedThreadPool(SAVE_THREADS, runnable -> {
@@ -151,24 +177,22 @@ public class WorldService {
         // Snapshots are taken here, on the main thread, then written in parallel: one after another
         // on the main thread, a full server could outlast the stop timeout and lose the rest.
         List<CompletableFuture<Void>> saves = new ArrayList<>(this.saving.values());
-        List<UUID> flushed = new ArrayList<>();
-        for (SlimeWorldInstance instance : loadedWorlds.values()) {
-            UUID uniqueId = UUID.fromString(instance.getName());
-            flushed.add(uniqueId);
-
+        List<UUID> flushed = new ArrayList<>(this.loadedWorlds.keySet());
+        for (UUID uniqueId : flushed) {
             // A world whose island was deleted is skipped: saving it here would write back the row
             // the delete just removed, which is the resurrection the delete path exists to prevent.
             if (this.deleted.contains(uniqueId)) {
                 this.plugin.getSLF4JLogger().info("Skipping the shutdown save of deleted island {}", uniqueId);
                 continue;
             }
-            saves.add(saveAsync(uniqueId, instance.getSerializableCopy()));
+            for (SlimeWorldInstance instance : islandInstances(uniqueId))
+                saves.add(saveAsync(uniqueId, instance.getSerializableCopy()));
         }
 
         try {
             CompletableFuture.allOf(saves.toArray(CompletableFuture[]::new))
                     .get(SHUTDOWN_SAVE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-            this.plugin.getSLF4JLogger().info("Flushed {} island world(s).", flushed.size());
+            this.plugin.getSLF4JLogger().info("Flushed {} island(s).", flushed.size());
         } catch (Exception e) {
             this.plugin.getSLF4JLogger().error("Not every island world was saved before shutdown", e);
         }
@@ -191,9 +215,13 @@ public class WorldService {
         this.saveExecutor.shutdown();
 
         this.loadedWorlds.clear();
+        this.dimensionWorlds.clear();
         this.worldNameToIslandId.clear();
+        this.worldNameToDimension.clear();
+        this.missingDimensions.clear();
         this.emptySince.clear();
         this.loading.clear();
+        this.loadingDimensions.clear();
         this.deleted.clear();
         this.lastTransferRequest.clear();
 
@@ -207,8 +235,9 @@ public class WorldService {
     public CompletableFuture<SlimeWorldInstance> create(UUID uniqueId, IslandBlueprint blueprint) {
         // No save after loading: clone(name, loader) has already written the new world to storage,
         // and a save here ran on the main thread, stalling the tick on every island creation.
+        // A new island has no dimension yet: each is cloned the first time someone enters it.
         return this.createNewWorld(uniqueId, blueprint)
-                .thenCompose(clonedWorld -> this.loadWorld(uniqueId, clonedWorld))
+                .thenCompose(clonedWorld -> this.loadWorld(uniqueId, clonedWorld, Map.of()))
                 .exceptionallyCompose(throwable -> {
                     // Best-effort teardown of whatever got created so a failed creation never leaves an
                     // orphaned slime world (or a half-loaded Bukkit world) behind.
@@ -250,9 +279,9 @@ public class WorldService {
             return inFlight;
         }
 
-        CompletableFuture<SlimeWorld> read = new CompletableFuture<>();
-        // A save of this world still being written (it was just unloaded) must land first.
-        pendingSave(id).whenComplete((ignored, saveError) -> Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+        CompletableFuture<StoredIsland> read = new CompletableFuture<>();
+        // A save of this island still being written (it was just unloaded) must land first.
+        pendingSaves(id).whenComplete((ignored, saveError) -> Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             if (isTombstoned(id)) {
                 this.deleted.add(id);
                 read.completeExceptionally(new IllegalStateException("Island was deleted: " + id));
@@ -265,13 +294,14 @@ public class WorldService {
                         (int) island.spawnZ(),
                         island.spawnYaw()
                 );
-                read.complete(asp.readWorld(this.worldLoader, id.toString(), false, propertyMap));
+                SlimeWorld overworld = asp.readWorld(this.worldLoader, id.toString(), false, propertyMap);
+                read.complete(new StoredIsland(overworld, readDimensions(id)));
             } catch (UnknownWorldException | IOException | CorruptedWorldException | NewerFormatException e) {
                 read.completeExceptionally(e);
             }
         }));
 
-        read.thenCompose(world -> this.loadWorld(id, world))
+        read.thenCompose(stored -> this.loadWorld(id, stored.overworld(), stored.dimensions()))
                 .whenComplete((instance, throwable) -> {
                     this.loading.remove(id);
                     if (throwable != null) {
@@ -284,7 +314,33 @@ public class WorldService {
         return inFlight;
     }
 
-    private CompletableFuture<SlimeWorldInstance> loadWorld(UUID id, SlimeWorld world) {
+    /**
+     * Reads the dimension worlds the island already has, off the main thread. One that cannot be read
+     * is left out and remembered as missing; entering it later tries again.
+     */
+    private Map<String, SlimeWorld> readDimensions(UUID id) {
+        // Whatever a previous, failed load noted is replaced by what this one finds.
+        this.missingDimensions.remove(id);
+        Map<String, SlimeWorld> worlds = new LinkedHashMap<>();
+        if (!this.plugin.dimensions().enabled())
+            return worlds;
+
+        for (IslandDimension dimension : this.plugin.dimensions().all()) {
+            String name = IslandWorlds.worldName(id, dimension.id());
+            try {
+                if (!this.worldLoader.worldExists(name))
+                    continue;
+                worlds.put(dimension.id(), withDimensionProperties(
+                        asp.readWorld(this.worldLoader, name, false, buildPropertyMap(dimension)), dimension));
+            } catch (Exception e) {
+                this.plugin.getSLF4JLogger().error("Failed to read the {} world of island {}; it stays unloaded", dimension.id(), id, e);
+                this.missingDimensions.computeIfAbsent(id, ignored -> ConcurrentHashMap.newKeySet()).add(dimension.id());
+            }
+        }
+        return worlds;
+    }
+
+    private CompletableFuture<SlimeWorldInstance> loadWorld(UUID id, SlimeWorld world, Map<String, SlimeWorld> dimensions) {
         CompletableFuture<SlimeWorldInstance> future = new CompletableFuture<>();
         Bukkit.getScheduler().runTask(plugin, () -> {
             SlimeWorldInstance instance;
@@ -306,6 +362,20 @@ public class WorldService {
                 // Register the loaded world instance
                 this.loadedWorlds.put(id, instance);
                 this.worldNameToIslandId.put(instance.getName(), id);
+                applyWorldRules(instance.getBukkitWorld());
+
+                // Its dimensions come up with it. One that fails is left out rather than failing the
+                // island: the overworld is what players are waiting for.
+                dimensions.forEach((dimension, dimensionWorld) -> {
+                    try {
+                        SlimeWorldInstance dimensionInstance = asp.loadWorld(dimensionWorld, true);
+                        registerDimension(id, dimension, dimensionInstance);
+                        applyWorldRules(dimensionInstance.getBukkitWorld());
+                    } catch (Exception ex) {
+                        this.plugin.getSLF4JLogger().error("Failed to load the {} world of island {}; it stays unloaded", dimension, id, ex);
+                        this.missingDimensions.computeIfAbsent(id, ignored -> ConcurrentHashMap.newKeySet()).add(dimension);
+                    }
+                });
 
                 // Apply environment settings to the world based on the island's settings
                 Island island = this.plugin.islands()
@@ -313,7 +383,6 @@ public class WorldService {
                         .findCachedById(id)
                         .orElseThrow(() -> new IllegalStateException("Island not found for UUID: " + id));
                 IslandSettingsListener.applyEnvironment(island, instance.getBukkitWorld());
-                instance.getBukkitWorld().setGameRule(GameRules.KEEP_INVENTORY, this.plugin.configuration().keepInventory());
 
                 // Record this server as the host. It only succeeds while nobody else holds the island:
                 // a copy that lost that race is dropped before anyone can play on it, or both copies
@@ -325,7 +394,7 @@ public class WorldService {
                                 // Redis is unreachable: nobody else can claim it either, so keep serving it.
                                 plugin.getSLF4JLogger().error("Failed to record this server as host of island {}", id, throwable);
                             else if (!confirmed) {
-                                discard(id, instance);
+                                discard(id);
                                 future.completeExceptionally(new IllegalStateException("Island " + id + " is already hosted by another server"));
                                 return;
                             }
@@ -337,7 +406,9 @@ public class WorldService {
             } catch (Exception ex) {
                 // Roll back the partially-registered world so a post-load failure can't leak a world that
                 // stays resident in Bukkit and the maps while the caller sees a failure.
-                discard(id, instance);
+                discard(id);
+                // Not yet registered when the failure came before its registration.
+                discardWorld(id, instance);
                 future.completeExceptionally(ex);
             }
         });
@@ -345,28 +416,161 @@ public class WorldService {
     }
 
     /**
+     * Loads one of the island's dimensions — cloning it from its source world when the island never
+     * had it — for a player about to enter it. Only on the server hosting the island, and only while
+     * its overworld is loaded: a dimension never outlives it. Coalesced like {@link #load}.
+     */
+    public CompletableFuture<SlimeWorldInstance> loadDimension(Island island, IslandDimension dimension) {
+        UUID id = island.uniqueId();
+        String name = IslandWorlds.worldName(id, dimension.id());
+
+        if (this.deleted.contains(id))
+            return CompletableFuture.failedFuture(new IllegalStateException("Island is being deleted: " + id));
+        if (!this.loadedWorlds.containsKey(id))
+            return CompletableFuture.failedFuture(new IllegalStateException("Island " + id + " is not hosted on this server"));
+
+        SlimeWorldInstance existing = dimensionInstance(id, dimension.id());
+        if (existing != null)
+            return CompletableFuture.completedFuture(existing);
+
+        CompletableFuture<SlimeWorldInstance> inFlight = new CompletableFuture<>();
+        CompletableFuture<SlimeWorldInstance> prior = this.loadingDimensions.putIfAbsent(name, inFlight);
+        if (prior != null)
+            return prior;
+        existing = dimensionInstance(id, dimension.id());
+        if (existing != null) {
+            this.loadingDimensions.remove(name, inFlight);
+            inFlight.complete(existing);
+            return inFlight;
+        }
+
+        CompletableFuture<SlimeWorld> read = new CompletableFuture<>();
+        pendingSave(name).whenComplete((ignored, saveError) -> Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            if (isTombstoned(id)) {
+                this.deleted.add(id);
+                read.completeExceptionally(new IllegalStateException("Island was deleted: " + id));
+                return;
+            }
+            try {
+                SlimePropertyMap propertyMap = buildPropertyMap(dimension);
+                SlimeWorld world;
+                try {
+                    world = asp.readWorld(this.worldLoader, name, false, propertyMap);
+                } catch (UnknownWorldException unknown) {
+                    // First visit: the island gets its own copy of the dimension's source world.
+                    this.plugin.getSLF4JLogger().info("Creating the {} world of island {}", dimension.id(), id);
+                    SlimeWorld source = asp.readWorld(this.sourceLoader, dimension.sourceWorld().replace(".slime", ""), false, propertyMap);
+                    world = source.clone(name, this.worldLoader);
+                }
+                read.complete(withDimensionProperties(world, dimension));
+            } catch (Exception e) {
+                read.completeExceptionally(e);
+            }
+        }));
+
+        read.thenCompose(world -> registerEnteredDimension(island, dimension, world))
+                .whenComplete((instance, throwable) -> {
+                    this.loadingDimensions.remove(name);
+                    if (throwable != null)
+                        inFlight.completeExceptionally(throwable);
+                    else
+                        inFlight.complete(instance);
+                });
+        return inFlight;
+    }
+
+    private CompletableFuture<SlimeWorldInstance> registerEnteredDimension(Island island, IslandDimension dimension, SlimeWorld world) {
+        UUID id = island.uniqueId();
+        CompletableFuture<SlimeWorldInstance> future = new CompletableFuture<>();
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            SlimeWorldInstance instance;
+            try {
+                instance = asp.loadWorld(world, true);
+            } catch (Exception ex) {
+                future.completeExceptionally(ex);
+                return;
+            }
+
+            // The island may have been unloaded or deleted while this world was being read; it
+            // must not stay behind on its own, outside the host claim.
+            if (this.deleted.contains(id) || !this.loadedWorlds.containsKey(id)) {
+                discardWorld(id, instance);
+                future.completeExceptionally(new IllegalStateException("Island " + id + " left this server while its "
+                                                                       + dimension.id() + " world was loading"));
+                return;
+            }
+
+            registerDimension(id, dimension.id(), instance);
+            applyWorldRules(instance.getBukkitWorld());
+            try {
+                new IslandDimensionLoadedEvent(island, dimension, instance.getBukkitWorld()).callEvent();
+            } catch (Exception ex) {
+                this.plugin.getSLF4JLogger().error("A listener failed on the {} world of island {} loading", dimension.id(), id, ex);
+            }
+            future.complete(instance);
+        });
+        return future;
+    }
+
+    /**
+     * Forces the dimension's properties (environment, spawn, difficulty, ...) onto a world read from
+     * storage. ASP lets the properties stored in a world win over the ones it is read with, so a
+     * source world saved as an ordinary world would otherwise become an overworld under a nether's
+     * name; {@code dimensions.yml} is what a dimension is.
+     */
+    private SlimeWorld withDimensionProperties(SlimeWorld world, IslandDimension dimension) {
+        world.getPropertyMap().merge(buildPropertyMap(dimension));
+        return world;
+    }
+
+    private void registerDimension(UUID id, String dimension, SlimeWorldInstance instance) {
+        this.dimensionWorlds.computeIfAbsent(id, ignored -> new ConcurrentHashMap<>()).put(dimension, instance);
+        this.worldNameToIslandId.put(instance.getName(), id);
+        this.worldNameToDimension.put(instance.getName(), dimension);
+        Set<String> missing = this.missingDimensions.get(id);
+        if (missing != null)
+            missing.remove(dimension);
+    }
+
+    private void unregisterDimension(UUID id, String dimension, SlimeWorldInstance instance) {
+        Map<String, SlimeWorldInstance> dimensions = this.dimensionWorlds.get(id);
+        if (dimensions != null) {
+            dimensions.remove(dimension, instance);
+            if (dimensions.isEmpty())
+                this.dimensionWorlds.remove(id, dimensions);
+        }
+        this.worldNameToIslandId.remove(instance.getName());
+        this.worldNameToDimension.remove(instance.getName());
+    }
+
+    private void applyWorldRules(World world) {
+        world.setGameRule(GameRules.KEEP_INVENTORY, this.plugin.configuration().keepInventory());
+    }
+
+    /**
      * Writes a world snapshot to storage on {@link #saveExecutor}, unless its island has been
      * deleted by then. Tracked in {@link #saving} until it lands.
      */
     private CompletableFuture<Void> saveAsync(UUID id, SlimeWorld snapshot) {
+        String name = snapshot.getName();
         CompletableFuture<Void> save = CompletableFuture.runAsync(() -> {
             if (!this.deleted.contains(id) && isTombstoned(id))
                 this.deleted.add(id);
             if (this.deleted.contains(id)) {
-                this.plugin.getSLF4JLogger().info("Skipping the save of deleted island {}", id);
+                this.plugin.getSLF4JLogger().info("Skipping the save of deleted island {} ({})", id, name);
                 return;
             }
             try {
                 this.asp.saveWorld(snapshot);
             } catch (IOException e) {
-                throw new CompletionException("Failed to save world for island " + id, e);
+                throw new CompletionException("Failed to save world " + name + " of island " + id, e);
             }
         }, this.saveExecutor);
-        this.saving.put(id, save);
+        this.saving.put(name, save);
         save.whenComplete((ignored, throwable) -> {
-            this.saving.remove(id, save);
+            this.saving.remove(name, save);
             if (throwable != null)
-                this.plugin.getSLF4JLogger().error("Failed to save the world of island {}", id, throwable);
+                this.plugin.getSLF4JLogger().error("Failed to save the world {} of island {}", name, id, throwable);
         });
         return save;
     }
@@ -384,10 +588,19 @@ public class WorldService {
         }
     }
 
-    /** The save of {@code id} still being written, as a future that never fails; done when there is none. */
-    private CompletableFuture<Void> pendingSave(UUID id) {
-        CompletableFuture<Void> save = this.saving.get(id);
+    /** The save of one world still being written, as a future that never fails; done when there is none. */
+    private CompletableFuture<Void> pendingSave(String worldName) {
+        CompletableFuture<Void> save = this.saving.get(worldName);
         return save == null ? CompletableFuture.completedFuture(null) : save.exceptionally(ignored -> null);
+    }
+
+    /** Every save of the island's worlds still being written, as a future that never fails. */
+    private CompletableFuture<Void> pendingSaves(UUID id) {
+        CompletableFuture<?>[] saves = this.saving.entrySet().stream()
+                .filter(entry -> IslandWorlds.belongsTo(entry.getKey(), id))
+                .map(entry -> entry.getValue().exceptionally(ignored -> null))
+                .toArray(CompletableFuture[]::new);
+        return CompletableFuture.allOf(saves);
     }
 
     private void releaseLoadingClaim(UUID id) {
@@ -399,14 +612,28 @@ public class WorldService {
                 });
     }
 
-    /** Unregisters and unloads, without saving, a world that must not be kept. Main thread only. */
-    private void discard(UUID id, SlimeWorldInstance instance) {
-        this.loadedWorlds.remove(id);
+    /** Unregisters and unloads, without saving, every world of an island that must not be kept. Main thread only. */
+    private void discard(UUID id) {
+        SlimeWorldInstance overworld = this.loadedWorlds.remove(id);
+        Map<String, SlimeWorldInstance> dimensions = this.dimensionWorlds.remove(id);
+        if (dimensions != null)
+            dimensions.forEach((dimension, instance) -> {
+                this.worldNameToDimension.remove(instance.getName());
+                discardWorld(id, instance);
+            });
+        if (overworld != null)
+            discardWorld(id, overworld);
+        this.missingDimensions.remove(id);
+    }
+
+    /** Unloads one world without saving it. Main thread only. */
+    private void discardWorld(UUID id, SlimeWorldInstance instance) {
         this.worldNameToIslandId.remove(instance.getName());
         try {
-            Bukkit.unloadWorld(instance.getBukkitWorld(), false);
+            if (Bukkit.getWorld(instance.getName()) != null)
+                Bukkit.unloadWorld(instance.getBukkitWorld(), false);
         } catch (Exception unloadError) {
-            this.plugin.getSLF4JLogger().error("Failed to roll back partially loaded world for island {}", id, unloadError);
+            this.plugin.getSLF4JLogger().error("Failed to roll back partially loaded world {} of island {}", instance.getName(), id, unloadError);
         }
     }
 
@@ -431,6 +658,16 @@ public class WorldService {
     }
 
     private SlimePropertyMap buildPropertyMap(int x, int y, int z, float yaw) {
+        return buildPropertyMap(x, y, z, yaw, "normal", "minecraft:plains");
+    }
+
+    private SlimePropertyMap buildPropertyMap(IslandDimension dimension) {
+        MinecraftLocation spawn = dimension.spawnLocation();
+        return buildPropertyMap((int) spawn.x(), (int) spawn.y(), (int) spawn.z(), spawn.yaw(),
+                dimension.slimeEnvironment(), dimension.defaultBiome());
+    }
+
+    private SlimePropertyMap buildPropertyMap(int x, int y, int z, float yaw, String environment, String biome) {
         SlimePropertyMap propertyMap = new SlimePropertyMap();
         propertyMap.setValue(SlimeProperties.SPAWN_X, x);
         propertyMap.setValue(SlimeProperties.SPAWN_Y, y);
@@ -442,9 +679,9 @@ public class WorldService {
         propertyMap.setValue(SlimeProperties.ALLOW_ANIMALS, true);
         propertyMap.setValue(SlimeProperties.DRAGON_BATTLE, false);
         propertyMap.setValue(SlimeProperties.PVP, false);
-        propertyMap.setValue(SlimeProperties.ENVIRONMENT, "NORMAL");
+        propertyMap.setValue(SlimeProperties.ENVIRONMENT, environment);
         propertyMap.setValue(SlimeProperties.WORLD_TYPE, "DEFAULT");
-        propertyMap.setValue(SlimeProperties.DEFAULT_BIOME, "minecraft:plains");
+        propertyMap.setValue(SlimeProperties.DEFAULT_BIOME, biome);
         propertyMap.setValue(SlimeProperties.SAVE_BLOCK_TICKS, false);
         propertyMap.setValue(SlimeProperties.SAVE_FLUID_TICKS, false);
         propertyMap.setValue(SlimeProperties.SAVE_POI, false);
@@ -458,9 +695,9 @@ public class WorldService {
     }
 
     /**
-     * Unloads an island world from this server. When {@code save} is {@code false} the world is dropped
-     * without persisting — used by the delete path so a world can't be re-written back to MySQL after its
-     * row has been removed.
+     * Unloads an island's worlds from this server, its dimensions first. When {@code save} is
+     * {@code false} they are dropped without persisting — used by the delete path so a world can't be
+     * re-written back to MySQL after its row has been removed.
      */
     public CompletableFuture<Void> unload(UUID uniqueId, boolean save) {
         CompletableFuture<Void> future = new CompletableFuture<>();
@@ -468,10 +705,12 @@ public class WorldService {
             this.emptySince.remove(uniqueId);
 
             World bukkitWorld = Bukkit.getWorld(uniqueId.toString());
-            if (bukkitWorld == null) {
+            Map<String, SlimeWorldInstance> dimensions = Map.copyOf(this.dimensionWorlds.getOrDefault(uniqueId, Map.of()));
+            if (bukkitWorld == null && dimensions.isEmpty()) {
                 // Not loaded on this server; drop any stale registrations just in case.
                 this.loadedWorlds.remove(uniqueId);
                 this.worldNameToIslandId.remove(uniqueId.toString());
+                this.missingDimensions.remove(uniqueId);
                 future.complete(null);
                 return;
             }
@@ -483,31 +722,64 @@ public class WorldService {
             // Bukkit refuses to unload a world that still holds players, which is the normal case for
             // a disband (typed while standing on the island). Move them out first, then send them on
             // to the fallback group — the local hop is what actually frees the world.
-            evacuate(bukkitWorld);
+            List<World> worlds = new ArrayList<>();
+            dimensions.values().forEach(instance -> worlds.add(instance.getBukkitWorld()));
+            if (bukkitWorld != null)
+                worlds.add(bukkitWorld);
+            worlds.forEach(this::evacuate);
+            // Checked before anything is unloaded: stopping half-way would leave a dimension
+            // behind an unloaded overworld, or the reverse.
+            if (worlds.stream().anyMatch(world -> !world.getPlayers().isEmpty())) {
+                future.completeExceptionally(new IllegalStateException("Players are still on island " + uniqueId + "; not unloading it"));
+                return;
+            }
 
             // Snapshot now, write later: serialising and writing the world on the main thread stalls
             // the tick. Bukkit itself is told not to save.
-            SlimeWorldInstance instance = this.loadedWorlds.get(uniqueId);
-            SlimeWorld snapshot = effectiveSave && instance != null ? instance.getSerializableCopy() : null;
+            List<CompletableFuture<Void>> saves = new ArrayList<>();
+            for (Map.Entry<String, SlimeWorldInstance> entry : dimensions.entrySet()) {
+                SlimeWorldInstance instance = entry.getValue();
+                SlimeWorld snapshot = effectiveSave ? instance.getSerializableCopy() : null;
+                if (!Bukkit.unloadWorld(instance.getBukkitWorld(), false)) {
+                    // The overworld stays, so the island stays hosted here; what was already
+                    // unloaded is saved below and comes back the next time someone enters it.
+                    this.missingDimensions.computeIfAbsent(uniqueId, ignored -> ConcurrentHashMap.newKeySet())
+                            .addAll(dimensions.keySet().stream().filter(dimension -> !this.dimensionWorlds
+                                    .getOrDefault(uniqueId, Map.of()).containsKey(dimension)).toList());
+                    future.completeExceptionally(new IllegalStateException("Bukkit refused to unload the " + entry.getKey()
+                                                                           + " world of island " + uniqueId));
+                    return;
+                }
+                unregisterDimension(uniqueId, entry.getKey(), instance);
+                if (snapshot != null)
+                    saves.add(saveAsync(uniqueId, snapshot));
+            }
 
-            // Unload world
-            boolean success = Bukkit.unloadWorld(bukkitWorld, false);
-            if (!success) {
-                future.completeExceptionally(new IllegalStateException("Bukkit refused to unload world for island with UUID: " + uniqueId));
-                return;
+            if (bukkitWorld != null) {
+                SlimeWorldInstance instance = this.loadedWorlds.get(uniqueId);
+                SlimeWorld snapshot = effectiveSave && instance != null ? instance.getSerializableCopy() : null;
+
+                // Unload world
+                if (!Bukkit.unloadWorld(bukkitWorld, false)) {
+                    if (!dimensions.isEmpty())
+                        this.missingDimensions.computeIfAbsent(uniqueId, ignored -> ConcurrentHashMap.newKeySet()).addAll(dimensions.keySet());
+                    future.completeExceptionally(new IllegalStateException("Bukkit refused to unload world for island with UUID: " + uniqueId));
+                    return;
+                }
+                if (snapshot != null)
+                    saves.add(saveAsync(uniqueId, snapshot));
             }
 
             // Remove from loaded worlds and world name mapping
             this.loadedWorlds.remove(uniqueId);
             this.worldNameToIslandId.remove(uniqueId.toString());
+            this.missingDimensions.remove(uniqueId);
 
-            // The island is only handed back once its save has landed: another server picking it
+            // The island is only handed back once its saves have landed: another server picking it
             // up earlier would load the state from before this session.
-            CompletableFuture<Void> saved = snapshot == null
-                    ? CompletableFuture.completedFuture(null)
-                    : saveAsync(uniqueId, snapshot);
             this.plugin.servers().refreshHeartbeat();
-            saved.handle((ignored, saveError) -> this.plugin.servers()
+            CompletableFuture.allOf(saves.toArray(CompletableFuture[]::new))
+                    .handle((ignored, saveError) -> this.plugin.servers()
                             .releaseHost(uniqueId, AstralPaperAPI.serverInformation().uniqueId()))
                     .thenCompose(release -> release)
                     .exceptionally(throwable -> {
@@ -520,9 +792,9 @@ public class WorldService {
                     .repository()
                     .findCachedById(uniqueId)
                     .orElse(null);
-            if (island != null)
+            if (island != null && bukkitWorld != null)
                 new IslandWorldUnloadedEvent(island, bukkitWorld).callEvent();
-            else
+            else if (island == null)
                 this.plugin.getSLF4JLogger().warn("Island not found for UUID: {} when unloading world.", uniqueId);
 
 
@@ -588,17 +860,42 @@ public class WorldService {
                 })
                 .thenCompose(ignored -> this.plugin.servers().clearHost(uniqueId))
                 // A save still being written would recreate the world right after it is deleted.
-                .thenCompose(ignored -> pendingSave(uniqueId))
-                .thenRunAsync(() -> {
-                    try {
-                        this.worldLoader.deleteWorld(uniqueId.toString());
-                    } catch (UnknownWorldException e) {
-                        // Nothing persisted (e.g. a creation that failed before the clone) — treat as deleted.
-                        this.plugin.getSLF4JLogger().debug("World for island {} was not present in storage on delete", uniqueId);
-                    } catch (Exception e) {
-                        throw new CompletionException("Failed to delete world for island with UUID: " + uniqueId, e);
-                    }
-                }, this.saveExecutor); // JDBC: not on the shared ForkJoin pool
+                .thenCompose(ignored -> pendingSaves(uniqueId))
+                .thenRunAsync(() -> deleteStoredWorlds(uniqueId), this.saveExecutor); // JDBC: not on the shared ForkJoin pool
+    }
+
+    /**
+     * Deletes every stored world of the island: its overworld and each dimension found in storage
+     * — not only the ones configured now, so a dimension since removed from the configuration is
+     * not orphaned. Off the main thread.
+     */
+    private void deleteStoredWorlds(UUID uniqueId) {
+        List<String> names = new ArrayList<>();
+        names.add(uniqueId.toString());
+        try {
+            this.worldLoader.listWorlds().stream()
+                    .filter(name -> IslandWorlds.belongsTo(name, uniqueId) && !name.equals(uniqueId.toString()))
+                    .forEach(names::add);
+        } catch (IOException e) {
+            // Fall back on the configured dimensions; anything else is left for a manual cleanup.
+            this.plugin.getSLF4JLogger().error("Failed to list the stored worlds of island {}; deleting its configured dimensions only", uniqueId, e);
+            this.plugin.dimensions().all().forEach(dimension -> names.add(IslandWorlds.worldName(uniqueId, dimension.id())));
+        }
+
+        Exception failure = null;
+        for (String name : names) {
+            try {
+                this.worldLoader.deleteWorld(name);
+            } catch (UnknownWorldException e) {
+                // Nothing persisted (e.g. a creation that failed before the clone) — treat as deleted.
+                this.plugin.getSLF4JLogger().debug("World {} of island {} was not present in storage on delete", name, uniqueId);
+            } catch (Exception e) {
+                this.plugin.getSLF4JLogger().error("Failed to delete world {} of island {}", name, uniqueId, e);
+                failure = e;
+            }
+        }
+        if (failure != null)
+            throw new CompletionException("Failed to delete every world of island with UUID: " + uniqueId, failure);
     }
 
     /**
@@ -661,15 +958,16 @@ public class WorldService {
     }
 
     /**
-     * Runs on the main thread every {@link #IDLE_SWEEP_INTERVAL_TICKS} ticks: unloads any island world that
-     * has had no players for at least the configured grace period, freeing memory and the server's island
-     * slot. A world that regains a player before the grace elapses is spared and its timer reset.
+     * Runs on the main thread every {@link #IDLE_SWEEP_INTERVAL_TICKS} ticks: unloads any island that
+     * has had no players in any of its worlds for at least the configured grace period, freeing memory
+     * and the server's island slot. An island that regains a player before the grace elapses is spared
+     * and its timer reset.
      */
     private void sweepIdleWorlds() {
         // A deleted island whose unload was refused earlier (players still inside) is retried on
         // every sweep, regardless of the idle settings — it is not idleness that must free it.
         for (UUID id : List.copyOf(this.deleted)) {
-            if (!this.loadedWorlds.containsKey(id))
+            if (!this.loadedWorlds.containsKey(id) && !this.dimensionWorlds.containsKey(id))
                 continue;
             this.plugin.getSLF4JLogger().debug("Retrying the unload of deleted island world {}", id);
             this.unload(id, false).exceptionally(throwable -> {
@@ -690,13 +988,11 @@ public class WorldService {
         long now = System.currentTimeMillis();
         long graceMillis = idleSeconds * 1000L;
 
-        for (Map.Entry<UUID, SlimeWorldInstance> entry : this.loadedWorlds.entrySet()) {
-            UUID id = entry.getKey();
+        for (UUID id : List.copyOf(this.loadedWorlds.keySet())) {
             if (this.deleted.contains(id))
                 continue; // handled above
 
-            World world = entry.getValue().getBukkitWorld();
-            if (world == null || !world.getPlayers().isEmpty()) {
+            if (!isEmpty(id)) {
                 this.emptySince.remove(id);
                 continue;
             }
@@ -726,8 +1022,18 @@ public class WorldService {
         }
     }
 
+    /** Whether nobody is in any of the island's worlds loaded here. Main thread. */
+    private boolean isEmpty(UUID id) {
+        for (SlimeWorldInstance instance : islandInstances(id)) {
+            World world = instance.getBukkitWorld();
+            if (world != null && !world.getPlayers().isEmpty())
+                return false;
+        }
+        return true;
+    }
+
     /**
-     * Unloads an idle world, unless a player turned up after the sweep looked or is being sent
+     * Unloads an idle island, unless a player turned up after the sweep looked or is being sent
      * here right now — the host mapping still points at this server, so another server may be
      * transferring someone in, and unloading under them would leave them nowhere to land.
      */
@@ -736,16 +1042,15 @@ public class WorldService {
                 .isArriving(id)
                 .exceptionally(throwable -> false)
                 .thenAccept(arriving -> Bukkit.getScheduler().runTask(this.plugin, () -> {
-                    SlimeWorldInstance instance = this.loadedWorlds.get(id);
-                    if (instance == null || this.deleted.contains(id))
+                    if (!this.loadedWorlds.containsKey(id) || this.deleted.contains(id))
                         return;
-                    if (arriving || !instance.getBukkitWorld().getPlayers().isEmpty()) {
+                    if (arriving || !isEmpty(id)) {
                         this.emptySince.remove(id); // start the idle clock over
                         return;
                     }
 
                     this.emptySince.remove(id);
-                    this.plugin.getSLF4JLogger().info("Unloading idle island world {} (empty for {}s)", id, idleMillis / 1000);
+                    this.plugin.getSLF4JLogger().info("Unloading idle island {} (empty for {}s)", id, idleMillis / 1000);
                     this.unload(id).exceptionally(throwable -> {
                         this.plugin.getSLF4JLogger().error("Failed to unload idle island world {}", id, throwable);
                         return null;
@@ -767,10 +1072,69 @@ public class WorldService {
                 .findCachedById(uniqueId);
     }
 
+    /** The dimension this island world is; empty for an island's overworld, and for any other world. */
+    public Optional<String> findDimension(World world) {
+        return Optional.ofNullable(this.worldNameToDimension.get(world.getName()));
+    }
+
+    /** Whether {@code world} is one of this island's worlds — overworld or dimension — loaded here. */
+    public boolean isIslandWorld(World world, UUID islandId) {
+        return islandId.equals(this.worldNameToIslandId.get(world.getName()));
+    }
+
+    /** The island's overworld, when hosted here. */
     public Optional<SlimeWorldInstance> findByIslandId(UUID uniqueId) {
         return Optional.ofNullable(loadedWorlds.get(uniqueId));
     }
 
+    /** One of the island's dimension worlds, when loaded here. */
+    public Optional<World> findDimensionWorld(UUID islandId, String dimension) {
+        SlimeWorldInstance instance = dimensionInstance(islandId, dimension);
+        return instance == null ? Optional.empty() : Optional.ofNullable(instance.getBukkitWorld());
+    }
+
+    private SlimeWorldInstance dimensionInstance(UUID islandId, String dimension) {
+        Map<String, SlimeWorldInstance> dimensions = this.dimensionWorlds.get(islandId);
+        return dimensions == null ? null : dimensions.get(dimension);
+    }
+
+    /** The island's dimension worlds loaded here, by dimension id. */
+    @Unmodifiable
+    public Map<String, World> dimensionWorlds(UUID islandId) {
+        Map<String, World> worlds = new LinkedHashMap<>();
+        this.dimensionWorlds.getOrDefault(islandId, Map.of())
+                .forEach((dimension, instance) -> worlds.put(dimension, instance.getBukkitWorld()));
+        return worlds;
+    }
+
+    /** Every world of the island loaded here, its overworld first. */
+    @Unmodifiable
+    public List<SlimeWorldInstance> islandInstances(UUID islandId) {
+        List<SlimeWorldInstance> instances = new ArrayList<>();
+        SlimeWorldInstance overworld = this.loadedWorlds.get(islandId);
+        if (overworld == null)
+            return instances;
+        instances.add(overworld);
+        instances.addAll(this.dimensionWorlds.getOrDefault(islandId, Map.of()).values());
+        return instances;
+    }
+
+    /** Every world of the island loaded here, its overworld first. */
+    @Unmodifiable
+    public List<World> islandWorlds(UUID islandId) {
+        return islandInstances(islandId).stream().map(SlimeWorldInstance::getBukkitWorld).toList();
+    }
+
+    /**
+     * Whether every world the island has in storage is loaded here. When one is not, its blocks are
+     * out of sight and a level scan would drop them from the score.
+     */
+    public boolean isFullyLoaded(UUID islandId) {
+        Set<String> missing = this.missingDimensions.get(islandId);
+        return this.loadedWorlds.containsKey(islandId) && (missing == null || missing.isEmpty());
+    }
+
+    /** The overworlds hosted here, one per island. */
     @Unmodifiable
     public Map<UUID, SlimeWorldInstance> getLoadedWorlds() {
         return Map.copyOf(loadedWorlds);
@@ -780,5 +1144,9 @@ public class WorldService {
         return throwable instanceof CompletionException && throwable.getCause() != null
                 ? throwable.getCause()
                 : throwable;
+    }
+
+    /** An island's worlds as read from storage, before they are loaded. */
+    private record StoredIsland(SlimeWorld overworld, Map<String, SlimeWorld> dimensions) {
     }
 }

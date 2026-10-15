@@ -1,7 +1,9 @@
 package com.astralrealms.skyblock.command;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
 import org.bukkit.command.CommandSender;
@@ -16,6 +18,7 @@ import com.astralrealms.core.service.impl.TeleportationService;
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.configuration.ASMessages;
 import com.astralrealms.skyblock.model.IslandBlueprint;
+import com.astralrealms.skyblock.model.dimension.IslandDimension;
 import com.astralrealms.skyblock.model.island.Island;
 
 import co.aikar.commands.BaseCommand;
@@ -113,6 +116,57 @@ public class SkyblockCommand extends BaseCommand {
                 })
                 .exceptionally(throwable -> {
                     this.plugin.getSLF4JLogger().error("Failed to send {} to island {}", player.getName(), island.uniqueId(), throwable);
+                    ASMessages.UNEXPECTED_ERROR.message(player, placeholders);
+                    return null;
+                });
+    }
+
+    @Subcommand("dimension|dim")
+    @Description("Teleports you to a dimension of an island")
+    @CommandCompletion("@islandDimensions @islands")
+    @Syntax("<dimension> [island]")
+    public void onDimension(Player player, String dimensionId, Island island) {
+        PlaceholderContainer placeholders = AstralPaperAPI.createPlaceholderContainer(player)
+                .registerPlaceholder(island)
+                .registerDirect("dimension", dimensionId);
+        if (!this.plugin.dimensions().enabled()) {
+            ASMessages.DIMENSIONS_DISABLED.message(player, placeholders);
+            return;
+        }
+        IslandDimension dimension = this.plugin.dimensions().findById(dimensionId.toLowerCase(Locale.ROOT)).orElse(null);
+        if (dimension == null) {
+            ASMessages.DIMENSION_UNKNOWN.message(player, placeholders);
+            return;
+        }
+        placeholders.registerDirect("dimension_name", dimension.displayName());
+
+        // The same gates as /is go, then the dimension's own: refused here rather than on arrival,
+        // after a world load and possibly a server switch.
+        ASMessages denial = null;
+        if (this.plugin.bans().isBanned(island.uniqueId(), player.getUniqueId()))
+            denial = ASMessages.BANNED_FROM_ISLAND;
+        else if (island.locked() && !this.plugin.islands().mayEnterClosed(island, player))
+            denial = ASMessages.ISLAND_IS_CLOSED;
+        else
+            denial = this.plugin.dimensions().denial(player, island, dimension);
+        if (denial != null) {
+            denial.message(player, placeholders);
+            return;
+        }
+
+        this.plugin.islands()
+                .dimensionLocation(island, dimension)
+                .thenCompose(location -> {
+                    if (location == null) {
+                        ASMessages.DIMENSION_NOT_HOSTED.message(player, placeholders);
+                        return CompletableFuture.completedFuture(null);
+                    }
+                    return AstralPaperAPI.getService(TeleportationService.class)
+                            .orElseThrow(() -> new IllegalStateException("TeleportationService not found"))
+                            .teleport(player.getUniqueId(), location);
+                })
+                .exceptionally(throwable -> {
+                    this.plugin.getSLF4JLogger().error("Failed to send {} to the {} of island {}", player.getName(), dimension.id(), island.uniqueId(), throwable);
                     ASMessages.UNEXPECTED_ERROR.message(player, placeholders);
                     return null;
                 });

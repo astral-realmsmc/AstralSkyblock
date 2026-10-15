@@ -145,7 +145,7 @@ public class IslandChangeListener implements Listener {
         if (islandId == null)
             return;
         for (Block block : blocks)
-            this.plugin.levels().markDirty(islandId, block.getX() >> 4, block.getZ() >> 4);
+            this.plugin.levels().markDirty(islandId, world.getName(), block.getX() >> 4, block.getZ() >> 4);
     }
 
     private void mark(Block block) {
@@ -159,6 +159,6 @@ public class IslandChangeListener implements Listener {
     private void mark(World world, int blockX, int blockZ) {
         this.plugin.worlds()
                 .findIslandIdByWorld(world)
-                .ifPresent(islandId -> this.plugin.levels().markDirty(islandId, blockX >> 4, blockZ >> 4));
+                .ifPresent(islandId -> this.plugin.levels().markDirty(islandId, world.getName(), blockX >> 4, blockZ >> 4));
     }
 }

@@ -33,6 +33,14 @@ cannot-expel-insider: "%target_name% fait partie de l'île : retirez-le des memb
 cannot-expel-bypass: "%target_name% ne peut pas être expulsé de cette île."
 player-not-on-island: "%target_name% ne se trouve pas sur %island_name%."
 
+# Dimensions
+dimensions-disabled: "Les dimensions ne sont pas disponibles."
+dimension-unknown: "%dimension% n'est pas une dimension disponible."
+dimension-locked: "%island_name% n'a pas encore débloqué la dimension %dimension_name%."
+dimension-no-permission: "Vous n'avez pas la permission d'accéder à la dimension %dimension_name%."
+dimension-access-lost: "%island_name% n'a plus accès à la dimension %dimension_name% : retour sur l'île."
+dimension-not-hosted: "La dimension %dimension_name% de %island_name% n'a pas pu être chargée. Réessayez dans un instant."
+
 # Biome
 biome-unknown: "%biome% n'est pas un biome disponible."
 biome-updating: "Changement du biome de %island_name% en %biome%..."

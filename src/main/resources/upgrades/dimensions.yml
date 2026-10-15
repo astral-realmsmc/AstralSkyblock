@@ -1,0 +1,26 @@
+# Dimensions an island may open (dimensions.yml). `key` names the dimension a level unlocks; an
+# island has every dimension named at or below its level, so they unlock in this order. `value` is
+# informational only. Entering a dimension also needs its permission (skyblock.dimension.<id>).
+type: DIMENSIONS
+name: "Dimensions"
+icon:
+  material: OBSIDIAN
+levels:
+  0:
+    level: 0
+    price: 0
+    value: 0
+  1:
+    level: 1
+    price: 50000
+    currency: "default"
+    currency-display: "pièces"
+    value: 1
+    key: "nether"
+  2:
+    level: 2
+    price: 250000
+    currency: "default"
+    currency-display: "pièces"
+    value: 2
+    key: "end"

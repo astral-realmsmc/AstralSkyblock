@@ -47,6 +47,11 @@ import com.infernalsuite.asp.api.world.SlimeWorldInstance;
  * chunk; the periodic rescan afterwards reads only the dirty ones and adds the rest from cache.
  * Loading a world scans nothing: the stored value stands until something changes.
  *
+ * <p>An island is scored across all its worlds: its overworld and every dimension it has. Each world
+ * keeps its own {@link IslandScore}, since they share chunk coordinates, and they are scanned one
+ * after the other. A scan is refused while one of the island's dimensions is not loaded here, rather
+ * than dropping that dimension's blocks from the score.
+ *
  * <p>Chunks are captured on the main thread within a per-tick time budget and summed off it, so a
  * large island costs a slice of several ticks instead of a freeze. Only the server hosting the
  * island world can scan it, which is also the server that runs the periodic rescan.
@@ -70,8 +75,8 @@ public class LevelService {
     private final Executor asyncExecutor = this::runAsync;
     // islandId -> epoch millis of its last completed full scan, for the /is calc cooldown.
     private final Map<UUID, Long> lastScan = new ConcurrentHashMap<>();
-    // Scoring state of the islands hosted here; dropped when their world unloads.
-    private final Map<UUID, IslandScore> scores = new ConcurrentHashMap<>();
+    // Scoring state of the islands hosted here, by island then world name; dropped when they unload.
+    private final Map<UUID, Map<String, IslandScore>> scores = new ConcurrentHashMap<>();
     private volatile List<Island> top = List.of();
     // Whether a rescan pass is walking the hosted islands, so the timer cannot start a second one.
     private final AtomicBoolean rescanning = new AtomicBoolean();
@@ -105,9 +110,9 @@ public class LevelService {
         Bukkit.getScheduler().runTaskAsynchronously(this.plugin, task);
     }
 
-    /** Notes that blocks of an island changed in a chunk, so the next periodic pass rescans it. */
-    public void markDirty(UUID islandId, int chunkX, int chunkZ) {
-        score(islandId).markDirty(chunkKey(chunkX, chunkZ));
+    /** Notes that blocks of an island changed in a chunk of one of its worlds, so the next periodic pass rescans it. */
+    public void markDirty(UUID islandId, String world, int chunkX, int chunkZ) {
+        score(islandId, world).markDirty(chunkKey(chunkX, chunkZ));
     }
 
     /** Forgets an island's scan bookkeeping. Called when its world unloads here. */
@@ -116,8 +121,14 @@ public class LevelService {
         this.scores.remove(islandId);
     }
 
-    private IslandScore score(UUID islandId) {
-        return this.scores.computeIfAbsent(islandId, ignored -> new IslandScore());
+    private IslandScore score(UUID islandId, String world) {
+        return this.scores.computeIfAbsent(islandId, ignored -> new ConcurrentHashMap<>())
+                .computeIfAbsent(world, ignored -> new IslandScore());
+    }
+
+    private boolean isDirty(UUID islandId) {
+        Map<String, IslandScore> worlds = this.scores.get(islandId);
+        return worlds != null && worlds.values().stream().anyMatch(IslandScore::isDirty);
     }
 
     /**
@@ -134,17 +145,57 @@ public class LevelService {
      * the last scan. Runs a full scan anyway when there is no baseline to add a partial one to.
      */
     private CompletableFuture<Long> scan(Island island, boolean full) {
-        SlimeWorldInstance instance = this.plugin.worlds().findByIslandId(island.uniqueId()).orElse(null);
-        World world = instance == null ? null : instance.getBukkitWorld();
+        UUID islandId = island.uniqueId();
+        List<SlimeWorldInstance> instances = this.plugin.worlds().islandInstances(islandId);
+        if (instances.isEmpty() || !this.plugin.worlds().isFullyLoaded(islandId))
+            return CompletableFuture.failedFuture(new NotHostedException(islandId));
+        if (!this.scanning.add(islandId))
+            return CompletableFuture.failedFuture(new ScanInProgressException(islandId));
+
+        // Hoppers seen by every world's scan, in case the island's hoppers were never counted.
+        Map<String, Map<Long, Integer>> hoppers = new HashMap<>();
+        AtomicBoolean everyWorldFull = new AtomicBoolean(true);
+        CompletableFuture<Void> chain = CompletableFuture.completedFuture(null);
+        for (SlimeWorldInstance instance : instances)
+            chain = chain.thenCompose(ignored -> scanWorld(island, instance, full, hoppers, everyWorldFull));
+
+        return chain
+                .thenApply(ignored -> {
+                    // Only when the load-time hopper census failed: a full scan has seen every chunk.
+                    // Runs on the main thread, where the last world's scan completed.
+                    if (everyWorldFull.get() && !this.plugin.blockLimits().isCounted(islandId))
+                        this.plugin.blockLimits().seed(islandId, hoppers);
+                    return total(islandId);
+                })
+                .thenCompose(value -> persist(island, value).thenApply(ignored -> value))
+                .whenComplete((value, throwable) -> {
+                    this.scanning.remove(islandId);
+                    if (throwable == null && full)
+                        this.lastScan.put(islandId, System.currentTimeMillis());
+                });
+    }
+
+    /** The island's value: the sum of its worlds' scanned chunks. */
+    private long total(UUID islandId) {
+        long total = 0;
+        for (IslandScore score : this.scores.getOrDefault(islandId, Map.of()).values())
+            total += score.total();
+        return total;
+    }
+
+    /** Scans one of the island's worlds, completing once its score is updated. */
+    private CompletableFuture<Void> scanWorld(Island island, SlimeWorldInstance instance, boolean full,
+                                              Map<String, Map<Long, Integer>> hoppers, AtomicBoolean everyWorldFull) {
+        World world = instance.getBukkitWorld();
         if (world == null)
             return CompletableFuture.failedFuture(new NotHostedException(island.uniqueId()));
-        if (!this.scanning.add(island.uniqueId()))
-            return CompletableFuture.failedFuture(new ScanInProgressException(island.uniqueId()));
 
         Scan scan;
         try {
-            IslandScore score = score(island.uniqueId());
+            IslandScore score = score(island.uniqueId(), world.getName());
             boolean fullScan = full || !score.hasBaseline();
+            if (!fullScan)
+                everyWorldFull.set(false);
             BorderBox border = borderBox(island);
 
             Set<Long> candidates = fullScan ? existingChunks(instance, score) : score.dirtyChunks();
@@ -156,23 +207,15 @@ public class LevelService {
             // island look changed forever.
             score.discardDirty(outside);
 
-            scan = new Scan(island.uniqueId(), world, score, chunks, fullScan);
+            scan = new Scan(island.uniqueId(), world, score, chunks, fullScan,
+                    hoppers.computeIfAbsent(world.getName(), ignored -> new HashMap<>()));
         } catch (Exception exception) {
-            // Nothing has been chained yet, so the slot has to be released here or the island can
-            // never be scanned again for the rest of this server's life.
-            this.scanning.remove(island.uniqueId());
             return CompletableFuture.failedFuture(exception);
         }
 
         CompletableFuture<Long> result = new CompletableFuture<>();
         resume(result, () -> processBatch(scan, result));
-        return result
-                .thenCompose(value -> persist(island, value).thenApply(ignored -> value))
-                .whenComplete((value, throwable) -> {
-                    this.scanning.remove(island.uniqueId());
-                    if (throwable == null && scan.full)
-                        this.lastScan.put(island.uniqueId(), System.currentTimeMillis());
-                });
+        return result.thenApply(ignored -> null);
     }
 
     /**
@@ -191,11 +234,8 @@ public class LevelService {
 
         if (scan.cursor >= scan.chunks.size()) {
             scan.score.apply(scan.values, scan.full);
-            this.plugin.getSLF4JLogger().debug("Scanned island {}: {} chunk(s), full = {}, {} ms",
-                    scan.islandId, scan.chunks.size(), scan.full, (System.nanoTime() - scan.startedAt) / 1_000_000);
-            // Only when the load-time hopper census failed: a full scan has seen every chunk.
-            if (scan.full && !this.plugin.blockLimits().isCounted(scan.islandId))
-                this.plugin.blockLimits().seed(scan.islandId, scan.hoppers);
+            this.plugin.getSLF4JLogger().debug("Scanned world {} of island {}: {} chunk(s), full = {}, {} ms",
+                    scan.world.getName(), scan.islandId, scan.chunks.size(), scan.full, (System.nanoTime() - scan.startedAt) / 1_000_000);
             result.complete(scan.score.total());
             return;
         }
@@ -269,7 +309,7 @@ public class LevelService {
         scan.score.captured(key);
         if (chunk == null) {
             scan.hoppers.remove(key);
-            this.plugin.blockLimits().reconcile(scan.islandId, chunkX(key), chunkZ(key), 0);
+            this.plugin.blockLimits().reconcile(scan.islandId, scan.world.getName(), chunkX(key), chunkZ(key), 0);
             return new Captured(key, null, 0);
         }
 
@@ -286,7 +326,7 @@ public class LevelService {
             }
         }
         scan.hoppers.put(key, hoppers);
-        this.plugin.blockLimits().reconcile(scan.islandId, chunk.getX(), chunk.getZ(), hoppers);
+        this.plugin.blockLimits().reconcile(scan.islandId, scan.world.getName(), chunk.getX(), chunk.getZ(), hoppers);
         return new Captured(key, chunk.getChunkSnapshot(false, false, false), spawners);
     }
 
@@ -429,10 +469,7 @@ public class LevelService {
         int generation = this.rescanGeneration.incrementAndGet();
         this.rescanStartedAt = System.currentTimeMillis();
         List<UUID> changed = this.plugin.worlds().getLoadedWorlds().keySet().stream()
-                .filter(islandId -> {
-                    IslandScore score = this.scores.get(islandId);
-                    return score != null && score.isDirty();
-                })
+                .filter(this::isDirty)
                 .toList();
         rescanNext(changed, 0, generation);
     }
@@ -561,16 +598,18 @@ public class LevelService {
         /** Chunks captured so far, handed back as dirty if the scan fails. */
         private final Set<Long> captured = new HashSet<>();
         /** Hoppers of each chunk read so far, in case the island's hoppers were never counted. */
-        private final Map<Long, Integer> hoppers = new HashMap<>();
+        private final Map<Long, Integer> hoppers;
         private final long startedAt = System.nanoTime();
         private int cursor;
 
-        private Scan(UUID islandId, World world, IslandScore score, List<Long> chunks, boolean full) {
+        private Scan(UUID islandId, World world, IslandScore score, List<Long> chunks, boolean full,
+                     Map<Long, Integer> hoppers) {
             this.islandId = islandId;
             this.world = world;
             this.score = score;
             this.chunks = chunks;
             this.full = full;
+            this.hoppers = hoppers;
         }
     }
 
