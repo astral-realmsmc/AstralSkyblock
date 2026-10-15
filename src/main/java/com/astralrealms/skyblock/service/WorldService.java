@@ -513,13 +513,13 @@ public class WorldService {
     }
 
     /**
-     * Forces the dimension's environment onto a world read from storage. ASP lets the properties
-     * stored in a world win over the ones it is read with, so a source world saved as an ordinary
-     * world would otherwise become an overworld under a nether's name.
+     * Forces the dimension's properties (environment, spawn, difficulty, ...) onto a world read from
+     * storage. ASP lets the properties stored in a world win over the ones it is read with, so a
+     * source world saved as an ordinary world would otherwise become an overworld under a nether's
+     * name; {@code dimensions.yml} is what a dimension is.
      */
-    private static SlimeWorld withDimensionProperties(SlimeWorld world, IslandDimension dimension) {
-        world.getPropertyMap().setValue(SlimeProperties.ENVIRONMENT, dimension.slimeEnvironment());
-        world.getPropertyMap().setValue(SlimeProperties.DRAGON_BATTLE, false);
+    private SlimeWorld withDimensionProperties(SlimeWorld world, IslandDimension dimension) {
+        world.getPropertyMap().merge(buildPropertyMap(dimension));
         return world;
     }
 
