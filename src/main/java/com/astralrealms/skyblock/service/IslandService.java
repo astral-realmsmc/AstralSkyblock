@@ -10,10 +10,12 @@ import java.util.concurrent.TimeUnit;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
+import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
+import com.astralrealms.core.model.location.MinecraftLocation;
 import com.astralrealms.core.model.location.NetworkLocation;
 import com.astralrealms.core.paper.AstralPaperAPI;
 import com.astralrealms.core.paper.placeholder.MinecraftPlayerPlaceholder;
@@ -32,6 +34,8 @@ import com.astralrealms.skyblock.messaging.packet.island.IslandLoadRequestPacket
 import com.astralrealms.skyblock.messaging.packet.island.IslandLoadResponsePacket;
 import com.astralrealms.skyblock.messaging.packet.repository.UniqueObjectUpdatePacket;
 import com.astralrealms.skyblock.model.IslandBlueprint;
+import com.astralrealms.skyblock.model.dimension.IslandDimension;
+import com.astralrealms.skyblock.model.dimension.IslandWorlds;
 import com.astralrealms.skyblock.model.island.Island;
 import com.astralrealms.skyblock.model.island.IslandSettings;
 import com.astralrealms.skyblock.model.member.IslandMember;
@@ -94,7 +98,13 @@ public class IslandService {
                         .thenCompose(island -> {
                             if (island == null)
                                 throw new IllegalStateException("Island not found: " + request.islandId());
-                            return loadLocally(island, request.blueprintId());
+                            CompletableFuture<SlimeWorldInstance> loaded = loadLocally(island, request.blueprintId());
+                            if (request.dimension() == null)
+                                return loaded;
+                            IslandDimension dimension = plugin.dimensions().findById(request.dimension()).orElse(null);
+                            if (dimension == null)
+                                throw new IllegalStateException("Unknown dimension " + request.dimension() + " on this server");
+                            return loaded.thenCompose(ignored -> plugin.worlds().loadDimension(island, dimension));
                         })
                         .whenComplete((worldInstance, throwable) -> {
                             boolean success = throwable == null && worldInstance != null;
@@ -154,6 +164,43 @@ public class IslandService {
                 })
                 // Room for a load request plus a retry on another server.
                 .orTimeout(25, TimeUnit.SECONDS);
+    }
+
+    /**
+     * Resolves where a player arrives in one of the island's dimensions: the island is placed or
+     * found like for {@link #spawnIsland}, then the dimension's world is loaded — or created, on a
+     * first visit — on the same server. Completes with {@code null} when that fails.
+     *
+     * <p>Access (the island's unlock, the player's permission) is the caller's to check.
+     */
+    public CompletableFuture<NetworkLocation> dimensionLocation(Island island, IslandDimension dimension) {
+        MinecraftLocation spawn = dimension.spawnLocation();
+        return host(island, null)
+                .thenCompose(server -> {
+                    if (server == null)
+                        return CompletableFuture.completedFuture(null);
+                    return loadDimensionOn(island, server, dimension)
+                            .thenApply(loaded -> {
+                                if (!loaded)
+                                    return null;
+                                this.plugin.servers().markArriving(island.uniqueId());
+                                return new NetworkLocation(spawn.x(), spawn.y(), spawn.z(), spawn.yaw(), spawn.pitch(),
+                                        IslandWorlds.worldName(island.uniqueId(), dimension.id()), server);
+                            });
+                })
+                .orTimeout(25, TimeUnit.SECONDS);
+    }
+
+    /** Loads one of the island's dimensions on {@code server}, which already hosts the island. */
+    private CompletableFuture<Boolean> loadDimensionOn(Island island, UUID server, IslandDimension dimension) {
+        if (server.equals(localServer()))
+            return this.plugin.worlds().loadDimension(island, dimension).thenApply(instance -> instance != null);
+
+        return this.plugin.messaging()
+                .sendWithReply(ASConstants.ISLAND_MANAGEMENT_CHANNEL,
+                        new IslandLoadRequestPacket(island.uniqueId(), server, null, dimension.id()),
+                        LOAD_REQUEST_TIMEOUT)
+                .thenApply(reply -> reply instanceof IslandLoadResponsePacket response && response.success());
     }
 
     /**
@@ -618,7 +665,7 @@ public class IslandService {
     }
 
     /**
-     * Evicts everyone standing in the island's world who is neither an insider nor allowed to walk
+     * Evicts everyone standing in one of the island's worlds who is neither an insider nor allowed to walk
      * past a closed gate. Main thread only, and a no-op when the world is not hosted here.
      */
     public void expelVisitors(UUID islandId) {
@@ -626,19 +673,17 @@ public class IslandService {
         if (island == null)
             return;
 
-        this.plugin.worlds()
-                .findByIslandId(islandId)
-                .ifPresent(instance -> {
-                    for (Player player : List.copyOf(instance.getBukkitWorld().getPlayers())) {
-                        if (mayEnterClosed(island, player))
-                            continue;
+        for (World world : this.plugin.worlds().islandWorlds(islandId)) {
+            for (Player player : List.copyOf(world.getPlayers())) {
+                if (mayEnterClosed(island, player))
+                    continue;
 
-                        ASMessages.ISLAND_IS_CLOSED.message(
-                                player,
-                                AstralPaperAPI.createPlaceholderContainer(player).registerPlaceholder(island));
-                        this.plugin.bans().evict(islandId, player.getUniqueId());
-                    }
-                });
+                ASMessages.ISLAND_IS_CLOSED.message(
+                        player,
+                        AstralPaperAPI.createPlaceholderContainer(player).registerPlaceholder(island));
+                this.plugin.bans().evict(islandId, player.getUniqueId());
+            }
+        }
     }
 
     /** Whether a closed island still lets this player in: its own people, and holders of the bypass. */
@@ -669,7 +714,7 @@ public class IslandService {
         }
 
         Player target = Bukkit.getPlayer(targetUuid);
-        if (target == null || !target.getWorld().getName().equals(island.uniqueId().toString())) {
+        if (target == null || !this.plugin.worlds().isIslandWorld(target.getWorld(), island.uniqueId())) {
             ASMessages.PLAYER_NOT_ON_ISLAND.message(executor, placeholders);
             return;
         }

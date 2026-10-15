@@ -1,0 +1,11 @@
+# Nether generator (dimensions.yml overrides), from GENERATOR level 2.
+id: "nether-rich"
+blocks:
+  NETHERRACK: 45
+  BASALT: 12
+  BLACKSTONE: 12
+  SOUL_SOIL: 5
+  NETHER_QUARTZ_ORE: 12
+  NETHER_GOLD_ORE: 10
+  GILDED_BLACKSTONE: 3
+  ANCIENT_DEBRIS: 1

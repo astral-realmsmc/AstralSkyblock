@@ -27,5 +27,10 @@ public enum UpgradeType {
     /** Multiplier on how fast monster spawners re-arm. {@code 1} is vanilla. */
     SPAWNERS_RATE,
     /** Multiplier on the items mobs drop when they die on the island. {@code 1} is vanilla. */
-    MOB_DROPS
+    MOB_DROPS,
+    /**
+     * Dimensions the island may open ({@code dimensions.yml}). The {@code key} of each level names the
+     * dimension it unlocks; an island has every dimension named at or below its level.
+     */
+    DIMENSIONS
 }

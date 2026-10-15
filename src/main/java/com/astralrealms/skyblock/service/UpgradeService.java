@@ -15,6 +15,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.bukkit.Bukkit;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
+import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
 import com.astralrealms.core.paper.AstralPaperAPI;
@@ -439,6 +440,34 @@ public class UpgradeService {
     }
 
     /**
+     * The generator an island uses in one of its worlds: the dimension's override for the island's
+     * {@link UpgradeType#GENERATOR} level when it declares one, the island's own generator otherwise
+     * (and always in the overworld, {@code dimension == null}).
+     */
+    public GeneratorConfiguration generator(Island island, @Nullable String dimension) {
+        GeneratorConfiguration override = dimensionGenerator(island, dimension);
+        return override == null ? generator(island) : override;
+    }
+
+    /** The dimension's override of the island's generator at its current level; {@code null} when none applies. */
+    @Nullable
+    public GeneratorConfiguration dimensionGenerator(Island island, @Nullable String dimension) {
+        if (dimension == null)
+            return null;
+        String key = this.plugin.dimensions()
+                .findById(dimension)
+                .map(configured -> configured.generatorAt(island.upgradeLevel(UpgradeType.GENERATOR)))
+                .orElse(null);
+        if (key == null)
+            return null;
+
+        GeneratorConfiguration generator = this.plugin.generators().findById(key).orElse(null);
+        if (generator == null && this.unknownGenerators.add(key))
+            this.plugin.getSLF4JLogger().warn("Dimension '{}' overrides generators with unknown generator '{}'", dimension, key);
+        return generator;
+    }
+
+    /**
      * Applies every world-state upgrade effect to an island hosted on this server. Called when an
      * island world finishes loading and whenever an upgrade level changes (locally or remotely).
      * A no-op when the world is not loaded here. Must run on the main thread.
@@ -453,21 +482,32 @@ public class UpgradeService {
     public void applyEffects(Island island, UpgradeType changed) {
         if (changed == null || changed == UpgradeType.WORLDBORDER_SIZE)
             applyWorldBorder(island);
+        // A lowered level (/is upgrade set) can lock a dimension someone is standing in.
+        if (changed == null || changed == UpgradeType.DIMENSIONS)
+            this.plugin.dimensions().enforceAccess(island);
     }
 
-    /** Applies an island's {@link UpgradeType#WORLDBORDER_SIZE} level to its world, if loaded here. */
+    /**
+     * Applies an island's {@link UpgradeType#WORLDBORDER_SIZE} level to its worlds loaded here, its
+     * dimensions included: they share the island's centre and border.
+     */
     public void applyWorldBorder(Island island) {
-        World world = this.plugin.worlds()
-                .findByIslandId(island.uniqueId())
-                .map(instance -> instance.getBukkitWorld())
-                .orElse(null);
-        if (world == null)
-            return;
-
         double size = value(island, UpgradeType.WORLDBORDER_SIZE, this.plugin.configuration().defaultWorldBorderSize());
         if (size <= 0)
             return;
 
+        for (World world : this.plugin.worlds().islandWorlds(island.uniqueId()))
+            applyWorldBorder(island, world, size);
+    }
+
+    /** Applies the island's border to one of its worlds — a dimension that just came up. */
+    public void applyWorldBorder(Island island, World world) {
+        double size = value(island, UpgradeType.WORLDBORDER_SIZE, this.plugin.configuration().defaultWorldBorderSize());
+        if (size > 0)
+            applyWorldBorder(island, world, size);
+    }
+
+    private static void applyWorldBorder(Island island, World world, double size) {
         world.getWorldBorder().setCenter(island.centerX(), island.centerZ());
         world.getWorldBorder().setSize(size);
     }

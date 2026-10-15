@@ -118,6 +118,19 @@ public class SkyblockAPI {
         return plugin.worlds().findByWorld(world);
     }
 
+    /**
+     * The island dimension this world is ({@code dimensions.yml} id); empty for an island's overworld
+     * and for any world that is not an island's.
+     */
+    public static Optional<String> findDimension(World world) {
+        return plugin.worlds().findDimension(world);
+    }
+
+    /** Whether the island has unlocked this dimension through its upgrade. */
+    public static boolean isDimensionUnlocked(Island island, String dimension) {
+        return plugin.dimensions().isUnlocked(island, dimension);
+    }
+
     /** Every island currently cached on this server. */
     public static Collection<Island> islands() {
         return plugin.islands().islands();

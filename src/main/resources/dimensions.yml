@@ -1,0 +1,58 @@
+# Extra worlds every island may have next to its own: a nether, an end, or any other.
+# Off by default. When on, this file must be the same on every island server: any of them may host
+# any island, and its dimensions with it.
+#
+# A dimension's world is cloned from its source world (in sourceWorlds/) the first time someone
+# enters it, then loads, saves, unloads and is deleted together with the island. Entering one needs
+# both the island to have unlocked it (DIMENSIONS upgrade, upgrades/dimensions.yml) and the player
+# to hold its permission. Its blocks count towards the island level, and the island's border,
+# hopper and minecart caps apply to all its worlds together.
+enabled: false
+
+# Ticks a survival player stands in a nether portal before it takes them (vanilla: 80).
+portal-delay-ticks: 80
+# Ticks after a portal trip during which portals are ignored, so nobody bounces straight back.
+portal-cooldown-ticks: 40
+
+dimensions:
+  # The key is the dimension's id: lowercase letters, digits, '_' or '-'. "overworld" is reserved.
+  # It names the world (<island id>_<dimension id>), so renaming it orphans existing worlds.
+  nether:
+    display-name: "Nether"
+    # NORMAL, NETHER or THE_END.
+    environment: NETHER
+    source-world: "nether.slime"
+    default-biome: "minecraft:nether_wastes"
+    # Where players arrive. Island borders are centred on the island's own centre, so keep it near
+    # the same coordinates as the blueprints' spawn.
+    spawn-location:
+      x: 0.5
+      y: 100.0
+      z: 0.5
+      yaw: 0.0
+      pitch: 0.0
+    # The portal leading here from the island, and back: NETHER, END or NONE (/is dimension only).
+    # Each portal can lead to one dimension at most.
+    portal: NETHER
+    # Node a player needs to enter. Defaults to skyblock.dimension.<id>.
+    permission: "skyblock.dimension.nether"
+    # Generators used here instead of the island's own, by GENERATOR upgrade level: each entry
+    # applies from its level up to the next entry. Below the first entry, and without this section,
+    # the island's own generator is used. Basalt generators (the only kind a nether can run) are
+    # replaced too while an override applies.
+    generators:
+      0: "nether"
+      2: "nether-rich"
+  end:
+    display-name: "End"
+    environment: THE_END
+    source-world: "end.slime"
+    default-biome: "minecraft:the_end"
+    spawn-location:
+      x: 0.5
+      y: 100.0
+      z: 0.5
+      yaw: 0.0
+      pitch: 0.0
+    portal: END
+    permission: "skyblock.dimension.end"

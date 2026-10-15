@@ -114,7 +114,8 @@ public class UpgradeEffectsListener implements Listener {
 
         Island island = island(event.getBlock().getWorld());
         if (island != null)
-            this.plugin.blockLimits().addHopper(island.uniqueId(), event.getBlockPlaced().getX(), event.getBlockPlaced().getZ());
+            this.plugin.blockLimits().addHopper(island.uniqueId(), event.getBlock().getWorld().getName(),
+                    event.getBlockPlaced().getX(), event.getBlockPlaced().getZ());
     }
 
     /** Gives a broken hopper's slot back to the island's cap. */
@@ -125,7 +126,8 @@ public class UpgradeEffectsListener implements Listener {
 
         Island island = island(event.getBlock().getWorld());
         if (island != null)
-            this.plugin.blockLimits().removeHopper(island.uniqueId(), event.getBlock().getX(), event.getBlock().getZ());
+            this.plugin.blockLimits().removeHopper(island.uniqueId(), event.getBlock().getWorld().getName(),
+                    event.getBlock().getX(), event.getBlock().getZ());
     }
 
     /** Gives back the slots of hoppers destroyed by an entity's explosion. */
@@ -152,7 +154,7 @@ public class UpgradeEffectsListener implements Listener {
 
         for (Block block : destroyed)
             if (block.getType() == Material.HOPPER)
-                this.plugin.blockLimits().removeHopper(island.uniqueId(), block.getX(), block.getZ());
+                this.plugin.blockLimits().removeHopper(island.uniqueId(), world.getName(), block.getX(), block.getZ());
     }
 
     // =========================================================================
@@ -160,9 +162,10 @@ public class UpgradeEffectsListener implements Listener {
     // =========================================================================
 
     /**
-     * Refuses a minecart that would put the island over its cap. Counted live from the world rather
-     * than tracked, because a minecart is an entity: the world already knows how many there are, and
-     * an island world holds few enough of them for the count to be cheap.
+     * Refuses a minecart that would put the island over its cap. Counted live from the island's
+     * worlds rather than tracked, because a minecart is an entity: the worlds already know how many
+     * there are, and an island holds few enough of them for the count to be cheap. The cap covers the
+     * island's dimensions too.
      *
      * <p>Placement is the gate, not creation: a minecart that already exists must survive its chunk
      * being unloaded and loaded again, which lowering the cap would otherwise quietly delete.
@@ -180,7 +183,8 @@ public class UpgradeEffectsListener implements Listener {
         int limit = this.plugin.upgrades().minecartLimit(island);
         // Counting the others, whether or not the minecart being placed is already in the world when
         // this fires (it is not, on Paper: assuming it was let one more through than the cap).
-        long others = world.getEntitiesByClass(Minecart.class).stream()
+        long others = this.plugin.worlds().islandWorlds(island.uniqueId()).stream()
+                .flatMap(islandWorld -> islandWorld.getEntitiesByClass(Minecart.class).stream())
                 .filter(existing -> !existing.equals(minecart))
                 .count();
         if (others < limit)

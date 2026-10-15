@@ -4,6 +4,7 @@ import java.util.EnumSet;
 import java.util.Set;
 
 import org.bukkit.Material;
+import org.bukkit.World;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -18,7 +19,8 @@ import lombok.RequiredArgsConstructor;
 
 /**
  * Replaces the output of a cobble/stone generator with a roll from the island's configured
- * generator (its {@link com.astralrealms.skyblock.model.upgrade.UpgradeType#GENERATOR} level).
+ * generator (its {@link com.astralrealms.skyblock.model.upgrade.UpgradeType#GENERATOR} level). In a
+ * dimension that overrides the generator at that level, the override is rolled instead.
  *
  * <p>Every fluid-interaction block creation — flowing lava meeting water, lava flowing onto a water
  * source, basalt formation over soul soil — surfaces as a {@link BlockFormEvent} on Paper, so this
@@ -37,21 +39,33 @@ public class GeneratorListener implements Listener {
      * generator turning out oak logs made no sense.
      */
     private static final Set<Material> GENERATED = EnumSet.of(Material.COBBLESTONE, Material.STONE);
+    /**
+     * Outputs replaced in a dimension whose own generator is in effect. Basalt is the only generator
+     * a nether can run — water evaporates there — so a nether generator rolls in its place.
+     */
+    private static final Set<Material> DIMENSION_GENERATED = EnumSet.of(Material.COBBLESTONE, Material.STONE, Material.BASALT);
 
     private final AstralSkyblock plugin;
 
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
     public void onBlockForm(BlockFormEvent event) {
-        if (!GENERATED.contains(event.getNewState().getType()))
+        Material formed = event.getNewState().getType();
+        if (!DIMENSION_GENERATED.contains(formed))
             return;
 
+        World world = event.getBlock().getWorld();
         Island island = this.plugin.worlds()
-                .findByWorld(event.getBlock().getWorld())
+                .findByWorld(world)
                 .orElse(null);
         if (island == null)
             return;
 
-        GeneratorConfiguration generator = this.plugin.upgrades().generator(island);
+        String dimension = this.plugin.worlds().findDimension(world).orElse(null);
+        GeneratorConfiguration override = this.plugin.upgrades().dimensionGenerator(island, dimension);
+        if (override == null && !GENERATED.contains(formed))
+            return;
+
+        GeneratorConfiguration generator = override != null ? override : this.plugin.upgrades().generator(island);
         if (generator == null)
             return;
 

@@ -12,3 +12,9 @@ permissions:
   skyblock.reload:
     description: Allows /skyblock reload.
     default: op
+  skyblock.dimension.nether:
+    description: Allows entering the nether of an island that has unlocked it (dimensions.yml).
+    default: false
+  skyblock.dimension.end:
+    description: Allows entering the end of an island that has unlocked it (dimensions.yml).
+    default: false

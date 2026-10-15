@@ -213,14 +213,14 @@ public class BanService {
     }
 
     /**
-     * Sends the player to the configured fallback group if they are online here and standing in the
-     * island's world.
+     * Sends the player to the configured fallback group if they are online here and standing in one
+     * of the island's worlds.
      *
      * @return whether the player was found in that world on this server
      */
     private boolean evictLocally(UUID islandId, UUID playerUuid) {
         Player player = Bukkit.getPlayer(playerUuid);
-        if (player == null || !player.getWorld().getName().equals(islandId.toString()))
+        if (player == null || !this.plugin.worlds().isIslandWorld(player.getWorld(), islandId))
             return false;
 
         AstralPaperAPI.getService(TeleportationService.class)

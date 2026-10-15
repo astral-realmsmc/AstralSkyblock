@@ -1,5 +1,7 @@
 package com.astralrealms.skyblock.listener;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 import org.bukkit.Bukkit;
@@ -15,11 +17,16 @@ import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 
 import com.astralrealms.core.paper.AstralPaperAPI;
+import com.astralrealms.core.placeholder.container.PlaceholderContainer;
 import com.astralrealms.skyblock.AstralSkyblock;
 import com.astralrealms.skyblock.configuration.ASMessages;
+import com.astralrealms.skyblock.event.island.world.IslandDimensionLoadedEvent;
 import com.astralrealms.skyblock.event.island.world.IslandWorldLoadedEvent;
 import com.astralrealms.skyblock.event.island.world.IslandWorldUnloadedEvent;
+import com.astralrealms.skyblock.model.dimension.IslandDimension;
 import com.astralrealms.skyblock.model.island.Island;
+import com.astralrealms.skyblock.service.BlockLimitService;
+import com.infernalsuite.asp.api.world.SlimeWorldInstance;
 
 import lombok.RequiredArgsConstructor;
 
@@ -33,8 +40,8 @@ public class IslandListener implements Listener {
     private final AstralSkyblock plugin;
 
     /**
-     * Applies the island's world-state upgrades (currently its border) as soon as its world is
-     * loaded on this server, and counts its hoppers so the cap applies from the first placement.
+     * Applies the island's world-state upgrades (currently its border) as soon as its worlds are
+     * loaded on this server, and counts their hoppers so the cap applies from the first placement.
      * Nothing is scanned: the stored level stands until a block changes or someone runs /is calc.
      */
     @EventHandler(priority = EventPriority.MONITOR)
@@ -42,20 +49,48 @@ public class IslandListener implements Listener {
         this.plugin.upgrades().applyEffects(event.island());
 
         UUID islandId = event.island().uniqueId();
+        try {
+            Map<String, Map<Long, Integer>> census = new HashMap<>();
+            for (SlimeWorldInstance instance : this.plugin.worlds().islandInstances(islandId))
+                census.put(instance.getName(), BlockLimitService.census(instance));
+            this.plugin.blockLimits().seed(islandId, census);
+        } catch (Exception exception) {
+            recountByScan(event.island(), exception);
+        }
+    }
+
+    /**
+     * A dimension entered for the first time comes up after its island: it gets the island's border
+     * and its hoppers join the island's count.
+     */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onIslandDimensionLoaded(IslandDimensionLoadedEvent event) {
+        this.plugin.upgrades().applyWorldBorder(event.island(), event.world());
+
+        UUID islandId = event.island().uniqueId();
         this.plugin.worlds()
-                .findByIslandId(islandId)
+                .islandInstances(islandId)
+                .stream()
+                .filter(instance -> instance.getName().equals(event.world().getName()))
+                .findFirst()
                 .ifPresent(instance -> {
                     try {
-                        this.plugin.blockLimits().seed(islandId, instance);
+                        this.plugin.blockLimits().seedWorld(islandId, instance.getName(), BlockLimitService.census(instance));
                     } catch (Exception exception) {
-                        // Hoppers stay refused until a full level scan has counted them instead.
-                        this.plugin.getSLF4JLogger().error("Failed to count the hoppers of island {}; scanning it instead", islandId, exception);
-                        this.plugin.levels().calculate(event.island()).exceptionally(throwable -> {
-                            this.plugin.getSLF4JLogger().warn("Failed to scan island {}: {}", islandId, throwable.getMessage());
-                            return null;
-                        });
+                        this.plugin.blockLimits().forget(islandId);
+                        recountByScan(event.island(), exception);
                     }
                 });
+    }
+
+    /** Hoppers stay refused until a full level scan has counted them instead of the failed census. */
+    private void recountByScan(Island island, Exception exception) {
+        UUID islandId = island.uniqueId();
+        this.plugin.getSLF4JLogger().error("Failed to count the hoppers of island {}; scanning it instead", islandId, exception);
+        this.plugin.levels().calculate(island).exceptionally(throwable -> {
+            this.plugin.getSLF4JLogger().warn("Failed to scan island {}: {}", islandId, throwable.getMessage());
+            return null;
+        });
     }
 
     /**
@@ -71,7 +106,8 @@ public class IslandListener implements Listener {
 
     /**
      * Stops a banned player, and a visitor to a closed island, from teleporting in — this covers
-     * warps, {@code /is go} and any other plugin's teleport into the world.
+     * warps, {@code /is go} and any other plugin's teleport into the world. A dimension also needs
+     * the island to have unlocked it and the player to hold its permission.
      */
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onTeleport(PlayerTeleportEvent event) {
@@ -86,17 +122,30 @@ public class IslandListener implements Listener {
             return;
 
         Player player = event.getPlayer();
+        PlaceholderContainer placeholders = AstralPaperAPI.createPlaceholderContainer(player).registerPlaceholder(island);
         ASMessages denial = denialFor(island, player);
+        if (denial == null) {
+            IslandDimension dimension = this.plugin.worlds()
+                    .findDimension(target)
+                    .flatMap(id -> this.plugin.dimensions().findById(id))
+                    .orElse(null);
+            if (dimension != null) {
+                denial = this.plugin.dimensions().denial(player, island, dimension);
+                placeholders.registerDirect("dimension", dimension.id()).registerDirect("dimension_name", dimension.displayName());
+            } else if (this.plugin.worlds().findDimension(target).isPresent())
+                // A dimension since removed from the configuration: nobody goes there anymore.
+                denial = ASMessages.DIMENSION_UNKNOWN;
+        }
         if (denial == null)
             return;
 
         event.setCancelled(true);
-        denial.message(player, AstralPaperAPI.createPlaceholderContainer(player).registerPlaceholder(island));
+        denial.message(player, placeholders);
     }
 
     /**
      * Falling into the void on an island sends the player back to its spawn instead of killing
-     * them (and dropping their inventory into it).
+     * them (and dropping their inventory into it) — the spawn of the dimension they fell in, if any.
      */
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onVoidDamage(EntityDamageEvent event) {
@@ -110,10 +159,16 @@ public class IslandListener implements Listener {
             return;
 
         event.setCancelled(true);
-        Location spawn = this.plugin.worlds()
-                .findByWorld(world)
-                .map(island -> new Location(world, island.spawnX(), island.spawnY(), island.spawnZ(), island.spawnYaw(), island.spawnPitch()))
-                .orElse(world.getSpawnLocation());
+        IslandDimension dimension = this.plugin.worlds()
+                .findDimension(world)
+                .flatMap(id -> this.plugin.dimensions().findById(id))
+                .orElse(null);
+        Location spawn = dimension != null
+                ? this.plugin.dimensions().spawn(dimension, world)
+                : this.plugin.worlds()
+                        .findByWorld(world)
+                        .map(island -> island.spawnLocation(world))
+                        .orElse(world.getSpawnLocation());
         player.setFallDistance(0);
         player.teleportAsync(spawn);
     }
@@ -124,6 +179,18 @@ public class IslandListener implements Listener {
      */
     @EventHandler(priority = EventPriority.HIGH)
     public void onRespawn(PlayerRespawnEvent event) {
+        // Dying in a dimension with no bed or anchor to go back to: back to the island, rather than
+        // to wherever this server spawns players.
+        if (!event.isBedSpawn() && !event.isAnchorSpawn()
+            && this.plugin.worlds().findDimension(event.getPlayer().getWorld()).isPresent())
+            this.plugin.worlds()
+                    .findIslandIdByWorld(event.getPlayer().getWorld())
+                    .ifPresent(islandId -> this.plugin.worlds()
+                            .findByIslandId(islandId)
+                            .flatMap(instance -> this.plugin.islands().repository().findCachedById(islandId)
+                                    .map(island -> island.spawnLocation(instance.getBukkitWorld())))
+                            .ifPresent(event::setRespawnLocation));
+
         World target = event.getRespawnLocation().getWorld();
         Island island = target == null ? null : this.plugin.worlds().findByWorld(target).orElse(null);
         if (island == null)

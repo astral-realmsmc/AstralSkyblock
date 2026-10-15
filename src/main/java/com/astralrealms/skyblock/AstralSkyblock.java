@@ -47,6 +47,7 @@ import com.astralrealms.skyblock.command.completion.BiomeCompletionHandler;
 import com.astralrealms.skyblock.command.completion.IslandBanCompletionHandler;
 import com.astralrealms.skyblock.command.completion.IslandBlueprintCompletionHandler;
 import com.astralrealms.skyblock.command.completion.IslandCompletionHandler;
+import com.astralrealms.skyblock.command.completion.IslandDimensionCompletionHandler;
 import com.astralrealms.skyblock.command.completion.IslandMemberCompletionHandler;
 import com.astralrealms.skyblock.command.completion.IslandUpgradeCompletionHandler;
 import com.astralrealms.skyblock.command.completion.IslandWarpCompletionHandler;
@@ -96,6 +97,7 @@ public final class AstralSkyblock extends AstralPaperPlugin {
     private LevelService levels;
     private BiomeService biomes;
     private BlockLimitService blockLimits;
+    private DimensionService dimensions;
     private MenuContainer menus;
     private DialogContainer dialogs;
 
@@ -149,6 +151,7 @@ public final class AstralSkyblock extends AstralPaperPlugin {
         this.menus = new MenuContainer(this);
         this.dialogs = new DialogContainer(this);
         this.generators = new GeneratorService(this);
+        this.dimensions = new DimensionService(this);
 
         // Configuration
         this.loadConfiguration();
@@ -180,6 +183,7 @@ public final class AstralSkyblock extends AstralPaperPlugin {
         this.levels = new LevelService(this);
         this.levels.load();
         this.biomes = new BiomeService(this);
+        this.dimensions.checkReferences();
 
         // API
         SkyblockAPI.initialize(this);
@@ -193,6 +197,7 @@ public final class AstralSkyblock extends AstralPaperPlugin {
         this.registerCompletion("islandBans", new IslandBanCompletionHandler(this));
         this.registerCompletion("islandUpgrades", new IslandUpgradeCompletionHandler(this));
         this.registerCompletion("biomes", new BiomeCompletionHandler(this));
+        this.registerCompletion("islandDimensions", new IslandDimensionCompletionHandler(this));
         // -- Context
         this.registerContext(IslandBlueprint.class, new IslandBlueprintContextResolver(this));
         this.commands().getCommandContexts().registerIssuerAwareContext(Island.class, new IslandContextResolver(this));
@@ -219,7 +224,8 @@ public final class AstralSkyblock extends AstralPaperPlugin {
                     new IslandSettingsListener(this),
                     new IslandPermissionsListener(this),
                     new UpgradeEffectsListener(this),
-                    new IslandChangeListener(this)
+                    new IslandChangeListener(this),
+                    new DimensionPortalListener(this)
             );
         if (this.configuration.generators().enabled())
             this.registerListener(new GeneratorListener(this));
@@ -280,10 +286,13 @@ public final class AstralSkyblock extends AstralPaperPlugin {
         this.menus.load();
         this.dialogs.load();
         this.generators.load();
+        this.dimensions.load();
         // UpgradeService is constructed after messaging connects (its repository registers a packet
         // exchange), so on the first enable pass its constructor loads the blueprints itself.
-        if (this.upgrades != null)
+        if (this.upgrades != null) {
             this.upgrades.load();
+            this.dimensions.checkReferences();
+        }
 
         // Lore transformers used by the menus (transformers/ folder)
         this.transformers().load();

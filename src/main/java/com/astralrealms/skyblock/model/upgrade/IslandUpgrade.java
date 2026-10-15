@@ -55,8 +55,9 @@ public record IslandUpgrade(UpgradeType type, String name, ItemStackWrapper icon
      * One purchasable step of an upgrade.
      *
      * @param value the effect magnitude of this level — a border diameter, a member cap, ...
-     * @param key   an optional identifier the effect resolves against (currently the generator
-     *              blueprint id used by {@link UpgradeType#GENERATOR}); unused by other types
+     * @param key   an optional identifier the effect resolves against: the generator blueprint id
+     *              of {@link UpgradeType#GENERATOR}, the dimension unlocked by
+     *              {@link UpgradeType#DIMENSIONS}; unused by other types
      */
     @ConfigSerializable
     public record Level(int level, double price, String currency, ComponentWrapper currencyDisplay,
