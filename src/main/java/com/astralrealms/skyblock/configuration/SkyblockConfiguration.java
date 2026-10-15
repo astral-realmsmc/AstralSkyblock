@@ -13,7 +13,7 @@ import com.astralrealms.skyblock.model.island.IslandSettings;
 public record SkyblockConfiguration(int maximumIslands, String islandsGroup, int worldIdleUnloadSeconds,
                                     String fallbackGroup, int maximumWarps, int maximumRoles, Defaults defaults, Level level,
                                     Set<IslandSettings> defaultSettings, Generators generators, List<String> allowedBiomes,
-                                    String ownerRoleName, Boolean voidTeleport) {
+                                    String ownerRoleName, Boolean voidTeleport, Boolean keepInventory) {
 
     /** Biomes refused by /is biome unless listed in {@code allowed-biomes}: they change what spawns. */
     private static final Set<String> NON_OVERWORLD_BIOMES = Set.of(
@@ -69,6 +69,12 @@ public record SkyblockConfiguration(int maximumIslands, String islandsGroup, int
     @Override
     public Boolean voidTeleport() {
         return this.voidTeleport == null || this.voidTeleport;
+    }
+
+    /** Whether players keep their inventory and levels when they die on an island. Defaults to off. */
+    @Override
+    public Boolean keepInventory() {
+        return this.keepInventory != null && this.keepInventory;
     }
 
     /** Rank shown for an island's owner in member menus — the owner holds no role. */

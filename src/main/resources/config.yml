@@ -62,6 +62,10 @@ allowed-biomes: []
 # Players falling into the void on an island are sent back to its spawn instead of dying.
 void-teleport: true
 
+# Players dying on an island keep their inventory and levels (the keepInventory game rule of
+# every island world, set when it loads).
+keep-inventory: false
+
 # Settings every new island starts with. CREEPER_EXPLOSION is left out on purpose: creepers
 # wandering onto an island would otherwise blow holes in it while nobody is around.
 default-settings:

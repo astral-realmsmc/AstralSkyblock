@@ -52,6 +52,7 @@ roles:
       - WIND_CHARGE
       - IGNITE_CREEPER
       - SCULK_SENSOR
+      - USE_PLAYERSHOP
   member:
     type: MEMBER
     weight: 2
@@ -104,6 +105,8 @@ roles:
       - COOP_MEMBER
       - UNCOOP_MEMBER
       - EXPEL_PLAYERS
+      - USE_PLAYERSHOP
+      - CREATE_PLAYERSHOP
   admin:
     type: MEMBER
     weight: 3

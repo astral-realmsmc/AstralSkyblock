@@ -16,6 +16,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import org.bukkit.Bukkit;
+import org.bukkit.GameRules;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitTask;
@@ -312,6 +313,7 @@ public class WorldService {
                         .findCachedById(id)
                         .orElseThrow(() -> new IllegalStateException("Island not found for UUID: " + id));
                 IslandSettingsListener.applyEnvironment(island, instance.getBukkitWorld());
+                instance.getBukkitWorld().setGameRule(GameRules.KEEP_INVENTORY, this.plugin.configuration().keepInventory());
 
                 // Record this server as the host. It only succeeds while nobody else holds the island:
                 // a copy that lost that race is dropped before anyone can play on it, or both copies

@@ -15,6 +15,12 @@ animal-shear:
   lore:
     - "<gray>Permet de tondre les animaux."
 
+bank-withdraw:
+  material: GOLD_INGOT
+  name: "<green>Retirer de la banque"
+  lore:
+    - "<gray>Permet de retirer de l'argent de la banque de l'île."
+
 ban-member:
   material: BARRIER
   name: "<green>Bannir"
@@ -82,6 +88,12 @@ coop-member:
   name: "<green>Ajouter des coopérateurs"
   lore:
     - "<gray>Permet d'ajouter des coopérateurs à l'île."
+
+create-playershop:
+  material: OAK_SIGN
+  name: "<green>Créer un shop"
+  lore:
+    - "<gray>Permet de créer des shops joueurs sur l'île."
 
 decoration:
   material: ITEM_FRAME
@@ -309,6 +321,12 @@ use-doors:
   name: "<green>Utiliser les portes"
   lore:
     - "<gray>Permet d'ouvrir les portes, trappes et portillons."
+
+use-playershop:
+  material: EMERALD
+  name: "<green>Utiliser les shops"
+  lore:
+    - "<gray>Permet d'utiliser les shops joueurs partagés de l'île."
 
 use-redstone:
   material: LEVER
