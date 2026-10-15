@@ -330,7 +330,8 @@ public class WorldService {
             try {
                 if (!this.worldLoader.worldExists(name))
                     continue;
-                worlds.put(dimension.id(), asp.readWorld(this.worldLoader, name, false, buildPropertyMap(dimension)));
+                worlds.put(dimension.id(), withDimensionProperties(
+                        asp.readWorld(this.worldLoader, name, false, buildPropertyMap(dimension)), dimension));
             } catch (Exception e) {
                 this.plugin.getSLF4JLogger().error("Failed to read the {} world of island {}; it stays unloaded", dimension.id(), id, e);
                 this.missingDimensions.computeIfAbsent(id, ignored -> ConcurrentHashMap.newKeySet()).add(dimension.id());
@@ -461,7 +462,7 @@ public class WorldService {
                     SlimeWorld source = asp.readWorld(this.sourceLoader, dimension.sourceWorld().replace(".slime", ""), false, propertyMap);
                     world = source.clone(name, this.worldLoader);
                 }
-                read.complete(world);
+                read.complete(withDimensionProperties(world, dimension));
             } catch (Exception e) {
                 read.completeExceptionally(e);
             }
@@ -509,6 +510,17 @@ public class WorldService {
             future.complete(instance);
         });
         return future;
+    }
+
+    /**
+     * Forces the dimension's environment onto a world read from storage. ASP lets the properties
+     * stored in a world win over the ones it is read with, so a source world saved as an ordinary
+     * world would otherwise become an overworld under a nether's name.
+     */
+    private static SlimeWorld withDimensionProperties(SlimeWorld world, IslandDimension dimension) {
+        world.getPropertyMap().setValue(SlimeProperties.ENVIRONMENT, dimension.slimeEnvironment());
+        world.getPropertyMap().setValue(SlimeProperties.DRAGON_BATTLE, false);
+        return world;
     }
 
     private void registerDimension(UUID id, String dimension, SlimeWorldInstance instance) {
